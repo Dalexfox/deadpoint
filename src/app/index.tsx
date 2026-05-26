@@ -1,12 +1,128 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const ACCENT = '#ff507c';
+
+type Post = {
+  id: string;
+  name: string;
+  initials: string;
+  avatarBg: string;
+  gym: string;
+  problems: number;
+  difficulty: string;
+  timestamp: string;
+  likes: number;
+  comments: number;
+  liked: boolean;
+};
+
+const POSTS: Post[] = [
+  {
+    id: '1',
+    name: 'Alex Chen',
+    initials: 'AC',
+    avatarBg: '#ffd1dc',
+    gym: 'Vital Climbing LES',
+    problems: 14,
+    difficulty: 'V4 – V6',
+    timestamp: '2h ago',
+    likes: 31,
+    comments: 4,
+    liked: false,
+  },
+  {
+    id: '2',
+    name: 'Sarah Park',
+    initials: 'SP',
+    avatarBg: '#d1e8ff',
+    gym: 'Brooklyn Boulders Queensbridge',
+    problems: 8,
+    difficulty: 'V7 – V8',
+    timestamp: '5h ago',
+    likes: 58,
+    comments: 11,
+    liked: true,
+  },
+  {
+    id: '3',
+    name: 'Marcus Webb',
+    initials: 'MW',
+    avatarBg: '#d4f5e2',
+    gym: 'Movement LIC',
+    problems: 22,
+    difficulty: 'V2 – V5',
+    timestamp: 'Yesterday',
+    likes: 19,
+    comments: 2,
+    liked: false,
+  },
+];
+
+function FeedCard({ post }: { post: Post }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.userRow}>
+        <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
+          <Text style={styles.avatarText}>{post.initials}</Text>
+        </View>
+        <View style={styles.userMeta}>
+          <Text style={styles.userName}>{post.name}</Text>
+          <Text style={styles.timestamp}>{post.timestamp}</Text>
+        </View>
+      </View>
+
+      <View style={styles.gymPill}>
+        <Text style={styles.gymPillMarker}>▲</Text>
+        <Text style={styles.gymPillText}>{post.gym}</Text>
+      </View>
+
+      <View style={styles.statsBlock}>
+        <View style={styles.stat}>
+          <Text style={styles.statValue}>{post.problems}</Text>
+          <Text style={styles.statLabel}>PROBLEMS</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.stat}>
+          <Text style={styles.statValue}>{post.difficulty}</Text>
+          <Text style={styles.statLabel}>DIFFICULTY</Text>
+        </View>
+      </View>
+
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.actionBtn, post.liked && styles.actionBtnActive]}
+          activeOpacity={0.7}>
+          <Text style={[styles.actionIcon, post.liked && styles.actionIconActive]}>
+            {post.liked ? '♥' : '♡'}
+          </Text>
+          <Text style={[styles.actionCount, post.liked && styles.actionCountActive]}>
+            {post.likes}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}>
+          <Text style={styles.actionIcon}>◎</Text>
+          <Text style={styles.actionCount}>{post.comments}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 export default function FeedScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Feed</Text>
+      <View style={styles.header}>
+        <Text style={styles.heading}>Feed</Text>
+        <Text style={styles.subheading}>What your crew sent</Text>
       </View>
+      <ScrollView
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}>
+        {POSTS.map((post) => (
+          <FeedCard key={post.id} post={post} />
+        ))}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -16,15 +132,161 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  content: {
-    flex: 1,
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e5e5',
+  },
+  heading: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#0a0a0a',
+    letterSpacing: -0.8,
+  },
+  subheading: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999999',
+    marginTop: 2,
+    letterSpacing: 0.1,
+  },
+  list: {
+    padding: 16,
+    gap: 14,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+    borderWidth: 1.5,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 34,
+  avatarText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0a0a0a',
+    letterSpacing: 0.4,
+  },
+  userMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0a0a0a',
+    letterSpacing: -0.2,
+  },
+  timestamp: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#aaaaaa',
+  },
+  gymPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff0f4',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  gymPillMarker: {
+    fontSize: 8,
+    color: ACCENT,
+  },
+  gymPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ACCENT,
+    letterSpacing: 0.1,
+  },
+  statsBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontSize: 22,
     fontWeight: '800',
     color: '#0a0a0a',
     letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#aaaaaa',
+    letterSpacing: 1.2,
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#e5e5e5',
+    marginHorizontal: 8,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f0f0f0',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#efefef',
+  },
+  actionBtnActive: {
+    borderColor: '#ffd6e0',
+    backgroundColor: '#fff5f7',
+  },
+  actionIcon: {
+    fontSize: 16,
+    color: '#cccccc',
+  },
+  actionIconActive: {
+    color: ACCENT,
+  },
+  actionCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#cccccc',
+  },
+  actionCountActive: {
+    color: ACCENT,
   },
 });
