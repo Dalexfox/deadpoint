@@ -15,17 +15,31 @@ Deadpoint is a social climbing tracker app for indoor bouldering gyms. Think Str
 - **Kaya** — climbing-specific gym and problem tracking
 - **Instagram/TikTok** — social feed, likes, comments, shares
 
+## Design Philosophy
+Deadpoint should feel like an outdoor performance lifestyle brand — think Arc'teryx, The North Face, Patagonia. NOT a tech startup or generic fitness app.
+
+Key principles:
+- **Premium and minimal** — every element earns its place, no clutter
+- **Confident typography** — oversized, bold, editorial. Let the type do the talking
+- **White space is intentional** — breathing room makes things feel expensive
+- **One bold accent** — #ff507c is the ONLY color pop. Everything else is white, black, or light gray
+- **Performance meets culture** — this is a lifestyle app for people who take climbing seriously but also care how they look doing it
+
+Design references: Arc'teryx (clean, premium, minimal), Outside Days (bold oversized type), Baggu (editorial white space)
+
 ## Design System
 - **Mode:** Light mode only
 - **Background:** White (#ffffff)
-- **Accent color:** #ff507c (coral/hot pink)
-- **Typography:** Bold sans-serif, editorial feel
-- **Style:** Clean, minimal, lots of white space — lifestyle app not utility app
-- **Inspiration:** Strava activity cards, Baggu editorial typography
+- **Accent color:** #ff507c (coral/hot pink) — use sparingly as a highlight
+- **Secondary colors:** Black (#000000) for headings, mid-gray (#888888) for subtitles, light gray (#f5f5f5) for card backgrounds
+- **Typography:** Bold sans-serif, oversized headings, generous letter-spacing on labels
+- **Cards:** Soft rounded corners, subtle shadow, white or light gray background
+- **Buttons:** Solid #ff507c with white text, rounded, bold label
+- **Icons:** Simple, minimal line icons
 
 ## Tech Stack
 - **Framework:** React Native with Expo SDK 56
-- **Navigation:** expo-router (NOT react-navigation)
+- **Navigation:** expo-router (NOT react-navigation — NEVER use react-navigation)
 - **Database:** Supabase (coming soon)
 - **Auth:** Supabase Auth (coming soon)
 - **Platform:** iOS first (iPhone)
@@ -45,12 +59,13 @@ Deadpoint is a social climbing tracker app for indoor bouldering gyms. Think Str
 ## Difficulty Scale
 Uses the V-scale standard for bouldering:
 - V0 (easiest) through V10 (hardest)
-- Users select which grades they climbed in a session
+- Users select how many climbs they completed at each grade in a session
 
 ## Features — MVP (Phase 1)
 - [ ] Bottom tab navigation (Feed, Gyms, Log, Profile)
+- [ ] Home dashboard with personal stats
 - [ ] Gyms list screen
-- [ ] Log a climbing session
+- [ ] Individual gym detail page with V-scale climb logger
 - [ ] Social feed with placeholder data
 - [ ] Profile screen with stats
 - [ ] Supabase database connection
@@ -70,11 +85,12 @@ Uses the V-scale standard for bouldering:
 - [ ] App Store launch
 
 ## Important Rules for Claude Code
-- Always use **expo-router** for navigation, never react-navigation
+- Always use **expo-router** for navigation, NEVER react-navigation
 - Always keep compatibility with **Expo SDK 56**
-- Always use **#ff507c** as the accent color
+- Always use **#ff507c** as the accent color — sparingly, as a highlight
 - Always use **light mode** white backgrounds
-- Always use **bold sans-serif** typography
+- Always use **bold oversized sans-serif** typography — think Arc'teryx, not a startup
+- Keep designs minimal and premium — less is more
 - After every completed task, **commit and push to GitHub**
 - GitHub repo: https://github.com/Dalexfox/deadpoint.git
 
