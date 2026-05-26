@@ -1,6 +1,17 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
+import * as ImagePicker from 'expo-image-picker';
+import { getProfileAvatar, saveProfileAvatar } from '../../lib/store';
 
 const ACCENT = '#ff507c';
 
@@ -65,6 +76,53 @@ function ActivityCard({
 }
 
 export default function ProfileScreen() {
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    getProfileAvatar().then(setAvatarUri);
+  }, []);
+
+  const handleAvatarPress = () => {
+    Alert.alert('Profile Photo', 'Choose a photo for your profile', [
+      {
+        text: 'Choose from Library',
+        onPress: pickFromLibrary,
+      },
+      {
+        text: 'Take Photo',
+        onPress: takePhoto,
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const pickFromLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setAvatarUri(uri);
+      saveProfileAvatar(uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setAvatarUri(uri);
+      saveProfileAvatar(uri);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -77,12 +135,21 @@ export default function ProfileScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+        showsVerticalScrollIndicator={false}>
+
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarInitials}>{USER.initials}</Text>
-          </View>
+          <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarInitials}>{USER.initials}</Text>
+              </View>
+            )}
+            <View style={styles.avatarEditBadge}>
+              <Text style={styles.avatarEditIcon}>＋</Text>
+            </View>
+          </TouchableOpacity>
           <Text style={styles.name}>{USER.name}</Text>
           <Text style={styles.username}>{USER.username}</Text>
         </View>
@@ -154,7 +221,11 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+  },
+  avatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
   },
   avatarInitials: {
     fontSize: 34,
@@ -162,11 +233,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: -0.5,
   },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  avatarEditIcon: {
+    fontSize: 16,
+    color: '#ffffff',
+    lineHeight: 18,
+  },
   name: {
     fontSize: 30,
     fontFamily: 'BebasNeue_400Regular',
     color: '#0a0a0a',
     letterSpacing: 1,
+    marginTop: 16,
     marginBottom: 4,
   },
   username: {

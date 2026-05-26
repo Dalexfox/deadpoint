@@ -1,6 +1,16 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { saveUserPost, type MediaItem } from '../../lib/store';
 
 const ACCENT = '#ff507c';
 
@@ -17,8 +27,79 @@ export default function LogScreen() {
   const [selectedGym, setSelectedGym] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [problems, setProblems] = useState(0);
+  const [media, setMedia] = useState<MediaItem | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   const canSubmit = selectedGym !== null && selectedGrade !== null && problems > 0;
+
+  const handleAddMedia = () => {
+    Alert.alert('Add to your post', '', [
+      { text: 'Choose Photo', onPress: () => pickMedia('images') },
+      { text: 'Choose Video', onPress: () => pickMedia('videos') },
+      { text: 'Take Photo', onPress: takePhoto },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const pickMedia = async (type: 'images' | 'videos') => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: [type],
+      allowsEditing: true,
+      quality: 0.85,
+      videoMaxDuration: 60,
+    });
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
+    }
+  };
+
+  const takePhoto = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      setMedia({ type: 'image', uri: result.assets[0].uri });
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    await saveUserPost({
+      id: Date.now().toString(),
+      name: 'Alex Fox',
+      initials: 'AF',
+      avatarBg: ACCENT,
+      gym: selectedGym!,
+      problems,
+      difficulty: selectedGrade!,
+      timestamp: 'Just now',
+      likes: 0,
+      comments: 0,
+      liked: false,
+      media: media ? [media] : undefined,
+    });
+    setSubmitted(true);
+    // Reset form
+    setSelectedGym(null);
+    setSelectedGrade(null);
+    setProblems(0);
+    setMedia(null);
+    setTimeout(() => setSubmitted(false), 2500);
+  };
+
+  if (submitted) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.successScreen}>
+          <Text style={styles.successEmoji}>🧗</Text>
+          <Text style={styles.successTitle}>SESSION LOGGED</Text>
+          <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -32,6 +113,7 @@ export default function LogScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
+        {/* Gym */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>GYM</Text>
           <View style={styles.gymList}>
@@ -56,6 +138,7 @@ export default function LogScreen() {
           </View>
         </View>
 
+        {/* Difficulty */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>DIFFICULTY</Text>
           <View style={styles.gradeGrid}>
@@ -76,6 +159,7 @@ export default function LogScreen() {
           </View>
         </View>
 
+        {/* Problems */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>PROBLEMS COMPLETED</Text>
           <View style={styles.counterCard}>
@@ -100,9 +184,41 @@ export default function LogScreen() {
           </View>
         </View>
 
+        {/* Media */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ADD PHOTO / VIDEO</Text>
+          {media ? (
+            <View style={styles.mediaPreviewWrapper}>
+              {media.type === 'image' ? (
+                <Image source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode="cover" />
+              ) : (
+                <View style={styles.videoPreview}>
+                  <Text style={styles.videoIcon}>▶</Text>
+                  <Text style={styles.videoLabel}>Video selected</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.mediaRemoveBtn}
+                onPress={() => setMedia(null)}
+                activeOpacity={0.8}>
+                <Text style={styles.mediaRemoveText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.mediaPickerBtn}
+              onPress={handleAddMedia}
+              activeOpacity={0.7}>
+              <Text style={styles.mediaPickerIcon}>📷</Text>
+              <Text style={styles.mediaPickerLabel}>Add a photo or video</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Submit */}
         <TouchableOpacity
           style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-          onPress={() => {}}
+          onPress={handleSubmit}
           activeOpacity={0.85}
           disabled={!canSubmit}>
           <Text style={styles.submitLabel}>Submit Session</Text>
@@ -270,6 +386,73 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
+
+  // ─── Media picker ─────────────────────────────────────────────
+  mediaPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 16,
+    paddingVertical: 22,
+  },
+  mediaPickerIcon: {
+    fontSize: 22,
+  },
+  mediaPickerLabel: {
+    fontSize: 15,
+    fontFamily: 'DMSans_700Bold',
+    color: '#888888',
+    letterSpacing: -0.1,
+  },
+  mediaPreviewWrapper: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  mediaPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+  },
+  videoPreview: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#111111',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  videoIcon: {
+    fontSize: 36,
+    color: '#ffffff',
+  },
+  videoLabel: {
+    fontSize: 14,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#ffffff',
+    opacity: 0.7,
+  },
+  mediaRemoveBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaRemoveText: {
+    fontSize: 13,
+    color: '#ffffff',
+    fontFamily: 'DMSans_700Bold',
+  },
+
+  // ─── Submit ───────────────────────────────────────────────────
   submitBtn: {
     backgroundColor: ACCENT,
     borderRadius: 16,
@@ -290,5 +473,28 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.2,
+  },
+
+  // ─── Success screen ───────────────────────────────────────────
+  successScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  successEmoji: {
+    fontSize: 64,
+  },
+  successTitle: {
+    fontSize: 52,
+    fontFamily: 'BebasNeue_400Regular',
+    color: '#000000',
+    letterSpacing: 2,
+  },
+  successSub: {
+    fontSize: 16,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#888888',
+    letterSpacing: 0.1,
   },
 });

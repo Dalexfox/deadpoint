@@ -1,34 +1,21 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import { getUserPosts, togglePostLike, type Post } from '../../lib/store';
 
 const ACCENT = '#ff507c';
 
-function useGreeting(name: string) {
-  return useMemo(() => {
-    const hour = new Date().getHours();
-    const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-    return `Good ${tod}, ${name} 👋`;
-  }, [name]);
-}
-
-type Post = {
-  id: string;
-  name: string;
-  initials: string;
-  avatarBg: string;
-  gym: string;
-  problems: number;
-  difficulty: string;
-  timestamp: string;
-  likes: number;
-  comments: number;
-  liked: boolean;
-};
-
-const POSTS: Post[] = [
+const PLACEHOLDER_POSTS: Post[] = [
   {
-    id: '1',
+    id: 'p1',
     name: 'Alex Chen',
     initials: 'AC',
     avatarBg: '#ffd1dc',
@@ -41,7 +28,7 @@ const POSTS: Post[] = [
     liked: false,
   },
   {
-    id: '2',
+    id: 'p2',
     name: 'Sarah Park',
     initials: 'SP',
     avatarBg: '#d1e8ff',
@@ -54,7 +41,7 @@ const POSTS: Post[] = [
     liked: true,
   },
   {
-    id: '3',
+    id: 'p3',
     name: 'Marcus Webb',
     initials: 'MW',
     avatarBg: '#d4f5e2',
@@ -68,9 +55,22 @@ const POSTS: Post[] = [
   },
 ];
 
-function FeedCard({ post }: { post: Post }) {
+function useGreeting(name: string) {
+  const hour = new Date().getHours();
+  const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  return `Good ${tod}, ${name} 👋`;
+}
+
+function FeedCard({
+  post,
+  onLike,
+}: {
+  post: Post;
+  onLike: (id: string) => void;
+}) {
   return (
     <View style={styles.card}>
+      {/* User row */}
       <View style={styles.userRow}>
         <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
           <Text style={styles.avatarText}>{post.initials}</Text>
@@ -83,6 +83,24 @@ function FeedCard({ post }: { post: Post }) {
 
       <Text style={styles.gymLabel}>{post.gym}</Text>
 
+      {/* Media */}
+      {post.media && post.media.length > 0 && (
+        <View style={styles.mediaContainer}>
+          {post.media[0].type === 'image' ? (
+            <Image
+              source={{ uri: post.media[0].uri }}
+              style={styles.mediaImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.videoPlaceholder}>
+              <Text style={styles.videoPlayIcon}>▶</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Stats */}
       <View style={styles.statsBlock}>
         <View style={styles.stat}>
           <Text style={styles.statValue}>{post.problems}</Text>
@@ -95,10 +113,12 @@ function FeedCard({ post }: { post: Post }) {
         </View>
       </View>
 
+      {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.actionBtn, post.liked && styles.actionBtnActive]}
-          activeOpacity={0.7}>
+          activeOpacity={0.7}
+          onPress={() => onLike(post.id)}>
           <Text style={[styles.actionIcon, post.liked && styles.actionIconActive]}>
             {post.liked ? '♥' : '♡'}
           </Text>
@@ -117,6 +137,21 @@ function FeedCard({ post }: { post: Post }) {
 
 export default function FeedScreen() {
   const greeting = useGreeting('Alex');
+  const [posts, setPosts] = useState<Post[]>(PLACEHOLDER_POSTS);
+
+  // Reload user posts whenever this tab comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      getUserPosts().then((userPosts) => {
+        setPosts([...userPosts, ...PLACEHOLDER_POSTS]);
+      });
+    }, [])
+  );
+
+  const handleLike = async (id: string) => {
+    const updated = await togglePostLike(posts, id);
+    setPosts(updated);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -127,8 +162,8 @@ export default function FeedScreen() {
       <ScrollView
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}>
-        {POSTS.map((post) => (
-          <FeedCard key={post.id} post={post} />
+        {posts.map((post) => (
+          <FeedCard key={post.id} post={post} onLike={handleLike} />
         ))}
       </ScrollView>
     </SafeAreaView>
@@ -214,12 +249,35 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_600SemiBold',
     color: '#aaaaaa',
   },
-
   gymLabel: {
     fontSize: 13,
     fontFamily: 'DMSans_700Bold',
     color: ACCENT,
     letterSpacing: 0.2,
+  },
+
+  // ─── Media ───────────────────────────────────────────────────
+  mediaContainer: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  mediaImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 14,
+  },
+  videoPlaceholder: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#111111',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayIcon: {
+    fontSize: 40,
+    color: '#ffffff',
+    opacity: 0.8,
   },
 
   // ─── Stats block ─────────────────────────────────────────────
