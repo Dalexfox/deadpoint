@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 const ACCENT = '#ff507c';
 
@@ -11,6 +12,8 @@ const GYMS = [
 ];
 
 export default function GymsScreen() {
+  const router = useRouter();
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -21,17 +24,21 @@ export default function GymsScreen() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}>
         {GYMS.map((gym) => (
-          <View key={gym.id} style={styles.card}>
+          <TouchableOpacity
+            key={gym.id}
+            style={styles.card}
+            onPress={() => router.push(`/gym/${gym.id}`)}
+            activeOpacity={0.8}>
             <View style={styles.cardBody}>
               <Text style={styles.gymName}>{gym.name}</Text>
               <Text style={styles.gymLocation}>
                 {gym.neighborhood} · {gym.city}
               </Text>
             </View>
-            <TouchableOpacity style={styles.visitButton} activeOpacity={0.8}>
-              <Text style={styles.visitLabel}>Visit</Text>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.visitButton}>
+              <Text style={styles.visitLabel}>Log →</Text>
+            </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </SafeAreaView>

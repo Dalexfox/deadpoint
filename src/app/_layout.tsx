@@ -1,69 +1,13 @@
 import { DefaultTheme, ThemeProvider } from 'expo-router';
-import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
-import { SymbolView } from 'expo-symbols';
+import { Stack } from 'expo-router';
 
-const ACCENT = '#ff507c';
-const INACTIVE = '#C0C7CF';
-
-type IconProps = { color: string; focused: boolean };
-
-function FeedIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'square.stack.fill' : 'square.stack'} size={24} tintColor={color} />;
-}
-function GymsIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'map.fill' : 'map'} size={24} tintColor={color} />;
-}
-function LogIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'book.fill' : 'book'} size={24} tintColor={color} />;
-}
-function ProfileIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'person.fill' : 'person'} size={24} tintColor={color} />;
-}
-
-export default function Layout() {
+export default function RootLayout() {
   return (
     <ThemeProvider value={DefaultTheme}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: ACCENT,
-          tabBarInactiveTintColor: INACTIVE,
-          tabBarStyle: styles.tabBar,
-          tabBarLabelStyle: styles.tabLabel,
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{ title: 'Feed', tabBarIcon: (p) => <FeedIcon {...p} /> }}
-        />
-        <Tabs.Screen
-          name="gyms"
-          options={{ title: 'Gyms', tabBarIcon: (p) => <GymsIcon {...p} /> }}
-        />
-        <Tabs.Screen
-          name="log"
-          options={{ title: 'Log', tabBarIcon: (p) => <LogIcon {...p} /> }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{ title: 'Profile', tabBarIcon: (p) => <ProfileIcon {...p} /> }}
-        />
-        <Tabs.Screen name="explore" options={{ href: null }} />
-      </Tabs>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="gym/[id]" />
+      </Stack>
     </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: '#ffffff',
-    borderTopColor: '#EBEBEB',
-    elevation: 0,
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-});
