@@ -1,7 +1,16 @@
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ACCENT = '#ff507c';
+
+function useGreeting(name: string) {
+  return useMemo(() => {
+    const hour = new Date().getHours();
+    const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    return `Good ${tod}, ${name} 👋`;
+  }, [name]);
+}
 
 type Post = {
   id: string;
@@ -72,10 +81,7 @@ function FeedCard({ post }: { post: Post }) {
         </View>
       </View>
 
-      <View style={styles.gymPill}>
-        <Text style={styles.gymPillMarker}>▲</Text>
-        <Text style={styles.gymPillText}>{post.gym}</Text>
-      </View>
+      <Text style={styles.gymLabel}>{post.gym}</Text>
 
       <View style={styles.statsBlock}>
         <View style={styles.stat}>
@@ -110,11 +116,13 @@ function FeedCard({ post }: { post: Post }) {
 }
 
 export default function FeedScreen() {
+  const greeting = useGreeting('Alex');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Feed</Text>
-        <Text style={styles.subheading}>What your crew sent</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
+        <Text style={styles.subheading}>Your crew is crushing it.</Text>
       </View>
       <ScrollView
         contentContainerStyle={styles.list}
@@ -132,42 +140,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
+
+  // ─── Header ──────────────────────────────────────────────────
   header: {
     paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5e5',
+    paddingTop: 20,
+    paddingBottom: 28,
+    // No border — open, editorial breathing room
   },
-  heading: {
-    fontSize: 32,
+  greeting: {
+    fontSize: 34,
     fontWeight: '800',
-    color: '#0a0a0a',
+    color: '#000000',
     letterSpacing: -0.8,
+    lineHeight: 40,
   },
   subheading: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#999999',
-    marginTop: 2,
+    color: '#888888',
+    marginTop: 6,
     letterSpacing: 0.1,
   },
+
+  // ─── Feed list ───────────────────────────────────────────────
   list: {
-    padding: 16,
-    gap: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 16,
   },
+
+  // ─── Card ────────────────────────────────────────────────────
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 20,
     gap: 16,
-    borderWidth: 1.5,
-    borderColor: '#f0f0f0',
+    // Shadow only — no border. Cleaner, more premium.
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
   },
   userRow: {
     flexDirection: 'row',
@@ -175,26 +189,26 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0a0a0a',
+    color: '#000000',
     letterSpacing: 0.4,
   },
   userMeta: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   userName: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0a0a0a',
+    color: '#000000',
     letterSpacing: -0.2,
   },
   timestamp: {
@@ -202,57 +216,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#aaaaaa',
   },
-  gymPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    backgroundColor: '#fff0f4',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  gymPillMarker: {
-    fontSize: 8,
-    color: ACCENT,
-  },
-  gymPillText: {
-    fontSize: 12,
+
+  // Gym name — plain text, no tinted background pill
+  gymLabel: {
+    fontSize: 13,
     fontWeight: '700',
     color: ACCENT,
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
   },
+
+  // ─── Stats block ─────────────────────────────────────────────
   statsBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#f5f5f5',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 18,
     paddingHorizontal: 20,
   },
   stat: {
     flex: 1,
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#0a0a0a',
+    color: '#000000',
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 10,
     fontWeight: '700',
     color: '#aaaaaa',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
   },
   statDivider: {
     width: 1,
     height: 32,
-    backgroundColor: '#e5e5e5',
+    backgroundColor: '#e0e0e0',
     marginHorizontal: 8,
   },
+
+  // ─── Actions ─────────────────────────────────────────────────
   actions: {
     flexDirection: 'row',
     gap: 8,
@@ -265,18 +271,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#efefef',
+    backgroundColor: '#f5f5f5',
   },
   actionBtnActive: {
-    borderColor: '#ffd6e0',
-    backgroundColor: '#fff5f7',
+    backgroundColor: '#fff0f4',
   },
   actionIcon: {
     fontSize: 16,
-    color: '#cccccc',
+    color: '#bbbbbb',
   },
   actionIconActive: {
     color: ACCENT,
@@ -284,7 +288,7 @@ const styles = StyleSheet.create({
   actionCount: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#cccccc',
+    color: '#bbbbbb',
   },
   actionCountActive: {
     color: ACCENT,
