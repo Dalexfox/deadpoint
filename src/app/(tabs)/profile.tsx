@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
+import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { getProfileAvatar, saveProfileAvatar } from '../../lib/store';
+import {
+  getProfileAvatar,
+  saveProfileAvatar,
+  getUserPosts,
+  saveUserPost,
+  type Post,
+} from '../../lib/store';
 
 const ACCENT = '#ff507c';
 
@@ -24,21 +31,6 @@ const USER = {
   currentStreak: 7,
 };
 
-const ACTIVITY: {
-  id: string;
-  gym: string;
-  problems: number;
-  difficulty: string;
-  date: string;
-}[] = [
-  { id: '1', gym: 'Dogpatch Boulders', problems: 8, difficulty: 'V5–V7', date: 'May 25' },
-  { id: '2', gym: 'Mission Cliffs', problems: 12, difficulty: 'V3–V5', date: 'May 23' },
-  { id: '3', gym: 'Touchstone Berkeley', problems: 6, difficulty: 'V6–V8', date: 'May 20' },
-  { id: '4', gym: 'Planet Granite SF', problems: 10, difficulty: 'V4–V6', date: 'May 18' },
-  { id: '5', gym: 'Dogpatch Boulders', problems: 9, difficulty: 'V5–V7', date: 'May 15' },
-  { id: '6', gym: 'Mission Cliffs', problems: 7, difficulty: 'V3–V4', date: 'May 12' },
-];
-
 function StatColumn({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.statColumn}>
@@ -48,55 +40,68 @@ function StatColumn({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ActivityCard({
-  gym,
-  problems,
-  difficulty,
-  date,
-}: {
-  gym: string;
-  problems: number;
-  difficulty: string;
-  date: string;
-}) {
+function ActivityCard({ post }: { post: Post }) {
+  const isPhoto = post.postType === 'photo';
+
   return (
     <View style={styles.card}>
-      <View style={styles.cardLeft}>
-        <View style={styles.accentBar} />
-        <View style={styles.cardBody}>
-          <Text style={styles.cardGym}>{gym}</Text>
-          <Text style={styles.cardDetail}>
-            {problems} problems · {difficulty}
-          </Text>
+      {/* Photo post — show thumbnail */}
+      {isPhoto && post.media?.[0] ? (
+        <View style={styles.cardPhotoRow}>
+          {post.media[0].type === 'image' ? (
+            <Image source={{ uri: post.media[0].uri }} style={styles.cardThumbnail} />
+          ) : (
+            <View style={[styles.cardThumbnail, styles.cardVideoThumb]}>
+              <Text style={styles.cardVideoIcon}>▶</Text>
+            </View>
+          )}
+          <View style={styles.cardPhotoMeta}>
+            <Text style={styles.cardGym}>Photo</Text>
+            <Text style={styles.cardDetail}>{post.timestamp}</Text>
+          </View>
         </View>
-      </View>
-      <Text style={styles.cardDate}>{date}</Text>
+      ) : (
+        /* Session post */
+        <View style={styles.cardLeft}>
+          <View style={styles.accentBar} />
+          <View style={styles.cardBody}>
+            <Text style={styles.cardGym}>{post.gym ?? '—'}</Text>
+            <Text style={styles.cardDetail}>
+              {post.problems} problems · {post.difficulty}
+            </Text>
+          </View>
+          <Text style={styles.cardDate}>{post.timestamp}</Text>
+        </View>
+      )}
     </View>
   );
 }
 
 export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
 
   useEffect(() => {
     getProfileAvatar().then(setAvatarUri);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      getUserPosts().then(setUserPosts);
+    }, [])
+  );
+
+  // ─── Avatar ───────────────────────────────────────────────────
+
   const handleAvatarPress = () => {
     Alert.alert('Profile Photo', 'Choose a photo for your profile', [
-      {
-        text: 'Choose from Library',
-        onPress: pickFromLibrary,
-      },
-      {
-        text: 'Take Photo',
-        onPress: takePhoto,
-      },
+      { text: 'Choose from Library', onPress: pickAvatar },
+      { text: 'Take Photo', onPress: takeAvatarPhoto },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const pickFromLibrary = async () => {
+  const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -110,7 +115,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const takePhoto = async () => {
+  const takeAvatarPhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
@@ -123,13 +128,74 @@ export default function ProfileScreen() {
     }
   };
 
+  // ─── Share to feed ────────────────────────────────────────────
+
+  const handleShare = () => {
+    Alert.alert('Share to Feed', 'Add a photo or video to your feed', [
+      { text: 'Choose Photo', onPress: () => shareMedia('images') },
+      { text: 'Choose Video', onPress: () => shareMedia('videos') },
+      { text: 'Take Photo', onPress: shareFromCamera },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const shareMedia = async (type: 'images' | 'videos') => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: [type],
+      allowsEditing: true,
+      quality: 0.85,
+      videoMaxDuration: 60,
+    });
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      await publishPost(asset.uri, asset.type === 'video' ? 'video' : 'image');
+    }
+  };
+
+  const shareFromCamera = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      await publishPost(result.assets[0].uri, 'image');
+    }
+  };
+
+  const publishPost = async (uri: string, mediaType: 'image' | 'video') => {
+    const post: Post = {
+      id: Date.now().toString(),
+      name: USER.name,
+      initials: USER.initials,
+      avatarBg: ACCENT,
+      timestamp: 'Just now',
+      likes: 0,
+      comments: 0,
+      liked: false,
+      postType: 'photo',
+      media: [{ type: mediaType, uri }],
+    };
+    await saveUserPost(post);
+    const updated = await getUserPosts();
+    setUserPosts(updated);
+    Alert.alert('Posted!', 'Your photo is now live on the feed.');
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.gearButton} hitSlop={12}>
-          <SymbolView name="gearshape" size={22} tintColor="#0a0a0a" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={handleShare}
+            activeOpacity={0.7}>
+            <SymbolView name="plus.circle" size={24} tintColor={ACCENT} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gearButton} hitSlop={12}>
+            <SymbolView name="gearshape" size={22} tintColor="#0a0a0a" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -137,6 +203,7 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
+        {/* Avatar */}
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
             {avatarUri ? (
@@ -154,6 +221,7 @@ export default function ProfileScreen() {
           <Text style={styles.username}>{USER.username}</Text>
         </View>
 
+        {/* Stats */}
         <View style={styles.statsRow}>
           <StatColumn label="Total Climbs" value={USER.totalClimbs} />
           <View style={styles.statDivider} />
@@ -162,17 +230,21 @@ export default function ProfileScreen() {
           <StatColumn label="Day Streak" value={USER.currentStreak} />
         </View>
 
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-
-        {ACTIVITY.map((item) => (
-          <ActivityCard
-            key={item.id}
-            gym={item.gym}
-            problems={item.problems}
-            difficulty={item.difficulty}
-            date={item.date}
-          />
-        ))}
+        {/* Share prompt if no posts yet */}
+        {userPosts.length === 0 ? (
+          <TouchableOpacity style={styles.emptyState} onPress={handleShare} activeOpacity={0.7}>
+            <Text style={styles.emptyIcon}>📸</Text>
+            <Text style={styles.emptyTitle}>SHARE YOUR FIRST CLIMB</Text>
+            <Text style={styles.emptySub}>Tap to post a photo or video to your feed</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>Your Posts</Text>
+            {userPosts.map((post) => (
+              <ActivityCard key={post.id} post={post} />
+            ))}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -196,6 +268,17 @@ const styles = StyleSheet.create({
     fontFamily: 'BebasNeue_400Regular',
     color: '#0a0a0a',
     letterSpacing: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   gearButton: {
     width: 36,
@@ -305,21 +388,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 12,
   },
+
+  // ─── Activity cards ───────────────────────────────────────────
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginHorizontal: 20,
     marginBottom: 10,
     backgroundColor: '#f5f5f5',
     borderRadius: 14,
-    padding: 16,
+    padding: 14,
     overflow: 'hidden',
   },
   cardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
   },
   accentBar: {
     width: 4,
@@ -349,5 +430,55 @@ const styles = StyleSheet.create({
     color: '#b0b0b0',
     letterSpacing: 0.2,
     marginLeft: 8,
+  },
+  cardPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardThumbnail: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+  },
+  cardVideoThumb: {
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardVideoIcon: {
+    fontSize: 18,
+    color: '#ffffff',
+  },
+  cardPhotoMeta: {
+    flex: 1,
+    gap: 3,
+  },
+
+  // ─── Empty state ──────────────────────────────────────────────
+  emptyState: {
+    marginHorizontal: 20,
+    paddingVertical: 36,
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontFamily: 'BebasNeue_400Regular',
+    color: '#000000',
+    letterSpacing: 1.5,
+  },
+  emptySub: {
+    fontSize: 14,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#888888',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });

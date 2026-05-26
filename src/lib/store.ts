@@ -13,14 +13,16 @@ export type Post = {
   name: string;
   initials: string;
   avatarBg: string;
-  gym: string;
-  problems: number;
-  difficulty: string;
   timestamp: string;
   likes: number;
   comments: number;
   liked: boolean;
   media?: MediaItem[];
+  // Session posts
+  postType?: 'session' | 'photo';
+  gym?: string;
+  problems?: number;
+  difficulty?: string;
 };
 
 // ─── Posts ────────────────────────────────────────────────────

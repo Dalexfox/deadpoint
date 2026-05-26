@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -26,6 +26,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     likes: 31,
     comments: 4,
     liked: false,
+    postType: 'session',
   },
   {
     id: 'p2',
@@ -39,6 +40,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     likes: 58,
     comments: 11,
     liked: true,
+    postType: 'session',
   },
   {
     id: 'p3',
@@ -52,6 +54,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     likes: 19,
     comments: 2,
     liked: false,
+    postType: 'session',
   },
 ];
 
@@ -61,13 +64,9 @@ function useGreeting(name: string) {
   return `Good ${tod}, ${name} 👋`;
 }
 
-function FeedCard({
-  post,
-  onLike,
-}: {
-  post: Post;
-  onLike: (id: string) => void;
-}) {
+function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }) {
+  const isPhoto = post.postType === 'photo';
+
   return (
     <View style={styles.card}>
       {/* User row */}
@@ -81,7 +80,10 @@ function FeedCard({
         </View>
       </View>
 
-      <Text style={styles.gymLabel}>{post.gym}</Text>
+      {/* Gym label — session posts only */}
+      {!isPhoto && post.gym ? (
+        <Text style={styles.gymLabel}>{post.gym}</Text>
+      ) : null}
 
       {/* Media */}
       {post.media && post.media.length > 0 && (
@@ -100,18 +102,20 @@ function FeedCard({
         </View>
       )}
 
-      {/* Stats */}
-      <View style={styles.statsBlock}>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{post.problems}</Text>
-          <Text style={styles.statLabel}>PROBLEMS</Text>
+      {/* Stats — session posts only */}
+      {!isPhoto && post.problems !== undefined && post.difficulty ? (
+        <View style={styles.statsBlock}>
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{post.problems}</Text>
+            <Text style={styles.statLabel}>PROBLEMS</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{post.difficulty}</Text>
+            <Text style={styles.statLabel}>DIFFICULTY</Text>
+          </View>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{post.difficulty}</Text>
-          <Text style={styles.statLabel}>DIFFICULTY</Text>
-        </View>
-      </View>
+      ) : null}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -139,7 +143,6 @@ export default function FeedScreen() {
   const greeting = useGreeting('Alex');
   const [posts, setPosts] = useState<Post[]>(PLACEHOLDER_POSTS);
 
-  // Reload user posts whenever this tab comes into focus
   useFocusEffect(
     useCallback(() => {
       getUserPosts().then((userPosts) => {
@@ -175,8 +178,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-
-  // ─── Header ──────────────────────────────────────────────────
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
@@ -196,15 +197,11 @@ const styles = StyleSheet.create({
     marginTop: 6,
     letterSpacing: 0.1,
   },
-
-  // ─── Feed list ───────────────────────────────────────────────
   list: {
     paddingHorizontal: 16,
     paddingBottom: 24,
     gap: 16,
   },
-
-  // ─── Card ────────────────────────────────────────────────────
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 20,
@@ -255,8 +252,6 @@ const styles = StyleSheet.create({
     color: ACCENT,
     letterSpacing: 0.2,
   },
-
-  // ─── Media ───────────────────────────────────────────────────
   mediaContainer: {
     borderRadius: 14,
     overflow: 'hidden',
@@ -279,8 +274,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     opacity: 0.8,
   },
-
-  // ─── Stats block ─────────────────────────────────────────────
   statsBlock: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,8 +305,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     marginHorizontal: 8,
   },
-
-  // ─── Actions ─────────────────────────────────────────────────
   actions: {
     flexDirection: 'row',
     gap: 8,
