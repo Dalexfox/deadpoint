@@ -1,5 +1,15 @@
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+function useGreeting(name: string) {
+  return useMemo(() => {
+    const hour = new Date().getHours();
+    const timeOfDay =
+      hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    return `Good ${timeOfDay}, ${name} 👋`;
+  }, [name]);
+}
 
 const ACCENT = '#ff507c';
 
@@ -110,11 +120,13 @@ function FeedCard({ post }: { post: Post }) {
 }
 
 export default function FeedScreen() {
+  const greeting = useGreeting('Alex');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Feed</Text>
-        <Text style={styles.subheading}>What your crew sent</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
+        <Text style={styles.subheading}>Your crew is crushing it.</Text>
       </View>
       <ScrollView
         contentContainerStyle={styles.list}
@@ -139,17 +151,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#e5e5e5',
   },
-  heading: {
-    fontSize: 32,
+  greeting: {
+    fontSize: 26,
     fontWeight: '800',
     color: '#0a0a0a',
-    letterSpacing: -0.8,
+    letterSpacing: -0.5,
   },
   subheading: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#999999',
-    marginTop: 2,
+    color: '#aaaaaa',
+    marginTop: 4,
     letterSpacing: 0.1,
   },
   list: {
