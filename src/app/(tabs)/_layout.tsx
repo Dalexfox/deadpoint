@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: 'DMSans_700Bold',
     letterSpacing: 0.2,
   },
 });

@@ -131,14 +131,14 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 28,
-    fontWeight: '300',
+    fontFamily: 'DMSans_300Light',
     color: '#000000',
     lineHeight: 28,
     marginTop: -2,
   },
   backLabel: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'DMSans_700Bold',
     color: '#000000',
     letterSpacing: 0.1,
   },
@@ -167,21 +167,21 @@ const styles = StyleSheet.create({
   },
   gymPillText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: ACCENT,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   gymName: {
     fontSize: 32,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.8,
     lineHeight: 36,
   },
   gymLocation: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'DMSans_600SemiBold',
     color: '#888888',
     letterSpacing: 0.1,
   },
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#aaaaaa',
     letterSpacing: 1.4,
     marginBottom: 8,
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   },
   gradeLabel: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#0a0a0a',
     letterSpacing: -0.3,
     width: 36,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   },
   gradeBadgeText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#ffffff',
   },
   counter: {
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   counterBtnText: {
     fontSize: 20,
-    fontWeight: '400',
+    fontFamily: 'DMSans_400Regular',
     color: '#0a0a0a',
     lineHeight: 20,
   },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   },
   countText: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#cccccc',
     width: 32,
     textAlign: 'center',
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   },
   submitLabel: {
     fontSize: 17,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.2,
   },

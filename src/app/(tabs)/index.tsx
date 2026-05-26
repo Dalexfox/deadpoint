@@ -146,18 +146,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 28,
-    // No border — open, editorial breathing room
   },
   greeting: {
     fontSize: 34,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.8,
     lineHeight: 40,
   },
   subheading: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'DMSans_600SemiBold',
     color: '#888888',
     marginTop: 6,
     letterSpacing: 0.1,
@@ -176,7 +175,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
-    // Shadow only — no border. Cleaner, more premium.
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
@@ -197,7 +195,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: 0.4,
   },
@@ -207,20 +205,19 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.2,
   },
   timestamp: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'DMSans_600SemiBold',
     color: '#aaaaaa',
   },
 
-  // Gym name — plain text, no tinted background pill
   gymLabel: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'DMSans_700Bold',
     color: ACCENT,
     letterSpacing: 0.2,
   },
@@ -241,13 +238,13 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 24,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: 'DMSans_700Bold',
     color: '#aaaaaa',
     letterSpacing: 1.4,
   },
@@ -287,7 +284,7 @@ const styles = StyleSheet.create({
   },
   actionCount: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'DMSans_700Bold',
     color: '#bbbbbb',
   },
   actionCountActive: {

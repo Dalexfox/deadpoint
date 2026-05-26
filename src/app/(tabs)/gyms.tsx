@@ -54,18 +54,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 28,
-    // No border — open, editorial breathing room
   },
   heading: {
     fontSize: 34,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.8,
     lineHeight: 40,
   },
   subheading: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'DMSans_600SemiBold',
     color: '#888888',
     marginTop: 6,
     letterSpacing: 0.1,
@@ -81,7 +80,6 @@ const styles = StyleSheet.create({
     padding: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    // Shadow only — no border. Cleaner, more premium.
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
@@ -94,13 +92,13 @@ const styles = StyleSheet.create({
   },
   gymName: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#000000',
     letterSpacing: -0.3,
   },
   gymLocation: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'DMSans_600SemiBold',
     color: '#888888',
     letterSpacing: 0.1,
   },
@@ -112,7 +110,7 @@ const styles = StyleSheet.create({
   },
   visitLabel: {
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'DMSans_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.2,
   },
