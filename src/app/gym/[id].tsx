@@ -173,11 +173,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   gymName: {
-    fontSize: 32,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 40,
+    fontFamily: 'BebasNeue_400Regular',
     color: '#000000',
-    letterSpacing: -0.8,
-    lineHeight: 36,
+    letterSpacing: 1,
+    lineHeight: 44,
   },
   gymLocation: {
     fontSize: 14,

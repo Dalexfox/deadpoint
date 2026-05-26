@@ -148,11 +148,11 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   greeting: {
-    fontSize: 34,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 42,
+    fontFamily: 'BebasNeue_400Regular',
     color: '#000000',
-    letterSpacing: -0.8,
-    lineHeight: 40,
+    letterSpacing: 1,
+    lineHeight: 46,
   },
   subheading: {
     fontSize: 16,

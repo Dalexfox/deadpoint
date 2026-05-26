@@ -125,10 +125,10 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 28,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 36,
+    fontFamily: 'BebasNeue_400Regular',
     color: '#0a0a0a',
-    letterSpacing: -0.5,
+    letterSpacing: 1,
   },
   gearButton: {
     width: 36,
@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   name: {
-    fontSize: 22,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 30,
+    fontFamily: 'BebasNeue_400Regular',
     color: '#0a0a0a',
-    letterSpacing: -0.3,
+    letterSpacing: 1,
     marginBottom: 4,
   },
   username: {
@@ -208,10 +208,10 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 26,
+    fontFamily: 'BebasNeue_400Regular',
     color: '#000000',
-    letterSpacing: -0.4,
+    letterSpacing: 1,
     marginHorizontal: 20,
     marginBottom: 12,
   },
