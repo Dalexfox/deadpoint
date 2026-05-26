@@ -1,11 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function FeedScreen() {
+export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
-        <Text style={styles.title}>Feed</Text>
+        <Text style={styles.title}>Profile</Text>
       </View>
     </SafeAreaView>
   );
