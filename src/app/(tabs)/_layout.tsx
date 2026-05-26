@@ -4,7 +4,7 @@ import { StyleSheet } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 
 const ACCENT = '#ff507c';
-const INACTIVE = '#C0C7CF';
+const INACTIVE = '#3d6b6f';
 
 type IconProps = { color: string; focused: boolean };
 
@@ -57,8 +57,8 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#ffffff',
-    borderTopColor: '#EBEBEB',
+    backgroundColor: '#0c1e21',
+    borderTopColor: '#1a3235',
     elevation: 0,
   },
   tabLabel: {

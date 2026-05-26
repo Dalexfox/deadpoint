@@ -11,14 +11,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { getUserPosts, togglePostLike, type Post } from '../../lib/store';
 
+const BG = '#0c1e21';
+const CARD = '#142829';
+const SURFACE = '#1a3235';
 const ACCENT = '#ff507c';
+const TEAL = '#4da8ae';
+const TEXT = '#ffffff';
+const TEXT_SUB = '#7ab4b8';
+const TEXT_MUTED = '#3d6b6f';
+const DIVIDER = '#1e3840';
 
 const PLACEHOLDER_POSTS: Post[] = [
   {
     id: 'p1',
     name: 'Alex Chen',
     initials: 'AC',
-    avatarBg: '#ffd1dc',
+    avatarBg: '#1a4a4e',
     gym: 'Vital Climbing LES',
     problems: 14,
     difficulty: 'V4 – V6',
@@ -32,7 +40,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     id: 'p2',
     name: 'Sarah Park',
     initials: 'SP',
-    avatarBg: '#d1e8ff',
+    avatarBg: '#1a3a4a',
     gym: 'Brooklyn Boulders Queensbridge',
     problems: 8,
     difficulty: 'V7 – V8',
@@ -46,7 +54,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     id: 'p3',
     name: 'Marcus Webb',
     initials: 'MW',
-    avatarBg: '#d4f5e2',
+    avatarBg: '#1a3e2e',
     gym: 'Movement LIC',
     problems: 22,
     difficulty: 'V2 – V5',
@@ -176,7 +184,7 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
   },
   header: {
     paddingHorizontal: 24,
@@ -186,14 +194,14 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 42,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1,
     lineHeight: 46,
   },
   subheading: {
     fontSize: 16,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     marginTop: 6,
     letterSpacing: 0.1,
   },
@@ -203,15 +211,10 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: CARD,
     borderRadius: 20,
     padding: 20,
     gap: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
   },
   userRow: {
     flexDirection: 'row',
@@ -228,7 +231,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 0.4,
   },
   userMeta: {
@@ -238,18 +241,18 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: -0.2,
   },
   timestamp: {
     fontSize: 12,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
   },
   gymLabel: {
     fontSize: 13,
     fontFamily: 'DMSans_700Bold',
-    color: ACCENT,
+    color: TEAL,
     letterSpacing: 0.2,
   },
   mediaContainer: {
@@ -264,20 +267,20 @@ const styles = StyleSheet.create({
   videoPlaceholder: {
     width: '100%',
     height: 220,
-    backgroundColor: '#111111',
+    backgroundColor: '#0a1618',
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   videoPlayIcon: {
     fontSize: 40,
-    color: '#ffffff',
+    color: TEXT,
     opacity: 0.8,
   },
   statsBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 14,
     paddingVertical: 18,
     paddingHorizontal: 20,
@@ -290,19 +293,19 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 10,
     fontFamily: 'DMSans_700Bold',
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
     letterSpacing: 1.4,
   },
   statDivider: {
     width: 1,
     height: 32,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: DIVIDER,
     marginHorizontal: 8,
   },
   actions: {
@@ -310,7 +313,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: DIVIDER,
   },
   actionBtn: {
     flexDirection: 'row',
@@ -319,14 +322,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
   },
   actionBtnActive: {
-    backgroundColor: '#fff0f4',
+    backgroundColor: '#2a1520',
   },
   actionIcon: {
     fontSize: 16,
-    color: '#bbbbbb',
+    color: TEXT_MUTED,
   },
   actionIconActive: {
     color: ACCENT,
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
   actionCount: {
     fontSize: 13,
     fontFamily: 'DMSans_700Bold',
-    color: '#bbbbbb',
+    color: TEXT_MUTED,
   },
   actionCountActive: {
     color: ACCENT,

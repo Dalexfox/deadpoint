@@ -3,7 +3,15 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+const BG = '#0c1e21';
+const CARD = '#142829';
+const SURFACE = '#1a3235';
 const ACCENT = '#ff507c';
+const TEAL = '#4da8ae';
+const TEXT = '#ffffff';
+const TEXT_SUB = '#7ab4b8';
+const TEXT_MUTED = '#3d6b6f';
+const DIVIDER = '#1e3840';
 
 const GYMS: Record<string, { name: string; neighborhood: string; city: string }> = {
   '1': { name: 'Vital Climbing LES', neighborhood: 'Lower East Side', city: 'NYC' },
@@ -116,7 +124,7 @@ export default function GymDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
   },
   nav: {
     paddingHorizontal: 20,
@@ -132,14 +140,14 @@ const styles = StyleSheet.create({
   backArrow: {
     fontSize: 28,
     fontFamily: 'DMSans_300Light',
-    color: '#000000',
+    color: TEXT,
     lineHeight: 28,
     marginTop: -2,
   },
   backLabel: {
     fontSize: 16,
     fontFamily: 'DMSans_700Bold',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 0.1,
   },
   gymHeader: {
@@ -147,7 +155,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 28,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: DIVIDER,
     gap: 6,
   },
   gymPill: {
@@ -155,7 +163,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
-    backgroundColor: '#fff0f4',
+    backgroundColor: SURFACE,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -163,31 +171,29 @@ const styles = StyleSheet.create({
   },
   gymPillMarker: {
     fontSize: 8,
-    color: ACCENT,
+    color: TEAL,
   },
   gymPillText: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
+    color: TEAL,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   gymName: {
     fontSize: 40,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1,
     lineHeight: 44,
   },
   gymLocation: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     letterSpacing: 0.1,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 24,
@@ -197,7 +203,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
     letterSpacing: 1.4,
     marginBottom: 8,
   },
@@ -205,7 +211,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 18,
@@ -218,7 +224,7 @@ const styles = StyleSheet.create({
   gradeLabel: {
     fontSize: 18,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: -0.3,
     width: 36,
   },
@@ -231,7 +237,7 @@ const styles = StyleSheet.create({
   gradeBadgeText: {
     fontSize: 12,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: TEXT,
   },
   counter: {
     flexDirection: 'row',
@@ -242,12 +248,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#ffffff',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
+    backgroundColor: CARD,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -257,29 +258,29 @@ const styles = StyleSheet.create({
   counterBtnText: {
     fontSize: 20,
     fontFamily: 'DMSans_400Regular',
-    color: '#0a0a0a',
+    color: TEXT,
     lineHeight: 20,
   },
   counterBtnTextMuted: {
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
   },
   countText: {
     fontSize: 18,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#cccccc',
+    color: TEXT_MUTED,
     width: 32,
     textAlign: 'center',
     letterSpacing: -0.3,
   },
   countTextActive: {
-    color: '#0a0a0a',
+    color: TEXT,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e5e5',
+    borderTopColor: DIVIDER,
   },
   submitBtn: {
     backgroundColor: ACCENT,
@@ -288,18 +289,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
     elevation: 4,
   },
   submitBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
     shadowOpacity: 0,
   },
   submitLabel: {
     fontSize: 17,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: TEXT,
     letterSpacing: 0.2,
   },
 });

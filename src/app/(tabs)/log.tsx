@@ -12,7 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { saveUserPost, type MediaItem } from '../../lib/store';
 
+const BG = '#0c1e21';
+const CARD = '#142829';
+const SURFACE = '#1a3235';
 const ACCENT = '#ff507c';
+const TEXT = '#ffffff';
+const TEXT_SUB = '#7ab4b8';
+const TEXT_MUTED = '#3d6b6f';
+const DIVIDER = '#1e3840';
 
 const GYMS = [
   'Vital Climbing LES',
@@ -78,10 +85,10 @@ export default function LogScreen() {
       likes: 0,
       comments: 0,
       liked: false,
+      postType: 'session',
       media: media ? [media] : undefined,
     });
     setSubmitted(true);
-    // Reset form
     setSelectedGym(null);
     setSelectedGrade(null);
     setProblems(0);
@@ -128,9 +135,7 @@ export default function LogScreen() {
                   <View style={[styles.radio, active && styles.radioActive]}>
                     {active && <View style={styles.radioDot} />}
                   </View>
-                  <View style={styles.gymMeta}>
-                    <Text style={[styles.gymName, active && styles.gymNameActive]}>{gym}</Text>
-                  </View>
+                  <Text style={[styles.gymName, active && styles.gymNameActive]}>{gym}</Text>
                   {active && <Text style={styles.gymCheck}>▲</Text>}
                 </TouchableOpacity>
               );
@@ -167,9 +172,7 @@ export default function LogScreen() {
               style={[styles.counterBtn, problems === 0 && styles.counterBtnDisabled]}
               onPress={() => setProblems((n) => Math.max(0, n - 1))}
               activeOpacity={0.7}>
-              <Text style={[styles.counterBtnText, problems === 0 && styles.counterBtnTextDisabled]}>
-                −
-              </Text>
+              <Text style={styles.counterBtnText}>−</Text>
             </TouchableOpacity>
             <View style={styles.counterCenter}>
               <Text style={styles.counterValue}>{problems}</Text>
@@ -231,7 +234,7 @@ export default function LogScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
   },
   header: {
     paddingHorizontal: 24,
@@ -241,14 +244,14 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 42,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1,
     lineHeight: 46,
   },
   subheading: {
     fontSize: 16,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     marginTop: 6,
     letterSpacing: 0.1,
   },
@@ -263,7 +266,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
     letterSpacing: 1.4,
   },
   gymList: {
@@ -273,19 +276,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 16,
     padding: 16,
   },
   gymRowActive: {
-    backgroundColor: '#fff0f4',
+    backgroundColor: '#1e2e32',
+    borderWidth: 1,
+    borderColor: '#2a5a5e',
   },
   radio: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#dddddd',
+    borderColor: TEXT_MUTED,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -298,17 +303,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: ACCENT,
   },
-  gymMeta: {
-    flex: 1,
-  },
   gymName: {
+    flex: 1,
     fontSize: 16,
     fontFamily: 'DMSans_700Bold',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: -0.2,
   },
   gymNameActive: {
-    color: ACCENT,
+    color: TEXT,
   },
   gymCheck: {
     fontSize: 9,
@@ -323,7 +326,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
   },
   gradeChipActive: {
     backgroundColor: ACCENT,
@@ -331,22 +334,17 @@ const styles = StyleSheet.create({
   gradeLabel: {
     fontSize: 14,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#888888',
+    color: TEXT_SUB,
     letterSpacing: 0.2,
   },
   gradeLabelActive: {
-    color: '#ffffff',
+    color: TEXT,
   },
   counterCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: CARD,
     borderRadius: 20,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
     overflow: 'hidden',
   },
   counterBtn: {
@@ -354,7 +352,7 @@ const styles = StyleSheet.create({
     paddingVertical: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fafafa',
+    backgroundColor: SURFACE,
   },
   counterBtnDisabled: {
     opacity: 0.3,
@@ -362,11 +360,8 @@ const styles = StyleSheet.create({
   counterBtnText: {
     fontSize: 24,
     fontFamily: 'DMSans_300Light',
-    color: '#0a0a0a',
+    color: TEXT,
     lineHeight: 24,
-  },
-  counterBtnTextDisabled: {
-    color: '#aaaaaa',
   },
   counterCenter: {
     flex: 1,
@@ -376,24 +371,22 @@ const styles = StyleSheet.create({
   counterValue: {
     fontSize: 40,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: -1,
   },
   counterUnit: {
     fontSize: 11,
     fontFamily: 'DMSans_700Bold',
-    color: '#aaaaaa',
+    color: TEXT_MUTED,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
-
-  // ─── Media picker ─────────────────────────────────────────────
   mediaPickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 16,
     paddingVertical: 22,
   },
@@ -403,7 +396,7 @@ const styles = StyleSheet.create({
   mediaPickerLabel: {
     fontSize: 15,
     fontFamily: 'DMSans_700Bold',
-    color: '#888888',
+    color: TEXT_SUB,
     letterSpacing: -0.1,
   },
   mediaPreviewWrapper: {
@@ -419,7 +412,7 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 200,
-    backgroundColor: '#111111',
+    backgroundColor: '#0a1618',
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -427,13 +420,12 @@ const styles = StyleSheet.create({
   },
   videoIcon: {
     fontSize: 36,
-    color: '#ffffff',
+    color: TEXT,
   },
   videoLabel: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#ffffff',
-    opacity: 0.7,
+    color: TEXT_SUB,
   },
   mediaRemoveBtn: {
     position: 'absolute',
@@ -448,11 +440,9 @@ const styles = StyleSheet.create({
   },
   mediaRemoveText: {
     fontSize: 13,
-    color: '#ffffff',
+    color: TEXT,
     fontFamily: 'DMSans_700Bold',
   },
-
-  // ─── Submit ───────────────────────────────────────────────────
   submitBtn: {
     backgroundColor: ACCENT,
     borderRadius: 16,
@@ -460,22 +450,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
     elevation: 4,
   },
   submitBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
     shadowOpacity: 0,
   },
   submitLabel: {
     fontSize: 17,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: TEXT,
     letterSpacing: 0.2,
   },
-
-  // ─── Success screen ───────────────────────────────────────────
   successScreen: {
     flex: 1,
     alignItems: 'center',
@@ -488,13 +476,13 @@ const styles = StyleSheet.create({
   successTitle: {
     fontSize: 52,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 2,
   },
   successSub: {
     fontSize: 16,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     letterSpacing: 0.1,
   },
 });

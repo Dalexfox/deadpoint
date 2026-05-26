@@ -20,7 +20,13 @@ import {
   type Post,
 } from '../../lib/store';
 
+const BG = '#0c1e21';
+const CARD = '#142829';
+const SURFACE = '#1a3235';
 const ACCENT = '#ff507c';
+const TEXT = '#ffffff';
+const TEXT_SUB = '#7ab4b8';
+const TEXT_MUTED = '#3d6b6f';
 
 const USER = {
   name: 'Alex Fox',
@@ -42,10 +48,8 @@ function StatColumn({ label, value }: { label: string; value: number }) {
 
 function ActivityCard({ post }: { post: Post }) {
   const isPhoto = post.postType === 'photo';
-
   return (
     <View style={styles.card}>
-      {/* Photo post — show thumbnail */}
       {isPhoto && post.media?.[0] ? (
         <View style={styles.cardPhotoRow}>
           {post.media[0].type === 'image' ? (
@@ -61,7 +65,6 @@ function ActivityCard({ post }: { post: Post }) {
           </View>
         </View>
       ) : (
-        /* Session post */
         <View style={styles.cardLeft}>
           <View style={styles.accentBar} />
           <View style={styles.cardBody}>
@@ -90,8 +93,6 @@ export default function ProfileScreen() {
       getUserPosts().then(setUserPosts);
     }, [])
   );
-
-  // ─── Avatar ───────────────────────────────────────────────────
 
   const handleAvatarPress = () => {
     Alert.alert('Profile Photo', 'Choose a photo for your profile', [
@@ -128,8 +129,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // ─── Share to feed ────────────────────────────────────────────
-
   const handleShare = () => {
     Alert.alert('Share to Feed', 'Add a photo or video to your feed', [
       { text: 'Choose Photo', onPress: () => shareMedia('images') },
@@ -153,10 +152,7 @@ export default function ProfileScreen() {
   };
 
   const shareFromCamera = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.85,
-    });
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
     if (!result.canceled) {
       await publishPost(result.assets[0].uri, 'image');
     }
@@ -186,14 +182,11 @@ export default function ProfileScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.shareBtn}
-            onPress={handleShare}
-            activeOpacity={0.7}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.7}>
             <SymbolView name="plus.circle" size={24} tintColor={ACCENT} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.gearButton} hitSlop={12}>
-            <SymbolView name="gearshape" size={22} tintColor="#0a0a0a" />
+          <TouchableOpacity style={styles.iconBtn} hitSlop={12}>
+            <SymbolView name="gearshape" size={22} tintColor={TEXT_SUB} />
           </TouchableOpacity>
         </View>
       </View>
@@ -203,7 +196,7 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* Avatar */}
+        {/* Avatar — square */}
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
             {avatarUri ? (
@@ -230,7 +223,7 @@ export default function ProfileScreen() {
           <StatColumn label="Day Streak" value={USER.currentStreak} />
         </View>
 
-        {/* Share prompt if no posts yet */}
+        {/* Posts */}
         {userPosts.length === 0 ? (
           <TouchableOpacity style={styles.emptyState} onPress={handleShare} activeOpacity={0.7}>
             <Text style={styles.emptyIcon}>📸</Text>
@@ -253,7 +246,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
   },
   header: {
     flexDirection: 'row',
@@ -266,7 +259,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 36,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: 1,
   },
   headerActions: {
@@ -274,70 +267,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  shareBtn: {
+  iconBtn: {
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+
+  // ─── Avatar — square ──────────────────────────────────────────
   avatarSection: {
     alignItems: 'center',
     paddingTop: 24,
     paddingBottom: 32,
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 100,
+    height: 100,
+    borderRadius: 16,          // Square with soft corners
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 100,
+    height: 100,
+    borderRadius: 16,          // Square with soft corners
   },
   avatarInitials: {
     fontSize: 34,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: TEXT,
     letterSpacing: -0.5,
   },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: -4,
+    right: -4,
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 8,           // Also square to match
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: BG,
   },
   avatarEditIcon: {
     fontSize: 16,
-    color: '#ffffff',
+    color: TEXT,
     lineHeight: 18,
   },
   name: {
     fontSize: 30,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: 1,
     marginTop: 16,
     marginBottom: 4,
@@ -345,13 +330,15 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#8a8a8a',
+    color: TEXT_SUB,
     letterSpacing: 0.1,
   },
+
+  // ─── Stats ────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 16,
     paddingVertical: 20,
     marginBottom: 32,
@@ -363,27 +350,27 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 26,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: -0.5,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
     fontFamily: 'DMSans_700Bold',
-    color: '#8a8a8a',
+    color: TEXT_MUTED,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
     textAlign: 'center',
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#1e3840',
     marginVertical: 4,
   },
   sectionTitle: {
     fontSize: 26,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1,
     marginHorizontal: 20,
     marginBottom: 12,
@@ -393,7 +380,7 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 20,
     marginBottom: 10,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: CARD,
     borderRadius: 14,
     padding: 14,
     overflow: 'hidden',
@@ -409,25 +396,23 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginRight: 12,
   },
-  cardBody: {
-    flex: 1,
-  },
+  cardBody: { flex: 1 },
   cardGym: {
     fontSize: 15,
     fontFamily: 'DMSans_700Bold',
-    color: '#0a0a0a',
+    color: TEXT,
     letterSpacing: -0.2,
     marginBottom: 3,
   },
   cardDetail: {
     fontSize: 13,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#8a8a8a',
+    color: TEXT_SUB,
   },
   cardDate: {
     fontSize: 12,
     fontFamily: 'DMSans_700Bold',
-    color: '#b0b0b0',
+    color: TEXT_MUTED,
     letterSpacing: 0.2,
     marginLeft: 8,
   },
@@ -442,13 +427,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   cardVideoThumb: {
-    backgroundColor: '#111111',
+    backgroundColor: '#0a1618',
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardVideoIcon: {
     fontSize: 18,
-    color: '#ffffff',
+    color: TEXT,
   },
   cardPhotoMeta: {
     flex: 1,
@@ -461,23 +446,20 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: SURFACE,
     borderRadius: 20,
   },
-  emptyIcon: {
-    fontSize: 36,
-    marginBottom: 4,
-  },
+  emptyIcon: { fontSize: 36, marginBottom: 4 },
   emptyTitle: {
     fontSize: 22,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1.5,
   },
   emptySub: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     textAlign: 'center',
     paddingHorizontal: 20,
   },

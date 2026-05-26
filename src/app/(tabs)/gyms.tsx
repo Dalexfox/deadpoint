@@ -2,7 +2,12 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
+const BG = '#0c1e21';
+const CARD = '#142829';
 const ACCENT = '#ff507c';
+const TEAL = '#4da8ae';
+const TEXT = '#ffffff';
+const TEXT_SUB = '#7ab4b8';
 
 const GYMS = [
   { id: '1', name: 'Vital Climbing LES', neighborhood: 'Lower East Side', city: 'NYC' },
@@ -28,7 +33,7 @@ export default function GymsScreen() {
             key={gym.id}
             style={styles.card}
             onPress={() => router.push(`/gym/${gym.id}`)}
-            activeOpacity={0.8}>
+            activeOpacity={0.75}>
             <View style={styles.cardBody}>
               <Text style={styles.gymName}>{gym.name}</Text>
               <Text style={styles.gymLocation}>
@@ -48,7 +53,7 @@ export default function GymsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
   },
   header: {
     paddingHorizontal: 24,
@@ -58,14 +63,14 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 42,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: 1,
     lineHeight: 46,
   },
   subheading: {
     fontSize: 16,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     marginTop: 6,
     letterSpacing: 0.1,
   },
@@ -75,16 +80,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: CARD,
     borderRadius: 20,
     padding: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
   },
   cardBody: {
     flex: 1,
@@ -93,13 +93,13 @@ const styles = StyleSheet.create({
   gymName: {
     fontSize: 18,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#000000',
+    color: TEXT,
     letterSpacing: -0.3,
   },
   gymLocation: {
     fontSize: 13,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    color: TEXT_SUB,
     letterSpacing: 0.1,
   },
   visitButton: {
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   visitLabel: {
     fontSize: 14,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: TEXT,
     letterSpacing: 0.2,
   },
 });
