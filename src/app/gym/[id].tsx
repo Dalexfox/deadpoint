@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
 
 const BG = '#0c1e21';
 const CARD = '#142829';
@@ -32,6 +33,7 @@ export default function GymDetailScreen() {
   const [counts, setCounts] = useState<Counts>(
     Object.fromEntries(GRADES.map((g) => [g, 0]))
   );
+  const [submitting, setSubmitting] = useState(false);
 
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
 
@@ -40,6 +42,42 @@ export default function GymDetailScreen() {
 
   const decrement = (grade: string) =>
     setCounts((prev) => ({ ...prev, [grade]: Math.max(0, prev[grade] - 1) }));
+
+  const handleSubmit = async () => {
+    if (total === 0 || submitting) return;
+    setSubmitting(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not logged in');
+
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .insert({ user_id: user.id, gym_id: id, total_problems: total })
+        .select('id')
+        .single();
+
+      if (sessionError) throw sessionError;
+
+      const climbRows = GRADES
+        .filter((g) => counts[g] > 0)
+        .map((g) => ({ session_id: session.id, grade: g, count: counts[g] }));
+
+      const { error: climbsError } = await supabase
+        .from('climbs')
+        .insert(climbRows);
+
+      if (climbsError) throw climbsError;
+
+      Alert.alert('Session logged!', `${total} problem${total === 1 ? '' : 's'} saved.`, [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/gyms') },
+      ]);
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (!gym) return null;
 
@@ -108,13 +146,17 @@ export default function GymDetailScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.submitBtn, total === 0 && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (total === 0 || submitting) && styles.submitBtnDisabled]}
           activeOpacity={0.85}
-          disabled={total === 0}
-          onPress={() => {}}>
-          <Text style={styles.submitLabel}>
-            {total > 0 ? `Submit Session · ${total} Problem${total === 1 ? '' : 's'}` : 'Submit Session'}
-          </Text>
+          disabled={total === 0 || submitting}
+          onPress={handleSubmit}>
+          {submitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.submitLabel}>
+              {total > 0 ? `Submit Session · ${total} Problem${total === 1 ? '' : 's'}` : 'Submit Session'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
