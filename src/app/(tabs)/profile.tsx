@@ -67,6 +67,15 @@ type ChartData = {
   weekLabels: string[];          // e.g. ['Apr 7', '', 'Apr 21', '', ...]
 };
 
+// A single climb row joined with its session's gym + date — used for grade drill-down
+type ClimbEntry = {
+  sessionId: string;
+  grade: string;
+  count: number;
+  gymName: string;
+  date: string;
+};
+
 // Shape of a session card built from Supabase data
 type SupabaseSession = {
   id: string;
@@ -74,6 +83,7 @@ type SupabaseSession = {
   gradesSummary: string; // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
   totalProblems: number;
   date: string;          // e.g. "May 27, 2026"
+  createdAt: string;     // ISO string — used to filter sessions by day for chart drill-down
 };
 
 const BG       = '#ffffff';
@@ -122,6 +132,9 @@ export default function ProfileScreen() {
   const [sessions, setSessions] = useState<SupabaseSession[]>([]);
   const [chartData, setChartData] = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
+  const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null); // 0=Mon … 6=Sun
+  const [climbEntries, setClimbEntries] = useState<ClimbEntry[]>([]);
+  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
 
   // Stats derived from the same Supabase fetch — default while loading
   const [stats, setStats] = useState<{
@@ -194,7 +207,7 @@ export default function ProfileScreen() {
               year: 'numeric',
             });
 
-            return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date };
+            return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date, createdAt: s.created_at };
           });
           setSessions(formatted);
 
@@ -271,6 +284,31 @@ export default function ProfileScreen() {
             monthlyVolume: weeklyTotals,
             weekLabels,
           });
+
+          // ── 6. Build climb entries for grade drill-down ───────────
+          // Join each climb row with its session's gym name + date so the
+          // detail panel has everything it needs without extra queries.
+          const sessionMetaById: Record<string, { gymName: string; date: string }> = {};
+          rawSessions.forEach((s) => {
+            sessionMetaById[s.id] = {
+              gymName: GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`,
+              date: new Date(s.created_at).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+              }),
+            };
+          });
+          setClimbEntries(
+            allClimbs
+              .filter((c) => c.count > 0)
+              .map((c) => ({
+                sessionId: c.session_id,
+                grade: c.grade,
+                count: c.count,
+                gymName: sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
+                date: sessionMetaById[c.session_id]?.date ?? '',
+              }))
+          );
+
           setChartsLoading(false);
         } catch {
           // fail silently — UI keeps showing last known values
@@ -464,10 +502,10 @@ export default function ProfileScreen() {
           </View>
         ) : chartData ? (
           <>
-            {/* Section 1 — Weekly Intensity */}
+            {/* Section 1 — Weekly Intensity (tappable day chips) */}
             <View style={styles.chartCard}>
               <Text style={styles.chartTitle}>Weekly Intensity</Text>
-              <Text style={styles.chartSubtitle}>Problems logged this week</Text>
+              <Text style={styles.chartSubtitle}>Problems logged this week · tap a day to drill down</Text>
               <BarChart
                 data={{
                   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -483,18 +521,90 @@ export default function ProfileScreen() {
                 yAxisLabel=""
                 yAxisSuffix=""
               />
+
+              {/* Day chips — one per bar, tap to see that day's sessions */}
+              <View style={styles.dayChipRow}>
+                {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((label, i) => {
+                  const hasClimbs = chartData.weeklyIntensity[i] > 0;
+                  const isSelected = selectedWeekDay === i;
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.dayChip,
+                        isSelected && styles.dayChipActive,
+                        !hasClimbs && styles.dayChipEmpty,
+                      ]}
+                      onPress={() => setSelectedWeekDay(isSelected ? null : i)}
+                      activeOpacity={0.7}
+                      disabled={!hasClimbs}>
+                      <Text style={[styles.dayChipLabel, isSelected && styles.dayChipLabelActive]}>
+                        {label}
+                      </Text>
+                      {hasClimbs && (
+                        <Text style={[styles.dayChipCount, isSelected && styles.dayChipCountActive]}>
+                          {chartData.weeklyIntensity[i]}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Day detail — sessions for the selected day */}
+              {selectedWeekDay !== null && (() => {
+                // Work out which calendar date the selected chip represents
+                const now = new Date();
+                const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+                const monday = new Date(now);
+                monday.setDate(now.getDate() - daysFromMonday);
+                monday.setHours(0, 0, 0, 0);
+                const targetDay = new Date(monday);
+                targetDay.setDate(monday.getDate() + selectedWeekDay);
+
+                const daySessions = sessions.filter((s) => {
+                  const d = new Date(s.createdAt);
+                  return d.toDateString() === targetDay.toDateString();
+                });
+
+                const dayLabel = targetDay.toLocaleDateString('en-US', {
+                  weekday: 'long', month: 'short', day: 'numeric',
+                });
+
+                return (
+                  <View style={styles.dayDetail}>
+                    <Text style={styles.dayDetailHeading}>{dayLabel}</Text>
+                    {daySessions.length === 0 ? (
+                      <Text style={styles.dayDetailEmpty}>No climbs logged this day.</Text>
+                    ) : (
+                      daySessions.map((s) => (
+                        <View key={s.id} style={styles.dayDetailCard}>
+                          <View style={styles.dayDetailAccentBar} />
+                          <View style={styles.dayDetailBody}>
+                            <Text style={styles.dayDetailGym}>{s.gymName}</Text>
+                            <Text style={styles.dayDetailGrades}>{s.gradesSummary}</Text>
+                          </View>
+                          <Text style={styles.dayDetailProblems}>
+                            {s.totalProblems}{'\n'}
+                            <Text style={styles.dayDetailProblemsLabel}>problems</Text>
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                );
+              })()}
             </View>
 
-            {/* Section 2 — Grade Distribution */}
+            {/* Section 2 — Grade Distribution (tappable grade chips) */}
             <View style={styles.chartCard}>
               <Text style={styles.chartTitle}>Grade Distribution</Text>
-              <Text style={styles.chartSubtitle}>Your climbs by V-grade</Text>
+              <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to drill down</Text>
               <BarChart
                 data={{
                   labels: GRADES,
                   datasets: [{
                     data: chartData.gradeDistribution,
-                    // Highlight the most-climbed grade in ACCENT pink
                     colors: chartData.gradeDistribution.map((_, i) =>
                       (_opacity: number) =>
                         i === chartData.maxGradeIndex ? '#ff507c' : '#2E7A96'
@@ -513,6 +623,67 @@ export default function ProfileScreen() {
                 yAxisLabel=""
                 yAxisSuffix=""
               />
+
+              {/* Grade chips — horizontal scroll, one per V-grade */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.gradeChipScroll}
+                contentContainerStyle={styles.gradeChipScrollContent}>
+                {GRADES.map((grade, i) => {
+                  const total = chartData.gradeDistribution[i];
+                  const hasClimbs = total > 0;
+                  const isSelected = selectedGrade === grade;
+                  const isPeak = i === chartData.maxGradeIndex;
+                  return (
+                    <TouchableOpacity
+                      key={grade}
+                      style={[
+                        styles.gradeChip,
+                        isSelected && (isPeak ? styles.gradeChipActivePeak : styles.gradeChipActive),
+                        !hasClimbs && styles.gradeChipEmpty,
+                      ]}
+                      onPress={() => setSelectedGrade(isSelected ? null : grade)}
+                      activeOpacity={0.7}
+                      disabled={!hasClimbs}>
+                      <Text style={[styles.gradeChipLabel, isSelected && styles.gradeChipLabelActive]}>
+                        {grade}
+                      </Text>
+                      {hasClimbs && (
+                        <Text style={[styles.gradeChipCount, isSelected && styles.gradeChipCountActive]}>
+                          ×{total}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Grade detail — sessions for the selected grade */}
+              {selectedGrade !== null && (() => {
+                const entries = climbEntries.filter((e) => e.grade === selectedGrade);
+                const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
+                return (
+                  <View style={styles.dayDetail}>
+                    <Text style={styles.dayDetailHeading}>
+                      {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
+                    </Text>
+                    {entries.map((e, idx) => (
+                      <View key={`${e.sessionId}-${idx}`} style={styles.dayDetailCard}>
+                        <View style={[styles.dayDetailAccentBar, { backgroundColor: ACCENT }]} />
+                        <View style={styles.dayDetailBody}>
+                          <Text style={styles.dayDetailGym}>{e.gymName}</Text>
+                          <Text style={styles.dayDetailGrades}>{e.date}</Text>
+                        </View>
+                        <Text style={styles.dayDetailProblems}>
+                          ×{e.count}{'\n'}
+                          <Text style={styles.dayDetailProblemsLabel}>sends</Text>
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
             </View>
 
             {/* Section 3 — Monthly Volume */}
@@ -814,6 +985,153 @@ const styles = StyleSheet.create({
   chart: {
     borderRadius: 14,
     marginLeft: -16, // pull left to align chart edge with card edge
+  },
+
+  // ─── Day chip row (Weekly Intensity drill-down) ────────────────
+  dayChipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 4,
+  },
+  dayChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    gap: 2,
+  },
+  dayChipActive: {
+    backgroundColor: PRIMARY,
+  },
+  dayChipEmpty: {
+    opacity: 0.35,
+  },
+  dayChipLabel: {
+    fontSize: 10,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_SUB,
+    letterSpacing: 0.3,
+  },
+  dayChipLabelActive: {
+    color: '#ffffff',
+  },
+  dayChipCount: {
+    fontSize: 13,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.3,
+  },
+  dayChipCountActive: {
+    color: '#ffffff',
+  },
+
+  // ─── Grade chip row (Grade Distribution drill-down) ───────────
+  gradeChipScroll: {
+    marginTop: 12,
+    marginLeft: -4,
+  },
+  gradeChipScrollContent: {
+    paddingHorizontal: 4,
+    gap: 6,
+    flexDirection: 'row',
+  },
+  gradeChip: {
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    minWidth: 48,
+    gap: 1,
+  },
+  gradeChipActive: {
+    backgroundColor: PRIMARY,
+  },
+  gradeChipActivePeak: {
+    backgroundColor: ACCENT,  // peak grade uses the pink highlight
+  },
+  gradeChipEmpty: {
+    opacity: 0.3,
+  },
+  gradeChipLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_SUB,
+    letterSpacing: 0.2,
+  },
+  gradeChipLabelActive: {
+    color: '#ffffff',
+  },
+  gradeChipCount: {
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+  },
+  gradeChipCountActive: {
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // ─── Day detail panel ──────────────────────────────────────────
+  dayDetail: {
+    marginTop: 16,
+    gap: 8,
+  },
+  dayDetailHeading: {
+    fontSize: 14,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  dayDetailEmpty: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  dayDetailCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  dayDetailAccentBar: {
+    width: 4,
+    height: 36,
+    backgroundColor: PRIMARY,
+    borderRadius: 2,
+  },
+  dayDetailBody: {
+    flex: 1,
+    gap: 2,
+  },
+  dayDetailGym: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: -0.2,
+  },
+  dayDetailGrades: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
+  },
+  dayDetailProblems: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  dayDetailProblemsLabel: {
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 
   // ─── Empty state ──────────────────────────────────────────────
