@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from './supabase';
 
 const POSTS_KEY = 'deadpoint_user_posts';
@@ -119,14 +120,21 @@ export async function uploadSessionMedia(
 
     console.log('[uploadSessionMedia] Uploading file:', { uri, path, contentType });
 
-    // FormData approach required for local file URIs in React Native —
-    // fetch/blob doesn't work with the file:// scheme.
-    const formData = new FormData();
-    formData.append('file', { uri, name: `upload.${ext}`, type: contentType } as any);
+    // Read the file into memory as base64, then convert to a Uint8Array so
+    // the Supabase client receives a plain ArrayBuffer — the only approach
+    // that works reliably with local file:// URIs in React Native.
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
 
     const { error } = await supabase.storage
       .from('session-media')
-      .upload(path, formData);
+      .upload(path, bytes.buffer, { contentType, upsert: true });
 
     if (error) {
       console.log('[uploadSessionMedia] Supabase Storage upload error:', error);
