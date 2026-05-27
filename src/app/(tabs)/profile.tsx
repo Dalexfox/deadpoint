@@ -15,14 +15,29 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   getProfileAvatar,
   saveProfileAvatar,
-  getUserPosts,
   saveUserPost,
-  type Post,
 } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
+
+// Maps sessions.gym_id → human-readable gym name
+const GYM_NAMES: Record<string, string> = {
+  '1': 'Vital Climbing LES',
+  '2': 'Vital Climbing Brooklyn',
+  '3': 'Vital Climbing UES',
+  '4': 'Vital Climbing UWS',
+};
+
+// Shape of a session card built from Supabase data
+type SupabaseSession = {
+  id: string;
+  gymName: string;
+  gradesSummary: string; // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
+  totalProblems: number;
+  date: string;          // e.g. "May 27, 2026"
+};
 
 const BG = '#0c1e21';
 const CARD = '#142829';
@@ -47,45 +62,26 @@ function StatColumn({ label, value }: { label: string; value: string | number })
   );
 }
 
-function ActivityCard({ post }: { post: Post }) {
-  const isPhoto = post.postType === 'photo';
+function SessionCard({ session }: { session: SupabaseSession }) {
   return (
     <View style={styles.card}>
-      {isPhoto && post.media?.[0] ? (
-        <View style={styles.cardPhotoRow}>
-          {post.media[0].type === 'image' ? (
-            <Image source={{ uri: post.media[0].uri }} style={styles.cardThumbnail} />
-          ) : (
-            <View style={[styles.cardThumbnail, styles.cardVideoThumb]}>
-              <Text style={styles.cardVideoIcon}>▶</Text>
-            </View>
-          )}
-          <View style={styles.cardPhotoMeta}>
-            <Text style={styles.cardGym}>Photo</Text>
-            <Text style={styles.cardDetail}>{post.timestamp}</Text>
-          </View>
+      <View style={styles.cardLeft}>
+        <View style={styles.accentBar} />
+        <View style={styles.cardBody}>
+          <Text style={styles.cardGym}>{session.gymName}</Text>
+          <Text style={styles.cardDetail}>{session.gradesSummary}</Text>
         </View>
-      ) : (
-        <View style={styles.cardLeft}>
-          <View style={styles.accentBar} />
-          <View style={styles.cardBody}>
-            <Text style={styles.cardGym}>{post.gym ?? '—'}</Text>
-            <Text style={styles.cardDetail}>
-              {post.problems} problems · {post.difficulty}
-            </Text>
-          </View>
-          <Text style={styles.cardDate}>{post.timestamp}</Text>
-        </View>
-      )}
+        <Text style={styles.cardDate}>{session.date}</Text>
+      </View>
     </View>
   );
 }
 
 export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [sessions, setSessions] = useState<SupabaseSession[]>([]);
 
-  // Real stats from Supabase — default to '—' while loading
+  // Stats derived from the same Supabase fetch — default while loading
   const [stats, setStats] = useState<{
     totalClimbs: number;
     gymsVisited: number;
@@ -96,63 +92,86 @@ export default function ProfileScreen() {
     getProfileAvatar().then(setAvatarUri);
   }, []);
 
-  // Fetch real stats from Supabase
-  const fetchStats = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // All sessions for this user (gives us gym list + session IDs)
-      const { data: sessions, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('id, gym_id')
-        .eq('user_id', user.id);
-
-      if (sessionsError || !sessions) return;
-
-      // Unique gyms visited — count distinct gym_id values
-      const uniqueGyms = new Set(sessions.map((s) => s.gym_id)).size;
-
-      // No sessions yet — set zeros and bail early
-      if (sessions.length === 0) {
-        setStats({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
-        return;
-      }
-
-      // All climbs across every session for this user
-      const sessionIds = sessions.map((s) => s.id);
-      const { data: climbs, error: climbsError } = await supabase
-        .from('climbs')
-        .select('grade, count')
-        .in('session_id', sessionIds);
-
-      if (climbsError || !climbs) {
-        setStats({ totalClimbs: 0, gymsVisited: uniqueGyms, topGrade: '—' });
-        return;
-      }
-
-      // Total climbs = sum of all individual problem counts
-      const totalClimbs = climbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
-
-      // Hardest grade = highest index in the V-scale array
-      let topGradeIndex = -1;
-      climbs.forEach((c) => {
-        const idx = GRADES.indexOf(c.grade);
-        if (idx > topGradeIndex) topGradeIndex = idx;
-      });
-      const topGrade = topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—';
-
-      setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade });
-    } catch {
-      // fail silently — stats stay at defaults
-    }
-  };
-
-  // Refresh both posts and stats every time the Profile tab comes into focus
+  // Every time the Profile tab gains focus, fetch sessions + climbs fresh from
+  // Supabase in two queries, then derive both the session cards and the stats
+  // from the same data so there is no stale cache and no extra round-trips.
   useFocusEffect(
     useCallback(() => {
-      getUserPosts().then(setUserPosts);
-      fetchStats();
+      const loadData = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          // ── 1. Sessions ──────────────────────────────────────────
+          const { data: rawSessions, error: sessionsError } = await supabase
+            .from('sessions')
+            .select('id, gym_id, total_problems, created_at')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+          if (sessionsError || !rawSessions) return;
+
+          if (rawSessions.length === 0) {
+            setSessions([]);
+            setStats({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
+            return;
+          }
+
+          // ── 2. Climbs for all sessions in one query ──────────────
+          const sessionIds = rawSessions.map((s) => s.id);
+          const { data: climbs } = await supabase
+            .from('climbs')
+            .select('session_id, grade, count')
+            .in('session_id', sessionIds);
+
+          const allClimbs = climbs ?? [];
+
+          // Group climbs by session ID so each card gets its own grade list
+          const climbsBySession: Record<string, Array<{ grade: string; count: number }>> = {};
+          allClimbs.forEach((c) => {
+            if (!climbsBySession[c.session_id]) climbsBySession[c.session_id] = [];
+            climbsBySession[c.session_id].push({ grade: c.grade, count: c.count });
+          });
+
+          // ── 3. Build session cards ───────────────────────────────
+          const formatted: SupabaseSession[] = rawSessions.map((s) => {
+            const gymName = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
+
+            // Sort grades low → high, build "V3 ×2  ·  V4 ×3" summary
+            const sessionClimbs = (climbsBySession[s.id] ?? [])
+              .sort((a, b) => GRADES.indexOf(a.grade) - GRADES.indexOf(b.grade));
+            const gradesSummary =
+              sessionClimbs.length > 0
+                ? sessionClimbs.map((c) => `${c.grade} ×${c.count}`).join('  ·  ')
+                : `${s.total_problems} problems`;
+
+            const date = new Date(s.created_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            });
+
+            return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date };
+          });
+          setSessions(formatted);
+
+          // ── 4. Derive stats from the same data — no extra queries ─
+          const uniqueGyms = new Set(rawSessions.map((s) => s.gym_id)).size;
+          const totalClimbs = allClimbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
+          let topGradeIndex = -1;
+          allClimbs.forEach((c) => {
+            const idx = GRADES.indexOf(c.grade);
+            if (idx > topGradeIndex) topGradeIndex = idx;
+          });
+          const topGrade = topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—';
+
+          setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade });
+        } catch {
+          // fail silently — UI keeps showing last known values
+        }
+      };
+
+      loadData();
     }, [])
   );
 
@@ -221,7 +240,7 @@ export default function ProfileScreen() {
   };
 
   const publishPost = async (uri: string, mediaType: 'image' | 'video') => {
-    const post: Post = {
+    await saveUserPost({
       id: Date.now().toString(),
       name: USER.name,
       initials: USER.initials,
@@ -232,10 +251,7 @@ export default function ProfileScreen() {
       liked: false,
       postType: 'photo',
       media: [{ type: mediaType, uri }],
-    };
-    await saveUserPost(post);
-    const updated = await getUserPosts();
-    setUserPosts(updated);
+    });
     Alert.alert('Posted!', 'Your photo is now live on the feed.');
   };
 
@@ -285,18 +301,18 @@ export default function ProfileScreen() {
           <StatColumn label="Top Grade" value={stats.topGrade} />
         </View>
 
-        {/* Posts */}
-        {userPosts.length === 0 ? (
-          <TouchableOpacity style={styles.emptyState} onPress={handleShare} activeOpacity={0.7}>
-            <Text style={styles.emptyIcon}>📸</Text>
-            <Text style={styles.emptyTitle}>SHARE YOUR FIRST CLIMB</Text>
-            <Text style={styles.emptySub}>Tap to post a photo or video to your feed</Text>
-          </TouchableOpacity>
+        {/* Sessions — live from Supabase */}
+        {sessions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>🧗</Text>
+            <Text style={styles.emptyTitle}>NO SESSIONS YET</Text>
+            <Text style={styles.emptySub}>Log a climb at any gym to see your sessions here</Text>
+          </View>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>Your Posts</Text>
-            {userPosts.map((post) => (
-              <ActivityCard key={post.id} post={post} />
+            <Text style={styles.sectionTitle}>Your Sessions</Text>
+            {sessions.map((session) => (
+              <SessionCard key={session.id} session={session} />
             ))}
           </>
         )}
@@ -478,30 +494,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     marginLeft: 8,
   },
-  cardPhotoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardThumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-  },
-  cardVideoThumb: {
-    backgroundColor: '#0a1618',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardVideoIcon: {
-    fontSize: 18,
-    color: TEXT,
-  },
-  cardPhotoMeta: {
-    flex: 1,
-    gap: 3,
-  },
-
   // ─── Empty state ──────────────────────────────────────────────
   emptyState: {
     marginHorizontal: 20,

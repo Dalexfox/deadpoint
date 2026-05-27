@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -10,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { saveUserPost, type MediaItem } from '../../lib/store';
+import { type MediaItem } from '../../lib/store';
+import { supabase } from '../../lib/supabase';
 
 const BG = '#0c1e21';
 const CARD = '#142829';
@@ -28,6 +30,14 @@ const GYMS = [
   'Vital Climbing UWS',
 ];
 
+// Maps gym display name → the gym_id stored in Supabase sessions table
+const GYM_IDS: Record<string, string> = {
+  'Vital Climbing LES': '1',
+  'Vital Climbing Brooklyn': '2',
+  'Vital Climbing UES': '3',
+  'Vital Climbing UWS': '4',
+};
+
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
 export default function LogScreen() {
@@ -36,6 +46,7 @@ export default function LogScreen() {
   const [problems, setProblems] = useState(0);
   const [media, setMedia] = useState<MediaItem | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = selectedGym !== null && selectedGrade !== null && problems > 0;
 
@@ -72,28 +83,45 @@ export default function LogScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
-    await saveUserPost({
-      id: Date.now().toString(),
-      name: 'Alex Fox',
-      initials: 'AF',
-      avatarBg: ACCENT,
-      gym: selectedGym!,
-      problems,
-      difficulty: selectedGrade!,
-      timestamp: 'Just now',
-      likes: 0,
-      comments: 0,
-      liked: false,
-      postType: 'session',
-      media: media ? [media] : undefined,
-    });
-    setSubmitted(true);
-    setSelectedGym(null);
-    setSelectedGrade(null);
-    setProblems(0);
-    setMedia(null);
-    setTimeout(() => setSubmitted(false), 2500);
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not logged in');
+
+      // Look up the numeric gym ID from the selected gym name
+      const gymId = GYM_IDS[selectedGym!];
+      if (!gymId) throw new Error('Unknown gym');
+
+      // Insert the session row
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .insert({ user_id: user.id, gym_id: gymId, total_problems: problems })
+        .select('id')
+        .single();
+
+      if (sessionError) throw sessionError;
+
+      // Insert a single climb row — Log tab picks one grade + total count
+      const { error: climbError } = await supabase
+        .from('climbs')
+        .insert({ session_id: session.id, grade: selectedGrade!, count: problems });
+
+      if (climbError) throw climbError;
+
+      // Reset form and show success screen
+      setSelectedGym(null);
+      setSelectedGrade(null);
+      setProblems(0);
+      setMedia(null);
+      setSubmitted(true);
+      setTimeout(() => setSubmitted(false), 2500);
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -220,11 +248,15 @@ export default function LogScreen() {
 
         {/* Submit */}
         <TouchableOpacity
-          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (!canSubmit || submitting) && styles.submitBtnDisabled]}
           onPress={handleSubmit}
           activeOpacity={0.85}
-          disabled={!canSubmit}>
-          <Text style={styles.submitLabel}>Submit Session</Text>
+          disabled={!canSubmit || submitting}>
+          {submitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.submitLabel}>Submit Session</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
