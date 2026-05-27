@@ -2,12 +2,11 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
-const BG = '#0c1e21';
-const CARD = '#142829';
-const ACCENT = '#ff507c';
-const TEAL = '#4da8ae';
-const TEXT = '#ffffff';
-const TEXT_SUB = '#7ab4b8';
+const BG      = '#ffffff';
+const CARD    = '#d8eaf0';
+const PRIMARY = '#2E7A96';
+const TEXT    = '#0d2b36';
+const TEXT_SUB = '#3d7a8a';
 
 const GYMS = [
   { id: '1', name: 'Vital Climbing LES', neighborhood: 'Lower East Side', city: 'NYC' },
@@ -103,7 +102,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   visitButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: PRIMARY,
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 9,
@@ -111,7 +110,7 @@ const styles = StyleSheet.create({
   visitLabel: {
     fontSize: 14,
     fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    color: '#ffffff',
     letterSpacing: 0.2,
   },
 });

@@ -41,13 +41,15 @@ type SupabaseSession = {
   date: string;          // e.g. "May 27, 2026"
 };
 
-const BG = '#0c1e21';
-const CARD = '#142829';
-const SURFACE = '#1a3235';
-const ACCENT = '#ff507c';
-const TEXT = '#ffffff';
-const TEXT_SUB = '#7ab4b8';
-const TEXT_MUTED = '#3d6b6f';
+const BG       = '#ffffff';
+const CARD     = '#d8eaf0';
+const SURFACE  = '#d8eaf0';
+const ACCENT   = '#ff507c';
+const PRIMARY  = '#2E7A96';
+const TEXT     = '#0d2b36';
+const TEXT_SUB = '#3d7a8a';
+const TEXT_MUTED = '#8bb5c4';
+const DIVIDER  = '#c8dde8';
 
 const USER = {
   name: 'Alex Fox',
@@ -262,7 +264,7 @@ export default function ProfileScreen() {
       id: Date.now().toString(),
       name: USER.name,
       initials: USER.initials,
-      avatarBg: ACCENT,
+      avatarBg: PRIMARY,
       timestamp: 'Just now',
       likes: 0,
       comments: 0,
@@ -304,15 +306,8 @@ export default function ProfileScreen() {
             style={styles.bannerCameraBtn}
             onPress={handleBannerPress}
             activeOpacity={0.8}>
-            <SymbolView name="camera.fill" size={15} tintColor={TEXT} />
+            <SymbolView name="camera.fill" size={15} tintColor="#ffffff" />
           </TouchableOpacity>
-          {/* Torn-paper edge — overlaid at the bottom of the banner so the
-              ragged tear sits right at the boundary between banner and content */}
-          <Image
-            source={require('../../../assets/images/torn-paper.png')}
-            style={styles.tornEdge}
-            resizeMode="stretch"
-          />
         </View>
 
         {/* ── Identity — avatar overlaps banner, name + Add Friend ─ */}
@@ -421,7 +416,7 @@ const styles = StyleSheet.create({
   bannerPlaceholder: {
     width: '100%',
     height: 140,
-    backgroundColor: SURFACE,
+    backgroundColor: PRIMARY,
   },
   bannerCameraBtn: {
     position: 'absolute',
@@ -430,17 +425,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tornEdge: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: 40,
   },
 
   // ─── Identity (avatar + name, sits below banner) ───────────────
@@ -457,12 +444,12 @@ const styles = StyleSheet.create({
   avatar: {
     width: 100,
     height: 100,
-    borderRadius: 16,        // Square with soft corners
-    backgroundColor: ACCENT,
+    borderRadius: 16,        // Square with soft corners — per design system
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: BG,         // dark ring separates avatar from banner
+    borderColor: BG,         // white ring separates avatar from banner
   },
   avatarImage: {
     width: 100,
@@ -474,7 +461,7 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontSize: 34,
     fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    color: '#ffffff',
     letterSpacing: -0.5,
   },
   avatarEditBadge: {
@@ -492,7 +479,7 @@ const styles = StyleSheet.create({
   },
   avatarEditIcon: {
     fontSize: 16,
-    color: TEXT,
+    color: '#ffffff',
     lineHeight: 18,
   },
   nameRow: {
@@ -557,7 +544,7 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#1e3840',
+    backgroundColor: DIVIDER,
     marginVertical: 4,
   },
   sectionTitle: {
@@ -569,7 +556,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // ─── Activity cards ───────────────────────────────────────────
+  // ─── Session cards ────────────────────────────────────────────
   card: {
     marginHorizontal: 20,
     marginBottom: 10,
@@ -585,7 +572,7 @@ const styles = StyleSheet.create({
   accentBar: {
     width: 4,
     height: 36,
-    backgroundColor: ACCENT,
+    backgroundColor: PRIMARY,
     borderRadius: 2,
     marginRight: 12,
   },

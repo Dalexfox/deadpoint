@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 58,
     fontFamily: 'BebasNeue_400Regular',
-    color: '#000000',
+    color: '#0d2b36',
     letterSpacing: 1,
     lineHeight: 58,
   },
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
     fontFamily: 'DMSans_500Medium',
-    color: '#000000',
+    color: '#0d2b36',
   },
   errorText: {
     fontSize: 13,

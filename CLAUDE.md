@@ -23,31 +23,44 @@ Key principles:
 - **Premium and minimal** — every element earns its place, no clutter
 - **Confident typography** — oversized, bold, editorial. Let the type do the talking
 - **White space is intentional** — breathing room makes things feel expensive
-- **One bold accent** — #ff507c is the ONLY color pop. Everything else follows the palette below
+- **Two-color system** — PRIMARY teal for structure, ACCENT pink only for key moments
 - **Performance meets culture** — this is a lifestyle app for people who take climbing seriously but also care how they look doing it
 
 Design references: Arc'teryx (clean, premium, minimal), Outside Days (bold oversized type), Baggu (editorial white space)
 
 ## Design System
 
-### Current Color Palette (Dark Teal — may be updated to a lighter palette in future)
+### Current Color Palette (Light)
 ```
-BG       = '#0c1e21'   // Main background (dark teal-black)
-CARD     = '#142829'   // Card backgrounds
-SURFACE  = '#1a3235'   // Stats blocks, chips, grade rows
-ACCENT   = '#ff507c'   // Coral/hot pink — buttons, likes, badges (use sparingly)
-TEAL     = '#4da8ae'   // Gym labels, teal accent text
-TEXT     = '#ffffff'   // Primary text
-TEXT_SUB = '#7ab4b8'   // Subtitles, secondary text
-TEXT_MUTED = '#3d6b6f' // Muted labels, section headers
-DIVIDER  = '#1e3840'   // Hairline dividers
+BG         = '#ffffff'   // Main background
+CARD       = '#d8eaf0'   // Card backgrounds
+SURFACE    = '#d8eaf0'   // Stats blocks, chips, grade rows
+ACCENT     = '#ff507c'   // Coral/hot pink — ONLY for: like buttons, submit/log session
+                         //   buttons, the Deadpoint wordmark, success screens
+PRIMARY    = '#2E7A96'   // Teal — active tabs, banners, gym tags, selectors, session bars
+TEXT       = '#0d2b36'   // Primary text
+TEXT_SUB   = '#3d7a8a'   // Subtitles, secondary text
+TEXT_MUTED = '#8bb5c4'   // Muted labels, section headers
+DIVIDER    = '#c8dde8'   // Hairline dividers
 ```
+
+**ACCENT usage rules — use sparingly:**
+- ✅ Like buttons (heart icon + count)
+- ✅ Submit / Log Session buttons
+- ✅ The Deadpoint wordmark on auth screens
+- ✅ "SESSION LOGGED" success screen title
+- ✅ Add Friend button border + text (social action)
+- ❌ Navigation buttons → use PRIMARY
+- ❌ Grade selectors / radio buttons → use PRIMARY
+- ❌ Banners / stat cards → use PRIMARY
 
 ### Auth Screens (white background — intentionally different from main app)
 - Background: `#ffffff`
-- Text: `#000000`
-- Inputs: `#f5f5f5` fill, `borderRadius: 14`
-- Accent: `#ff507c`
+- Heading text: `#0d2b36`
+- Subtext: `#888888`
+- Inputs: `#f5f5f5` fill, `borderRadius: 14`, text `#0d2b36`
+- Wordmark / accent: `#ff507c`
+- Submit button: ACCENT (`#ff507c`)
 
 ### Typography
 - **Display / Headings:** `BebasNeue_400Regular` — all caps, large, editorial
@@ -64,18 +77,27 @@ DIVIDER  = '#1e3840'   // Hairline dividers
 - Section labels: 11px, DMSans_800ExtraBold, letterSpacing: 1.4, TEXT_MUTED color
 
 ### Cards
-- `borderRadius: 20`, `backgroundColor: CARD`, no border — no shadow (dark mode)
+- `borderRadius: 20`, `backgroundColor: CARD`, no border, no shadow
 - Stats/surface blocks: `borderRadius: 14`, `backgroundColor: SURFACE`
-- Grade chips: `borderRadius: 12`, `backgroundColor: SURFACE`
+- Grade chips: `borderRadius: 12`, `backgroundColor: SURFACE` (active: `PRIMARY`)
 
 ### Buttons
-- Primary: `backgroundColor: ACCENT`, `borderRadius: 16`, `paddingVertical: 18`
+- Submit/CTA: `backgroundColor: ACCENT`, `borderRadius: 16`, `paddingVertical: 18`
 - Shadow: `shadowColor: ACCENT`, `shadowOpacity: 0.4`, `shadowRadius: 16`
-- Label: `DMSans_800ExtraBold`, 17px, white
+- Label: `DMSans_800ExtraBold`, 17px, `color: '#ffffff'`
+- Navigation CTA (e.g. "Log →"): `backgroundColor: PRIMARY`, same shape, white label
 
 ### Profile Avatar
 - **Square** with soft corners: `width: 100, height: 100, borderRadius: 16`
 - Edit badge: square `borderRadius: 8`, ACCENT background, bottom-right corner
+- Default background: PRIMARY (not ACCENT)
+- Border: `borderWidth: 3, borderColor: BG` (white ring separating avatar from banner)
+
+### Profile Banner
+- Full-width, height 140, sits at top of profile scroll
+- Placeholder: `backgroundColor: PRIMARY`
+- Camera button (top-right) to change it: `aspect: [3, 1]` crop
+- Avatar overlaps banner by 36px (`marginTop: -36`)
 
 ## Tech Stack
 - **Framework:** React Native with Expo SDK 56
@@ -83,7 +105,7 @@ DIVIDER  = '#1e3840'   // Hairline dividers
 - **Database:** Supabase (live — `src/lib/supabase.ts`)
 - **Auth:** Supabase Auth (live — email/password)
 - **Fonts:** `@expo-google-fonts/bebas-neue`, `@expo-google-fonts/dm-sans`
-- **Storage:** `@react-native-async-storage/async-storage` (local posts/profile avatar)
+- **Storage:** `@react-native-async-storage/async-storage` (avatar, banner, photo posts)
 - **Media:** `expo-image-picker` (photos and videos)
 - **Platform:** iOS first (iPhone)
 
@@ -128,6 +150,7 @@ climbs (
 - Unauthenticated → `/auth/login`
 - Authenticated → `/(tabs)`
 - Auth state managed in `src/app/_layout.tsx` via `supabase.auth.onAuthStateChange`
+- Root layout also calls `getUser()` to verify session validity on startup; signs out if stale
 
 ### Route Structure
 ```
@@ -151,19 +174,21 @@ src/app/
 ```
 src/lib/
   supabase.ts          — Supabase client (import this everywhere)
-  store.ts             — AsyncStorage helpers for local posts and profile avatar
+  store.ts             — AsyncStorage helpers: profile avatar, profile banner, photo posts
 ```
 
 ### 4 Main Tabs
-1. **Feed** — Social feed. Shows user-created posts (from AsyncStorage) + placeholder posts. Cards support session posts (gym + stats) and photo/video posts. Likes are interactive.
+1. **Feed** — Social feed. Shows user-created photo posts (from AsyncStorage) + placeholder session posts. Cards support session posts (gym + stats) and photo/video posts. Likes are interactive.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
-3. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to AsyncStorage. Success screen shown after submit.
-4. **Profile** — Square avatar (tappable, persisted via AsyncStorage), stats row, real posts from store. `+` button in header to share photo/video directly to feed.
+3. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Success screen shown after submit.
+4. **Profile** — Banner image (tappable, persisted via AsyncStorage) + square avatar (tappable, persisted via AsyncStorage). Real stats and session history fetched live from Supabase on every focus. `+` button in header to share photo/video directly to feed. Add Friend outline button.
 
 ### Gym Detail (`/gym/[id]`)
 - Per-grade counter (V0–V10) with increment/decrement
-- Submit saves to Supabase `sessions` + `climbs` tables
+- Submit saves to Supabase `sessions` + `climbs` tables (one row per grade)
 - Requires authenticated user (`supabase.auth.getUser()`)
+- Shows "SESSION LOGGED" success screen for 2.5s, then navigates back to Gyms tab
+- `useFocusEffect` on Profile tab picks up new sessions automatically on next visit
 
 ## Current Gyms (Phase 1 — NYC)
 - Vital Climbing LES (id: 1, Lower East Side)
@@ -186,16 +211,21 @@ Posts have a `postType` field: `'session'` or `'photo'`
 ### ✅ Built
 - Bottom tab navigation (Feed, Gyms, Log, Profile)
 - Gym detail page with per-grade V-scale climb logger (saves to Supabase)
+- Log tab saves sessions to Supabase (`sessions` + `climbs` tables)
 - Social feed with placeholder data + interactive likes
 - Photo/video upload from Log screen and Profile
-- Profile screen with stats and real post history
-- Profile photo (tappable avatar, persisted locally)
+- Profile screen with real stats and session history from Supabase (refreshes on every focus)
+- Profile photo — tappable square avatar, persisted via AsyncStorage
+- Profile banner — full-width tappable banner with camera button, persisted via AsyncStorage
+- Add Friend outline button on Profile
+- "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
 - Sign up / log in screens (white background, Bebas Neue, premium minimal)
+- Full light color system across all screens
 
 ### 🔜 Phase 2
-- [ ] Connect feed to real Supabase data (replace AsyncStorage posts)
+- [ ] Connect feed to real Supabase data (replace placeholder posts)
 - [ ] Sign out button on Profile settings
 - [ ] Friends / following system
 - [ ] Likes and comments persisted in Supabase
@@ -211,9 +241,10 @@ Posts have a `postType` field: `'session'` or `'photo'`
 ## Important Rules for Claude Code
 - Always use **expo-router** for navigation, NEVER react-navigation
 - Always keep compatibility with **Expo SDK 56**
-- Always use **#ff507c** as the accent color — sparingly, as a highlight
-- Use the **dark teal palette** defined above (may be updated to lighter palette)
-- Auth screens use **white backgrounds** — intentionally different from main app
+- Use the **light palette** defined above — BG white, CARD/SURFACE `#d8eaf0`, PRIMARY `#2E7A96`, ACCENT `#ff507c`
+- ACCENT (`#ff507c`) is ONLY for: like buttons, submit/log buttons, wordmark, success screen titles, Add Friend button
+- PRIMARY (`#2E7A96`) is for: everything else that needs a color — tabs, banners, gym tags, selectors, nav buttons
+- Auth screens use **white backgrounds** with `#0d2b36` heading text — intentionally minimal
 - **Bebas Neue** for all display headings, **DM Sans** for all body/UI text
 - Profile avatar is **square** (`borderRadius: 16`) — NOT circular
 - Always import Supabase from `src/lib/supabase.ts`

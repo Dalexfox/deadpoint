@@ -11,22 +11,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { getUserPosts, togglePostLike, type Post } from '../../lib/store';
 
-const BG = '#0c1e21';
-const CARD = '#142829';
-const SURFACE = '#1a3235';
-const ACCENT = '#ff507c';
-const TEAL = '#4da8ae';
-const TEXT = '#ffffff';
-const TEXT_SUB = '#7ab4b8';
-const TEXT_MUTED = '#3d6b6f';
-const DIVIDER = '#1e3840';
+const BG       = '#ffffff';
+const CARD     = '#d8eaf0';
+const SURFACE  = '#d8eaf0';
+const ACCENT   = '#ff507c';
+const PRIMARY  = '#2E7A96';
+const TEXT     = '#0d2b36';
+const TEXT_SUB = '#3d7a8a';
+const TEXT_MUTED = '#8bb5c4';
+const DIVIDER  = '#c8dde8';
 
 const PLACEHOLDER_POSTS: Post[] = [
   {
     id: 'p1',
     name: 'Alex Chen',
     initials: 'AC',
-    avatarBg: '#1a4a4e',
+    avatarBg: '#2E7A96',
     gym: 'Vital Climbing LES',
     problems: 14,
     difficulty: 'V4 – V6',
@@ -40,7 +40,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     id: 'p2',
     name: 'Sarah Park',
     initials: 'SP',
-    avatarBg: '#1a3a4a',
+    avatarBg: '#1a6a80',
     gym: 'Brooklyn Boulders Queensbridge',
     problems: 8,
     difficulty: 'V7 – V8',
@@ -54,7 +54,7 @@ const PLACEHOLDER_POSTS: Post[] = [
     id: 'p3',
     name: 'Marcus Webb',
     initials: 'MW',
-    avatarBg: '#1a3e2e',
+    avatarBg: '#3a8a9a',
     gym: 'Movement LIC',
     problems: 22,
     difficulty: 'V2 – V5',
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    color: '#ffffff',            // always white — avatars have coloured backgrounds
     letterSpacing: 0.4,
   },
   userMeta: {
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   gymLabel: {
     fontSize: 13,
     fontFamily: 'DMSans_700Bold',
-    color: TEAL,
+    color: PRIMARY,
     letterSpacing: 0.2,
   },
   mediaContainer: {
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   videoPlaceholder: {
     width: '100%',
     height: 220,
-    backgroundColor: '#0a1618',
+    backgroundColor: SURFACE,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
   },
   actionBtnActive: {
-    backgroundColor: '#2a1520',
+    backgroundColor: 'rgba(255, 80, 124, 0.12)',
   },
   actionIcon: {
     fontSize: 16,

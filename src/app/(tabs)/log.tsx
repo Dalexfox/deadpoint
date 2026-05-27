@@ -11,17 +11,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { type MediaItem } from '../../lib/store';
+import { uploadSessionMedia, type MediaItem } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
-const BG = '#0c1e21';
-const CARD = '#142829';
-const SURFACE = '#1a3235';
-const ACCENT = '#ff507c';
-const TEXT = '#ffffff';
-const TEXT_SUB = '#7ab4b8';
-const TEXT_MUTED = '#3d6b6f';
-const DIVIDER = '#1e3840';
+const BG       = '#ffffff';
+const CARD     = '#d8eaf0';
+const SURFACE  = '#d8eaf0';
+const ACCENT   = '#ff507c';
+const PRIMARY  = '#2E7A96';
+const TEXT     = '#0d2b36';
+const TEXT_SUB = '#3d7a8a';
+const TEXT_MUTED = '#8bb5c4';
+const DIVIDER  = '#c8dde8';
 
 const GYMS = [
   'Vital Climbing LES',
@@ -94,10 +95,22 @@ export default function LogScreen() {
       const gymId = GYM_IDS[selectedGym!];
       if (!gymId) throw new Error('Unknown gym');
 
-      // Insert the session row
+      // Upload media first so we can store the URL alongside the session.
+      // If the upload fails, mediaUrl will be null and we save without it.
+      let mediaUrl: string | null = null;
+      if (media) {
+        mediaUrl = await uploadSessionMedia(media.uri, media.type);
+      }
+
+      // Insert the session row (with optional media_url)
       const { data: session, error: sessionError } = await supabase
         .from('sessions')
-        .insert({ user_id: user.id, gym_id: gymId, total_problems: problems })
+        .insert({
+          user_id: user.id,
+          gym_id: gymId,
+          total_problems: problems,
+          ...(mediaUrl ? { media_url: mediaUrl } : {}),
+        })
         .select('id')
         .single();
 
@@ -313,9 +326,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   gymRowActive: {
-    backgroundColor: '#1e2e32',
-    borderWidth: 1,
-    borderColor: '#2a5a5e',
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: PRIMARY,
   },
   radio: {
     width: 20,
@@ -327,13 +340,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   radioActive: {
-    borderColor: ACCENT,
+    borderColor: PRIMARY,
   },
   radioDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: ACCENT,
+    backgroundColor: PRIMARY,
   },
   gymName: {
     flex: 1,
@@ -347,7 +360,7 @@ const styles = StyleSheet.create({
   },
   gymCheck: {
     fontSize: 9,
-    color: ACCENT,
+    color: PRIMARY,
   },
   gradeGrid: {
     flexDirection: 'row',
@@ -361,7 +374,7 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
   },
   gradeChipActive: {
-    backgroundColor: ACCENT,
+    backgroundColor: PRIMARY,
   },
   gradeLabel: {
     fontSize: 14,
@@ -370,7 +383,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   gradeLabelActive: {
-    color: TEXT,
+    color: '#ffffff',
   },
   counterCard: {
     flexDirection: 'row',
@@ -444,7 +457,7 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 200,
-    backgroundColor: '#0a1618',
+    backgroundColor: SURFACE,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -466,13 +479,13 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   mediaRemoveText: {
     fontSize: 13,
-    color: TEXT,
+    color: '#ffffff',
     fontFamily: 'DMSans_700Bold',
   },
   submitBtn: {
@@ -493,7 +506,7 @@ const styles = StyleSheet.create({
   submitLabel: {
     fontSize: 17,
     fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    color: '#ffffff',
     letterSpacing: 0.2,
   },
   successScreen: {
@@ -508,7 +521,7 @@ const styles = StyleSheet.create({
   successTitle: {
     fontSize: 52,
     fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    color: ACCENT,
     letterSpacing: 2,
   },
   successSub: {
