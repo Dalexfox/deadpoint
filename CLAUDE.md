@@ -81,7 +81,7 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 ### Cards
 - `borderRadius: 20`, `borderWidth: 1.5`, `borderColor: DIVIDER`
 - Stats/surface blocks: `borderRadius: 14`, `backgroundColor: SURFACE`
-- Grade chips: `borderRadius: 12`, `backgroundColor: SURFACE` (active: `PRIMARY`)
+- Grade chips: `borderRadius: 10`, `backgroundColor: SURFACE` (active: `TEXT` `#0d2b36` bg + white label; unselected: SURFACE bg + TEXT label)
 
 ### Feed Cards — two variants
 **With photo (full-bleed):**
@@ -130,7 +130,7 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 - **Media:** `expo-image-picker` (photos and videos)
 - **File I/O:** `expo-file-system/legacy` — MUST use the `/legacy` subpath in SDK 56; `readAsStringAsync` was moved there
 - **Base64 decode:** `base64-arraybuffer` — use `decode()` for reliable base64→ArrayBuffer in Hermes (never atob())
-- **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart and LineChart on Profile
+- **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart (Weekly Intensity) and LineChart (Monthly Volume) on Profile. Grade Distribution uses a fully custom View-based bar chart (no chart-kit) to avoid label clipping.
 - **Gradients:** `expo-linear-gradient` (feed card photo overlay)
 - **Platform:** iOS first (iPhone)
 
@@ -255,7 +255,13 @@ src/lib/
 1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes are interactive. Profile avatars from `profiles.avatar_url` shown on cards.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
-4. **Profile** — Banner image (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`). Real stats and session history fetched live from Supabase on every focus. Stats dashboard with 3 interactive charts. Swipeable session carousel. `+` button in header to share photo/video. Add Friend outline button.
+4. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
+   - **Overview tab** — 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) that scroll vertically.
+   - **Sessions tab** — swipeable horizontal carousel of past sessions.
+   - **Settings tab** — Log Out button (calls `supabase.auth.signOut()` → redirects to `/auth/login`).
+   - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
+   - Stats bar (Total Climbs, Gyms Visited, Top Grade) fetched live from Supabase on every focus.
+   - Add Friend outline button on the identity row.
 
 ### Gym Detail (`/gym/[id]`)
 - Per-grade counter (V0–V10) with increment/decrement
@@ -264,11 +270,18 @@ src/lib/
 - Shows "SESSION LOGGED" success screen for 2.5s, then navigates back to Gyms tab
 - `useFocusEffect` on Profile tab picks up new sessions automatically on next visit
 
-### Profile Stats Dashboard
+### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
-1. **Weekly Intensity** — BarChart of problems per day of the week. Tap a day chip (Mon–Sun) to drill into climbs completed on that specific day.
-2. **Grade Distribution** — BarChart of total climbs per V-grade. Peak bar highlighted in ACCENT. Tap a grade chip to drill into all sessions where that grade was climbed.
-3. **Monthly Volume** — LineChart of total problems per month. ACCENT line color.
+1. **Weekly Intensity** — `react-native-chart-kit` BarChart of problems per day Mon–Sun. Uses `withCustomBarColorFromData` + `flatColor`: selected day bar is solid `#2E7A96`, others `rgba(46,122,150,0.3)`. Tap a day chip to drill into sessions for that day.
+2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit BarChart — it clipped V10). Each bar is a proportional `View` inside a fixed-height well. Peak bar: ACCENT pink. Others: PRIMARY teal. Non-selected bars dim to 0.35 opacity when a grade is active. Tapping a bar or chip sets `selectedGrade` to show the drill-down panel.
+3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. ACCENT line color, bezier curve.
+
+### Profile Tab Bar
+- Three equal-width tabs: **Overview · Sessions · Settings**
+- Active tab: `DMSans_800ExtraBold` label in `PRIMARY`, 2px `PRIMARY` underline indicator pinned to bottom
+- Inactive tabs: same label style in `TEXT_MUTED`
+- Background `BG` white, `hairlineWidth` bottom border in `DIVIDER`
+- Tab bar is fixed (outside the ScrollView); profile header + tab content scroll as one page
 
 ### Profile Session Carousel
 - Swipeable horizontal carousel with peek (next card visible at right edge)
@@ -305,9 +318,12 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - Profile screen with real stats and session history from Supabase (refreshes on every focus)
 - Profile photo — tappable square avatar, uploads to Supabase Storage, `profiles.avatar_url` updated (propagates to feed)
 - Profile banner — full-width tappable banner with camera button, persisted via AsyncStorage
-- **Profile stats dashboard** — 3 interactive charts (Weekly Intensity, Grade Distribution, Monthly Volume)
+- **Profile 3-tab layout** — Overview / Sessions / Settings tabs with fixed tab bar
+- **Profile stats dashboard** — 3 interactive charts (Weekly Intensity, Grade Distribution, Monthly Volume) in Overview tab
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
-- **Session carousel** — swipeable peek carousel with light blue border cards
+- **Grade Distribution custom bar chart** — built from Views, no chart-kit clipping
+- **Session carousel** — swipeable peek carousel with light blue border cards in Sessions tab
+- **Sign out** — Log Out button in Settings tab, wired to `supabase.auth.signOut()`
 - Add Friend outline button on Profile
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
@@ -316,7 +332,6 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - Full light color system across all screens
 
 ### 🔜 Phase 2
-- [ ] Sign out button on Profile settings
 - [ ] Friends / following system
 - [ ] Likes and comments persisted in Supabase
 - [ ] Edit profile (name, username, bio)
