@@ -13,7 +13,7 @@ import {
 import { BarChart, LineChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
   getProfileAvatar,
@@ -33,28 +33,28 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const CHART_WIDTH = SCREEN_WIDTH - 72;
 
 // Carousel card — wide enough to fill the screen with the next card peeking in from the right
-const CARD_GAP    = 12;
-const CARD_PEEK   = 28;  // how many px of the next card are visible
-const CARD_WIDTH  = SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK; // 20 = left margin
+const CARD_GAP   = 12;
+const CARD_PEEK  = 28;  // how many px of the next card are visible
+const CARD_WIDTH = SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK; // 20 = left margin
 
 // Shared chart config — teal bars / lines on the card background
 const BASE_CHART_CONFIG = {
-  backgroundColor:          '#d8eaf0',
-  backgroundGradientFrom:   '#d8eaf0',
-  backgroundGradientTo:     '#d8eaf0',
-  decimalPlaces:            0,
-  labelColor:               () => '#8bb5c4',      // TEXT_MUTED
-  propsForBackgroundLines:  { stroke: '#c8dde8' }, // DIVIDER
+  backgroundColor:         '#d8eaf0',
+  backgroundGradientFrom:  '#d8eaf0',
+  backgroundGradientTo:    '#d8eaf0',
+  decimalPlaces:           0,
+  labelColor:              () => '#8bb5c4',      // TEXT_MUTED
+  propsForBackgroundLines: { stroke: '#c8dde8' }, // DIVIDER
 };
 
 const PRIMARY_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
-  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,   // PRIMARY teal
+  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`, // PRIMARY teal
 };
 
 const ACCENT_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
-  color: (opacity = 1) => `rgba(255, 80, 124, ${opacity})`,   // ACCENT pink
+  color: (opacity = 1) => `rgba(255, 80, 124, ${opacity})`, // ACCENT pink
 };
 
 // Maps sessions.gym_id → human-readable gym name
@@ -67,47 +67,56 @@ const GYM_NAMES: Record<string, string> = {
 
 // Derived datasets fed into the three charts
 type ChartData = {
-  weeklyIntensity: number[];     // problems per day, Mon–Sun of current week
-  gradeDistribution: number[];   // total climb count per grade, V0–V10
-  maxGradeIndex: number;         // index of the most-climbed grade (highlighted pink)
-  monthlyVolume: number[];       // total problems per week for last 12 weeks
-  weekLabels: string[];          // e.g. ['Apr 7', '', 'Apr 21', '', ...]
+  weeklyIntensity:   number[];  // problems per day, Mon–Sun of current week
+  gradeDistribution: number[];  // total climb count per grade, V0–V10
+  maxGradeIndex:     number;    // index of the most-climbed grade (highlighted pink)
+  monthlyVolume:     number[];  // total problems per week for last 12 weeks
+  weekLabels:        string[];  // e.g. ['Apr 7', '', 'Apr 21', '', ...]
 };
 
 // A single climb row joined with its session's gym + date — used for grade drill-down
 type ClimbEntry = {
   sessionId: string;
-  grade: string;
-  count: number;
-  gymName: string;
-  date: string;
+  grade:     string;
+  count:     number;
+  gymName:   string;
+  date:      string;
 };
 
 // Shape of a session card built from Supabase data
 type SupabaseSession = {
-  id: string;
-  gymName: string;
-  gradesSummary: string; // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
+  id:            string;
+  gymName:       string;
+  gradesSummary: string;  // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
   totalProblems: number;
-  date: string;          // e.g. "May 27, 2026"
-  createdAt: string;     // ISO string — used to filter sessions by day for chart drill-down
+  date:          string;  // e.g. "May 27, 2026"
+  createdAt:     string;  // ISO string — used to filter sessions by day for chart drill-down
 };
 
-const BG       = '#ffffff';
-const CARD     = '#d8eaf0';
-const SURFACE  = '#d8eaf0';
-const ACCENT   = '#ff507c';
-const PRIMARY  = '#2E7A96';
-const TEXT     = '#0d2b36';
-const TEXT_SUB = '#3d7a8a';
+// Active profile tab
+type ProfileTab = 'overview' | 'sessions' | 'settings';
+
+const BG        = '#ffffff';
+const CARD      = '#d8eaf0';
+const SURFACE   = '#d8eaf0';
+const ACCENT    = '#ff507c';
+const PRIMARY   = '#2E7A96';
+const TEXT      = '#0d2b36';
+const TEXT_SUB  = '#3d7a8a';
 const TEXT_MUTED = '#8bb5c4';
-const DIVIDER  = '#c8dde8';
+const DIVIDER   = '#c8dde8';
 
 const USER = {
-  name: 'Alex Fox',
+  name:     'Alex Fox',
   username: '@alexfox',
   initials: 'AF',
 };
+
+const TABS: { key: ProfileTab; label: string }[] = [
+  { key: 'overview',  label: 'Overview'  },
+  { key: 'sessions',  label: 'Sessions'  },
+  { key: 'settings',  label: 'Settings'  },
+];
 
 function StatColumn({ label, value }: { label: string; value: string | number }) {
   return (
@@ -118,42 +127,18 @@ function StatColumn({ label, value }: { label: string; value: string | number })
   );
 }
 
-function SessionCard({ session }: { session: SupabaseSession }) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardLeft}>
-        <View style={styles.accentBar} />
-        <View style={styles.cardBody}>
-          <Text style={styles.cardGym}>{session.gymName}</Text>
-          <Text style={styles.cardDetail}>{session.gradesSummary}</Text>
-        </View>
-        <Text style={styles.cardDate}>{session.date}</Text>
-      </View>
-    </View>
-  );
-}
-
 function CarouselCard({ session }: { session: SupabaseSession }) {
   return (
     <View style={styles.carouselCard}>
-      {/* Gym tag pill */}
       <View style={styles.carouselPill}>
         <Text style={styles.carouselPillText}>▲  VITAL</Text>
       </View>
-
-      {/* Gym name — hero element */}
       <Text style={styles.carouselGymName}>{session.gymName}</Text>
       <Text style={styles.carouselDate}>{session.date}</Text>
-
-      {/* Divider */}
       <View style={styles.carouselDivider} />
-
-      {/* Grade breakdown */}
       <Text style={styles.carouselGrades} numberOfLines={2}>
         {session.gradesSummary}
       </Text>
-
-      {/* Problems badge */}
       <View style={styles.carouselBadgeRow}>
         <View style={styles.carouselBadge}>
           <Text style={styles.carouselBadgeValue}>{session.totalProblems}</Text>
@@ -165,28 +150,30 @@ function CarouselCard({ session }: { session: SupabaseSession }) {
 }
 
 export default function ProfileScreen() {
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [bannerUri, setBannerUri] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<SupabaseSession[]>([]);
-  const [chartData, setChartData] = useState<ChartData | null>(null);
+  const router = useRouter();
+
+  const [avatarUri, setAvatarUri]   = useState<string | null>(null);
+  const [bannerUri, setBannerUri]   = useState<string | null>(null);
+  const [sessions,  setSessions]    = useState<SupabaseSession[]>([]);
+  const [chartData, setChartData]   = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
-  const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null); // 0=Mon … 6=Sun
-  const carouselRef = useRef<ScrollView>(null);
+  const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null);
+  const [climbEntries, setClimbEntries]       = useState<ClimbEntry[]>([]);
+  const [selectedGrade, setSelectedGrade]     = useState<string | null>(null);
+  const [activeTab, setActiveTab]   = useState<ProfileTab>('overview');
   const [activeSession, setActiveSession] = useState(0);
+  const carouselRef = useRef<ScrollView>(null);
+
+  const [stats, setStats] = useState<{
+    totalClimbs: number;
+    gymsVisited: number;
+    topGrade:    string;
+  }>({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
 
   const handleCarouselScroll = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
     setActiveSession(Math.min(Math.max(index, 0), sessions.length - 1));
   };
-  const [climbEntries, setClimbEntries] = useState<ClimbEntry[]>([]);
-  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
-
-  // Stats derived from the same Supabase fetch — default while loading
-  const [stats, setStats] = useState<{
-    totalClimbs: number;
-    gymsVisited: number;
-    topGrade: string;
-  }>({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
 
   useEffect(() => {
     getProfileAvatar().then(setAvatarUri);
@@ -194,8 +181,7 @@ export default function ProfileScreen() {
   }, []);
 
   // Every time the Profile tab gains focus, fetch sessions + climbs fresh from
-  // Supabase in two queries, then derive both the session cards and the stats
-  // from the same data so there is no stale cache and no extra round-trips.
+  // Supabase then derive all stats and chart data — no extra round-trips.
   useFocusEffect(
     useCallback(() => {
       const loadData = async () => {
@@ -203,7 +189,7 @@ export default function ProfileScreen() {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
 
-          // ── 1. Sessions ──────────────────────────────────────────
+          // ── 1. Sessions ─────────────────────────────────────────
           const { data: rawSessions, error: sessionsError } = await supabase
             .from('sessions')
             .select('id, gym_id, total_problems, created_at')
@@ -215,10 +201,11 @@ export default function ProfileScreen() {
           if (rawSessions.length === 0) {
             setSessions([]);
             setStats({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
+            setChartsLoading(false);
             return;
           }
 
-          // ── 2. Climbs for all sessions in one query ──────────────
+          // ── 2. Climbs ───────────────────────────────────────────
           const sessionIds = rawSessions.map((s) => s.id);
           const { data: climbs } = await supabase
             .from('climbs')
@@ -227,80 +214,64 @@ export default function ProfileScreen() {
 
           const allClimbs = climbs ?? [];
 
-          // Group climbs by session ID so each card gets its own grade list
           const climbsBySession: Record<string, Array<{ grade: string; count: number }>> = {};
           allClimbs.forEach((c) => {
             if (!climbsBySession[c.session_id]) climbsBySession[c.session_id] = [];
             climbsBySession[c.session_id].push({ grade: c.grade, count: c.count });
           });
 
-          // ── 3. Build session cards ───────────────────────────────
+          // ── 3. Session cards ────────────────────────────────────
           const formatted: SupabaseSession[] = rawSessions.map((s) => {
-            const gymName = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
-
-            // Sort grades low → high, build "V3 ×2  ·  V4 ×3" summary
+            const gymName      = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
             const sessionClimbs = (climbsBySession[s.id] ?? [])
               .sort((a, b) => GRADES.indexOf(a.grade) - GRADES.indexOf(b.grade));
             const gradesSummary =
               sessionClimbs.length > 0
                 ? sessionClimbs.map((c) => `${c.grade} ×${c.count}`).join('  ·  ')
                 : `${s.total_problems} problems`;
-
             const date = new Date(s.created_at).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
+              month: 'short', day: 'numeric', year: 'numeric',
             });
-
             return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date, createdAt: s.created_at };
           });
           setSessions(formatted);
 
-          // ── 4. Derive stats from the same data — no extra queries ─
-          const uniqueGyms = new Set(rawSessions.map((s) => s.gym_id)).size;
-          const totalClimbs = allClimbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
-          let topGradeIndex = -1;
+          // ── 4. Stats ────────────────────────────────────────────
+          const uniqueGyms   = new Set(rawSessions.map((s) => s.gym_id)).size;
+          const totalClimbs  = allClimbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
+          let topGradeIndex  = -1;
           allClimbs.forEach((c) => {
             const idx = GRADES.indexOf(c.grade);
             if (idx > topGradeIndex) topGradeIndex = idx;
           });
-          const topGrade = topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—';
+          setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade: topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—' });
 
-          setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade });
-
-          // ── 5. Derive chart data from the same fetched data ──────
-          // No extra Supabase queries needed — everything comes from
-          // rawSessions (created_at, total_problems) and allClimbs (grade, count).
-
-          // Weekly intensity: total problems per day for the current Mon–Sun week
-          const now = new Date();
-          const dayOfWeek = now.getDay(); // 0 = Sun
-          const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-          const weekStart = new Date(now);
+          // ── 5. Chart data ───────────────────────────────────────
+          const now          = new Date();
+          const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+          const weekStart    = new Date(now);
           weekStart.setDate(now.getDate() - daysFromMonday);
           weekStart.setHours(0, 0, 0, 0);
 
-          const dailyCounts = [0, 0, 0, 0, 0, 0, 0]; // index 0 = Mon, 6 = Sun
+          const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
           rawSessions.forEach((s) => {
             const d = new Date(s.created_at);
             if (d >= weekStart) {
-              const idx = (d.getDay() + 6) % 7; // convert Sun=0 to Mon=0
+              const idx = (d.getDay() + 6) % 7;
               if (idx < 7) dailyCounts[idx] += s.total_problems;
             }
           });
 
-          // Grade distribution: sum climb counts for each grade V0–V10
           const gradeCounts = new Array(11).fill(0);
           allClimbs.forEach((c) => {
             const idx = GRADES.indexOf(c.grade);
             if (idx >= 0) gradeCounts[idx] += c.count;
           });
-          const maxGradeVal = Math.max(...gradeCounts);
+          const maxGradeVal   = Math.max(...gradeCounts);
           const maxGradeIndex = maxGradeVal > 0 ? gradeCounts.indexOf(maxGradeVal) : -1;
 
-          // Monthly volume: total problems per week for the last 12 weeks
           const weeklyTotals: number[] = [];
-          const weekLabels: string[] = [];
+          const weekLabels:   string[] = [];
           for (let i = 11; i >= 0; i--) {
             const wEnd = new Date(now);
             wEnd.setDate(now.getDate() - i * 7);
@@ -308,13 +279,11 @@ export default function ProfileScreen() {
             const wStart = new Date(wEnd);
             wStart.setDate(wEnd.getDate() - 6);
             wStart.setHours(0, 0, 0, 0);
-
-            const weekTotal = rawSessions
-              .filter((s) => { const d = new Date(s.created_at); return d >= wStart && d <= wEnd; })
-              .reduce((sum, s) => sum + s.total_problems, 0);
-
-            weeklyTotals.push(weekTotal);
-            // Only label every other week to avoid crowding the x-axis
+            weeklyTotals.push(
+              rawSessions
+                .filter((s) => { const d = new Date(s.created_at); return d >= wStart && d <= wEnd; })
+                .reduce((sum, s) => sum + s.total_problems, 0)
+            );
             weekLabels.push(
               i % 2 === 0
                 ? wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -322,17 +291,9 @@ export default function ProfileScreen() {
             );
           }
 
-          setChartData({
-            weeklyIntensity: dailyCounts,
-            gradeDistribution: gradeCounts,
-            maxGradeIndex,
-            monthlyVolume: weeklyTotals,
-            weekLabels,
-          });
+          setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels });
 
-          // ── 6. Build climb entries for grade drill-down ───────────
-          // Join each climb row with its session's gym name + date so the
-          // detail panel has everything it needs without extra queries.
+          // ── 6. Climb entries for grade drill-down ───────────────
           const sessionMetaById: Record<string, { gymName: string; date: string }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
@@ -347,24 +308,23 @@ export default function ProfileScreen() {
               .filter((c) => c.count > 0)
               .map((c) => ({
                 sessionId: c.session_id,
-                grade: c.grade,
-                count: c.count,
-                gymName: sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
-                date: sessionMetaById[c.session_id]?.date ?? '',
+                grade:     c.grade,
+                count:     c.count,
+                gymName:   sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
+                date:      sessionMetaById[c.session_id]?.date ?? '',
               }))
           );
 
           setChartsLoading(false);
         } catch {
-          // fail silently — UI keeps showing last known values
           setChartsLoading(false);
         }
       };
-
       loadData();
     }, [])
   );
 
+  // ── Image handlers ───────────────────────────────────────────────
   const handleAvatarPress = () => {
     Alert.alert('Profile Photo', 'Choose a photo for your profile', [
       { text: 'Choose from Library', onPress: pickAvatar },
@@ -375,43 +335,29 @@ export default function ProfileScreen() {
 
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8,
     });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
-      // Show locally right away so the UI feels instant
       setAvatarUri(uri);
-      // Upload to Supabase Storage + write to profiles.avatar_url in background
-      uploadProfileAvatar(uri).then((publicUrl) => {
-        if (publicUrl) setAvatarUri(publicUrl);
-      });
+      uploadProfileAvatar(uri).then((url) => { if (url) setAvatarUri(url); });
     }
   };
 
   const takeAvatarPhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
+      allowsEditing: true, aspect: [1, 1], quality: 0.8,
     });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      uploadProfileAvatar(uri).then((publicUrl) => {
-        if (publicUrl) setAvatarUri(publicUrl);
-      });
+      uploadProfileAvatar(uri).then((url) => { if (url) setAvatarUri(url); });
     }
   };
 
   const handleBannerPress = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [3, 1],   // wide crop for banner
-      quality: 0.85,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [3, 1], quality: 0.85,
     });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
@@ -424,17 +370,14 @@ export default function ProfileScreen() {
     Alert.alert('Share to Feed', 'Add a photo or video to your feed', [
       { text: 'Choose Photo', onPress: () => shareMedia('images') },
       { text: 'Choose Video', onPress: () => shareMedia('videos') },
-      { text: 'Take Photo', onPress: shareFromCamera },
+      { text: 'Take Photo',   onPress: shareFromCamera },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
   const shareMedia = async (type: 'images' | 'videos') => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [type],
-      allowsEditing: true,
-      quality: 0.85,
-      videoMaxDuration: 60,
+      mediaTypes: [type], allowsEditing: true, quality: 0.85, videoMaxDuration: 60,
     });
     if (!result.canceled) {
       const asset = result.assets[0];
@@ -444,29 +387,27 @@ export default function ProfileScreen() {
 
   const shareFromCamera = async () => {
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-    if (!result.canceled) {
-      await publishPost(result.assets[0].uri, 'image');
-    }
+    if (!result.canceled) await publishPost(result.assets[0].uri, 'image');
   };
 
   const publishPost = async (uri: string, mediaType: 'image' | 'video') => {
     await saveUserPost({
-      id: Date.now().toString(),
-      name: USER.name,
-      initials: USER.initials,
-      avatarBg: PRIMARY,
-      timestamp: 'Just now',
-      likes: 0,
-      comments: 0,
-      liked: false,
-      postType: 'photo',
-      media: [{ type: mediaType, uri }],
+      id: Date.now().toString(), name: USER.name, initials: USER.initials,
+      avatarBg: PRIMARY, timestamp: 'Just now', likes: 0, comments: 0,
+      liked: false, postType: 'photo', media: [{ type: mediaType, uri }],
     });
     Alert.alert('Posted!', 'Your photo is now live on the feed.');
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace('/auth/login');
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+
+      {/* ── Top header row (always visible) ────────────────────── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerActions}>
@@ -479,34 +420,48 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* ── Tab bar — fixed, always visible ────────────────────── */}
+      <View style={styles.tabBar}>
+        {TABS.map(({ key, label }) => {
+          const isActive = activeTab === key;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={styles.tabItem}
+              onPress={() => setActiveTab(key)}
+              activeOpacity={0.7}>
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                {label}
+              </Text>
+              {isActive && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Single scroll: profile header + active tab content ──── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* ── Banner ────────────────────────────────────────────── */}
+        {/* Profile section — scrolls with the page */}
+        <View>
+        {/* Banner */}
         <View style={styles.bannerSection}>
           {bannerUri ? (
             <Image source={{ uri: bannerUri }} style={styles.bannerImage} resizeMode="cover" />
           ) : (
             <View style={styles.bannerPlaceholder} />
           )}
-          {/* Camera button — tap to change banner */}
-          <TouchableOpacity
-            style={styles.bannerCameraBtn}
-            onPress={handleBannerPress}
-            activeOpacity={0.8}>
+          <TouchableOpacity style={styles.bannerCameraBtn} onPress={handleBannerPress} activeOpacity={0.8}>
             <SymbolView name="camera.fill" size={15} tintColor="#ffffff" />
           </TouchableOpacity>
         </View>
 
-        {/* ── Identity — avatar overlaps banner, name + Add Friend ─ */}
+        {/* Identity */}
         <View style={styles.identitySection}>
-          {/* Avatar floats up 36 px into the banner */}
-          <TouchableOpacity
-            style={styles.avatarWrapper}
-            onPress={handleAvatarPress}
-            activeOpacity={0.85}>
+          <TouchableOpacity style={styles.avatarWrapper} onPress={handleAvatarPress} activeOpacity={0.85}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
             ) : (
@@ -519,7 +474,6 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Name left, Add Friend button right */}
           <View style={styles.nameRow}>
             <View>
               <Text style={styles.name}>{USER.name}</Text>
@@ -531,7 +485,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats — live from Supabase */}
+        {/* Stats */}
         <View style={styles.statsRow}>
           <StatColumn label="Total Climbs" value={stats.totalClimbs} />
           <View style={styles.statDivider} />
@@ -539,300 +493,310 @@ export default function ProfileScreen() {
           <View style={styles.statDivider} />
           <StatColumn label="Top Grade" value={stats.topGrade} />
         </View>
+        </View>
 
-        {/* ── Charts ────────────────────────────────────────────── */}
-        {chartsLoading ? (
-          <View style={styles.chartsLoadingContainer}>
-            <ActivityIndicator size="small" color={PRIMARY} />
-          </View>
-        ) : chartData ? (
-          <>
-            {/* Section 1 — Weekly Intensity (tappable day chips) */}
-            <View style={styles.chartCard}>
-              <Text style={styles.chartTitle}>Weekly Intensity</Text>
-              <Text style={styles.chartSubtitle}>Problems logged this week · tap a day to drill down</Text>
-              <BarChart
-                data={{
-                  labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                  datasets: [{
-                    data: chartData.weeklyIntensity,
-                    colors: chartData.weeklyIntensity.map((_, i) =>
-                      (_opacity: number) =>
-                        selectedWeekDay === null || selectedWeekDay === i
-                          ? '#2E7A96'
-                          : 'rgba(46, 122, 150, 0.3)'
-                    ),
-                  }],
-                }}
-                width={CHART_WIDTH}
-                height={180}
-                chartConfig={PRIMARY_CHART_CONFIG}
-                style={styles.chart}
-                withCustomBarColorFromData
-                flatColor
-                fromZero
-                showValuesOnTopOfBars={false}
-                withInnerLines={false}
-                yAxisLabel=""
-                yAxisSuffix=""
-              />
+      {/* ── Overview tab — charts ───────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <View style={styles.tabContentView}>
 
-              {/* Day chips — one per bar, tap to see that day's sessions */}
-              <View style={styles.dayChipRow}>
-                {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((label, i) => {
-                  const hasClimbs = chartData.weeklyIntensity[i] > 0;
-                  const isSelected = selectedWeekDay === i;
-                  return (
-                    <TouchableOpacity
-                      key={label}
-                      style={[
-                        styles.dayChip,
-                        isSelected && styles.dayChipActive,
-                        !hasClimbs && styles.dayChipEmpty,
-                      ]}
-                      onPress={() => setSelectedWeekDay(isSelected ? null : i)}
-                      activeOpacity={0.7}
-                      disabled={!hasClimbs}>
-                      <Text style={[styles.dayChipLabel, isSelected && styles.dayChipLabelActive]}>
-                        {label}
-                      </Text>
-                      {hasClimbs && (
-                        <Text style={[styles.dayChipCount, isSelected && styles.dayChipCountActive]}>
-                          {chartData.weeklyIntensity[i]}
+          {chartsLoading ? (
+            <View style={styles.chartsLoadingContainer}>
+              <ActivityIndicator size="small" color={PRIMARY} />
+            </View>
+          ) : chartData ? (
+            <>
+              {/* Weekly Intensity */}
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Weekly Intensity</Text>
+                <Text style={styles.chartSubtitle}>Problems logged this week · tap a day to drill down</Text>
+                <BarChart
+                  data={{
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                      data: chartData.weeklyIntensity,
+                      colors: chartData.weeklyIntensity.map((_, i) =>
+                        (_opacity: number) =>
+                          selectedWeekDay === null || selectedWeekDay === i
+                            ? '#2E7A96'
+                            : 'rgba(46, 122, 150, 0.3)'
+                      ),
+                    }],
+                  }}
+                  width={CHART_WIDTH}
+                  height={180}
+                  chartConfig={PRIMARY_CHART_CONFIG}
+                  style={styles.chart}
+                  withCustomBarColorFromData
+                  flatColor
+                  fromZero
+                  showValuesOnTopOfBars={false}
+                  withInnerLines={false}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                />
+
+                {/* Day chips */}
+                <View style={styles.dayChipRow}>
+                  {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((label, i) => {
+                    const hasClimbs = chartData.weeklyIntensity[i] > 0;
+                    const isSelected = selectedWeekDay === i;
+                    return (
+                      <TouchableOpacity
+                        key={label}
+                        style={[
+                          styles.dayChip,
+                          isSelected && styles.dayChipActive,
+                          !hasClimbs && styles.dayChipEmpty,
+                        ]}
+                        onPress={() => setSelectedWeekDay(isSelected ? null : i)}
+                        activeOpacity={0.7}
+                        disabled={!hasClimbs}>
+                        <Text style={[styles.dayChipLabel, isSelected && styles.dayChipLabelActive]}>
+                          {label}
                         </Text>
+                        {hasClimbs && (
+                          <Text style={[styles.dayChipCount, isSelected && styles.dayChipCountActive]}>
+                            {chartData.weeklyIntensity[i]}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Day drill-down */}
+                {selectedWeekDay !== null && (() => {
+                  const now = new Date();
+                  const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
+                  const monday = new Date(now);
+                  monday.setDate(now.getDate() - daysFromMonday);
+                  monday.setHours(0, 0, 0, 0);
+                  const targetDay = new Date(monday);
+                  targetDay.setDate(monday.getDate() + selectedWeekDay);
+
+                  const daySessions = sessions.filter((s) => {
+                    const d = new Date(s.createdAt);
+                    return d.toDateString() === targetDay.toDateString();
+                  });
+
+                  const dayLabel = targetDay.toLocaleDateString('en-US', {
+                    weekday: 'long', month: 'short', day: 'numeric',
+                  });
+
+                  return (
+                    <View style={styles.dayDetail}>
+                      <Text style={styles.dayDetailHeading}>{dayLabel}</Text>
+                      {daySessions.length === 0 ? (
+                        <Text style={styles.dayDetailEmpty}>No climbs logged this day.</Text>
+                      ) : (
+                        daySessions.map((s) => (
+                          <View key={s.id} style={styles.dayDetailCard}>
+                            <View style={styles.dayDetailAccentBar} />
+                            <View style={styles.dayDetailBody}>
+                              <Text style={styles.dayDetailGym}>{s.gymName}</Text>
+                              <Text style={styles.dayDetailGrades}>{s.gradesSummary}</Text>
+                            </View>
+                            <Text style={styles.dayDetailProblems}>
+                              {s.totalProblems}{'\n'}
+                              <Text style={styles.dayDetailProblemsLabel}>problems</Text>
+                            </Text>
+                          </View>
+                        ))
                       )}
-                    </TouchableOpacity>
+                    </View>
                   );
-                })}
+                })()}
               </View>
 
-              {/* Day detail — sessions for the selected day */}
-              {selectedWeekDay !== null && (() => {
-                // Work out which calendar date the selected chip represents
-                const now = new Date();
-                const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
-                const monday = new Date(now);
-                monday.setDate(now.getDate() - daysFromMonday);
-                monday.setHours(0, 0, 0, 0);
-                const targetDay = new Date(monday);
-                targetDay.setDate(monday.getDate() + selectedWeekDay);
+              {/* Grade Distribution */}
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Grade Distribution</Text>
+                <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to drill down</Text>
 
-                const daySessions = sessions.filter((s) => {
-                  const d = new Date(s.createdAt);
-                  return d.toDateString() === targetDay.toDateString();
-                });
+                {/* Custom View-based bar chart — no chart-kit clipping */}
+                {(() => {
+                  const maxVal = Math.max(...chartData.gradeDistribution, 1);
+                  return (
+                    <View style={styles.gradeBarChart}>
+                      {GRADES.map((grade, i) => {
+                        const val  = chartData.gradeDistribution[i];
+                        const barH = val > 0 ? Math.max((val / maxVal) * 130, 5) : 0;
+                        const isPeak     = i === chartData.maxGradeIndex;
+                        const isSelected = selectedGrade === grade;
+                        return (
+                          <TouchableOpacity
+                            key={grade}
+                            style={styles.gradeBarSlot}
+                            onPress={() => setSelectedGrade(isSelected ? null : grade)}
+                            activeOpacity={val > 0 ? 0.7 : 1}
+                            disabled={val === 0}>
+                            <View style={styles.gradeBarArea}>
+                              {val > 0 && (
+                                <View
+                                  style={[
+                                    styles.gradeBar,
+                                    {
+                                      height: barH,
+                                      backgroundColor: isPeak ? ACCENT : PRIMARY,
+                                      opacity: selectedGrade !== null && !isSelected ? 0.35 : 1,
+                                    },
+                                  ]}
+                                />
+                              )}
+                            </View>
+                            <Text
+                              style={[styles.gradeBarLabel, isSelected && styles.gradeBarLabelActive]}
+                              numberOfLines={1}>
+                              {grade}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
 
-                const dayLabel = targetDay.toLocaleDateString('en-US', {
-                  weekday: 'long', month: 'short', day: 'numeric',
-                });
+                {/* Grade chips */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.gradeChipScroll}
+                  contentContainerStyle={styles.gradeChipScrollContent}>
+                  {GRADES.map((grade, i) => {
+                    const total     = chartData.gradeDistribution[i];
+                    const hasClimbs = total > 0;
+                    const isSelected = selectedGrade === grade;
+                    const isPeak     = i === chartData.maxGradeIndex;
+                    return (
+                      <TouchableOpacity
+                        key={grade}
+                        style={[
+                          styles.gradeChip,
+                          isSelected && (isPeak ? styles.gradeChipActivePeak : styles.gradeChipActive),
+                          !hasClimbs && styles.gradeChipEmpty,
+                        ]}
+                        onPress={() => setSelectedGrade(isSelected ? null : grade)}
+                        activeOpacity={0.7}
+                        disabled={!hasClimbs}>
+                        <Text style={[styles.gradeChipLabel, isSelected && styles.gradeChipLabelActive]}>
+                          {grade}
+                        </Text>
+                        {hasClimbs && (
+                          <Text style={[styles.gradeChipCount, isSelected && styles.gradeChipCountActive]}>
+                            ×{total}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
 
-                return (
-                  <View style={styles.dayDetail}>
-                    <Text style={styles.dayDetailHeading}>{dayLabel}</Text>
-                    {daySessions.length === 0 ? (
-                      <Text style={styles.dayDetailEmpty}>No climbs logged this day.</Text>
-                    ) : (
-                      daySessions.map((s) => (
-                        <View key={s.id} style={styles.dayDetailCard}>
-                          <View style={styles.dayDetailAccentBar} />
+                {/* Grade drill-down */}
+                {selectedGrade !== null && (() => {
+                  const entries    = climbEntries.filter((e) => e.grade === selectedGrade);
+                  const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
+                  return (
+                    <View style={styles.dayDetail}>
+                      <Text style={styles.dayDetailHeading}>
+                        {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
+                      </Text>
+                      {entries.map((e, idx) => (
+                        <View key={`${e.sessionId}-${idx}`} style={styles.dayDetailCard}>
+                          <View style={[styles.dayDetailAccentBar, { backgroundColor: ACCENT }]} />
                           <View style={styles.dayDetailBody}>
-                            <Text style={styles.dayDetailGym}>{s.gymName}</Text>
-                            <Text style={styles.dayDetailGrades}>{s.gradesSummary}</Text>
+                            <Text style={styles.dayDetailGym}>{e.gymName}</Text>
+                            <Text style={styles.dayDetailGrades}>{e.date}</Text>
                           </View>
                           <Text style={styles.dayDetailProblems}>
-                            {s.totalProblems}{'\n'}
-                            <Text style={styles.dayDetailProblemsLabel}>problems</Text>
+                            ×{e.count}{'\n'}
+                            <Text style={styles.dayDetailProblemsLabel}>sends</Text>
                           </Text>
                         </View>
-                      ))
-                    )}
-                  </View>
-                );
-              })()}
+                      ))}
+                    </View>
+                  );
+                })()}
+              </View>
+
+              {/* Monthly Volume */}
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Monthly Volume</Text>
+                <Text style={styles.chartSubtitle}>Problems logged over time</Text>
+                <LineChart
+                  data={{
+                    labels: chartData.weekLabels,
+                    datasets: [{ data: chartData.monthlyVolume }],
+                  }}
+                  width={CHART_WIDTH}
+                  height={180}
+                  chartConfig={ACCENT_CHART_CONFIG}
+                  style={styles.chart}
+                  bezier
+                  fromZero
+                  withInnerLines={false}
+                  withDots
+                  withShadow={false}
+                />
+              </View>
+            </>
+          ) : null}
+        </View>
+      )}
+
+      {/* ── Sessions tab — carousel ──────────────────────────────── */}
+      {activeTab === 'sessions' && (
+        <View style={styles.tabContentView}>
+
+          {sessions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🧗</Text>
+              <Text style={styles.emptyTitle}>NO SESSIONS YET</Text>
+              <Text style={styles.emptySub}>Log a climb at any gym to see your sessions here</Text>
             </View>
+          ) : (
+            <>
+              <View style={styles.carouselHeader}>
+                <Text style={styles.sectionTitle}>Your Sessions</Text>
+                <Text style={styles.carouselCounter}>
+                  {activeSession + 1} / {sessions.length}
+                </Text>
+              </View>
 
-            {/* Section 2 — Grade Distribution (tappable grade chips) */}
-            <View style={styles.chartCard}>
-              <Text style={styles.chartTitle}>Grade Distribution</Text>
-              <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to drill down</Text>
-              {/* Custom bar chart — built from Views so V10 is never clipped */}
-              {(() => {
-                const maxVal = Math.max(...chartData.gradeDistribution, 1);
-                return (
-                  <View style={styles.gradeBarChart}>
-                    {GRADES.map((grade, i) => {
-                      const val = chartData.gradeDistribution[i];
-                      // Proportional height; minimum 5px so 1-count bars are visible
-                      const barH = val > 0 ? Math.max((val / maxVal) * 130, 5) : 0;
-                      const isPeak = i === chartData.maxGradeIndex;
-                      const isSelected = selectedGrade === grade;
-                      return (
-                        <TouchableOpacity
-                          key={grade}
-                          style={styles.gradeBarSlot}
-                          onPress={() => setSelectedGrade(isSelected ? null : grade)}
-                          activeOpacity={val > 0 ? 0.7 : 1}
-                          disabled={val === 0}>
-                          {/* Fixed-height well — bar grows from the bottom */}
-                          <View style={styles.gradeBarArea}>
-                            {val > 0 && (
-                              <View
-                                style={[
-                                  styles.gradeBar,
-                                  {
-                                    height: barH,
-                                    backgroundColor: isPeak ? ACCENT : PRIMARY,
-                                    opacity:
-                                      selectedGrade !== null && !isSelected ? 0.35 : 1,
-                                  },
-                                ]}
-                              />
-                            )}
-                          </View>
-                          <Text
-                            style={[
-                              styles.gradeBarLabel,
-                              isSelected && styles.gradeBarLabelActive,
-                            ]}
-                            numberOfLines={1}>
-                            {grade}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                );
-              })()}
-
-              {/* Grade chips — horizontal scroll, one per V-grade */}
               <ScrollView
+                ref={carouselRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.gradeChipScroll}
-                contentContainerStyle={styles.gradeChipScrollContent}>
-                {GRADES.map((grade, i) => {
-                  const total = chartData.gradeDistribution[i];
-                  const hasClimbs = total > 0;
-                  const isSelected = selectedGrade === grade;
-                  const isPeak = i === chartData.maxGradeIndex;
-                  return (
-                    <TouchableOpacity
-                      key={grade}
-                      style={[
-                        styles.gradeChip,
-                        isSelected && (isPeak ? styles.gradeChipActivePeak : styles.gradeChipActive),
-                        !hasClimbs && styles.gradeChipEmpty,
-                      ]}
-                      onPress={() => setSelectedGrade(isSelected ? null : grade)}
-                      activeOpacity={0.7}
-                      disabled={!hasClimbs}>
-                      <Text style={[styles.gradeChipLabel, isSelected && styles.gradeChipLabelActive]}>
-                        {grade}
-                      </Text>
-                      {hasClimbs && (
-                        <Text style={[styles.gradeChipCount, isSelected && styles.gradeChipCountActive]}>
-                          ×{total}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
+                snapToInterval={CARD_WIDTH + CARD_GAP}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                onMomentumScrollEnd={handleCarouselScroll}
+                contentContainerStyle={styles.carouselContent}>
+                {sessions.map((session) => (
+                  <CarouselCard key={session.id} session={session} />
+                ))}
               </ScrollView>
 
-              {/* Grade detail — sessions for the selected grade */}
-              {selectedGrade !== null && (() => {
-                const entries = climbEntries.filter((e) => e.grade === selectedGrade);
-                const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
-                return (
-                  <View style={styles.dayDetail}>
-                    <Text style={styles.dayDetailHeading}>
-                      {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
-                    </Text>
-                    {entries.map((e, idx) => (
-                      <View key={`${e.sessionId}-${idx}`} style={styles.dayDetailCard}>
-                        <View style={[styles.dayDetailAccentBar, { backgroundColor: ACCENT }]} />
-                        <View style={styles.dayDetailBody}>
-                          <Text style={styles.dayDetailGym}>{e.gymName}</Text>
-                          <Text style={styles.dayDetailGrades}>{e.date}</Text>
-                        </View>
-                        <Text style={styles.dayDetailProblems}>
-                          ×{e.count}{'\n'}
-                          <Text style={styles.dayDetailProblemsLabel}>sends</Text>
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                );
-              })()}
-            </View>
+              {sessions.length > 1 && (
+                <View style={styles.dotRow}>
+                  {sessions.slice(0, Math.min(sessions.length, 7)).map((_, i) => (
+                    <View key={i} style={[styles.dot, i === activeSession && styles.dotActive]} />
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
 
-            {/* Section 3 — Monthly Volume */}
-            <View style={styles.chartCard}>
-              <Text style={styles.chartTitle}>Monthly Volume</Text>
-              <Text style={styles.chartSubtitle}>Problems logged over time</Text>
-              <LineChart
-                data={{
-                  labels: chartData.weekLabels,
-                  datasets: [{ data: chartData.monthlyVolume }],
-                }}
-                width={CHART_WIDTH}
-                height={180}
-                chartConfig={ACCENT_CHART_CONFIG}
-                style={styles.chart}
-                bezier
-                fromZero
-                withInnerLines={false}
-                withDots
-                withShadow={false}
-              />
-            </View>
-          </>
-        ) : null}
+      {/* ── Settings tab — placeholder ───────────────────────────── */}
+      {activeTab === 'settings' && (
+        <View style={styles.tabContentView}>
+          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.8}>
+            <Text style={styles.signOutLabel}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-        {/* Sessions — carousel */}
-        {sessions.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🧗</Text>
-            <Text style={styles.emptyTitle}>NO SESSIONS YET</Text>
-            <Text style={styles.emptySub}>Log a climb at any gym to see your sessions here</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.carouselHeader}>
-              <Text style={styles.sectionTitle}>Your Sessions</Text>
-              <Text style={styles.carouselCounter}>
-                {activeSession + 1} / {sessions.length}
-              </Text>
-            </View>
-
-            {/* Peek carousel — next card visible on the right edge */}
-            <ScrollView
-              ref={carouselRef}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={CARD_WIDTH + CARD_GAP}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              onMomentumScrollEnd={handleCarouselScroll}
-              contentContainerStyle={styles.carouselContent}>
-              {sessions.map((session) => (
-                <CarouselCard key={session.id} session={session} />
-              ))}
-            </ScrollView>
-
-            {/* Dot indicator — dots for ≤ 7 sessions, counter for more */}
-            {sessions.length > 1 && (
-              <View style={styles.dotRow}>
-                {sessions.slice(0, Math.min(sessions.length, 7)).map((_, i) => (
-                  <View
-                    key={i}
-                    style={[styles.dot, i === activeSession && styles.dotActive]}
-                  />
-                ))}
-              </View>
-            )}
-          </>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -843,6 +807,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG,
   },
+
+  // ─── Top header row ───────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -868,10 +834,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
 
-  // ─── Banner ────────────────────────────────────────────────────
+  // ─── Banner ───────────────────────────────────────────────────
   bannerSection: {
     width: '100%',
     height: 140,
@@ -898,13 +862,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Identity (avatar + name, sits below banner) ───────────────
+  // ─── Identity ─────────────────────────────────────────────────
   identitySection: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   avatarWrapper: {
-    marginTop: -36,          // pulls avatar 36 px up into the banner
+    marginTop: -36,
     marginBottom: 12,
     alignSelf: 'flex-start',
     position: 'relative',
@@ -912,12 +876,12 @@ const styles = StyleSheet.create({
   avatar: {
     width: 100,
     height: 100,
-    borderRadius: 16,        // Square with soft corners — per design system
+    borderRadius: 16,
     backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: BG,         // white ring separates avatar from banner
+    borderColor: BG,
   },
   avatarImage: {
     width: 100,
@@ -989,7 +953,7 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
     borderRadius: 16,
     paddingVertical: 20,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   statColumn: {
     flex: 1,
@@ -1015,14 +979,270 @@ const styles = StyleSheet.create({
     backgroundColor: DIVIDER,
     marginVertical: 4,
   },
+
+  // ─── Tab bar ──────────────────────────────────────────────────
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: BG,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 13,
+    position: 'relative',
+  },
+  tabLabel: {
+    fontSize: 12,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  tabLabelActive: {
+    color: PRIMARY,
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 16,
+    right: 16,
+    height: 2,
+    backgroundColor: PRIMARY,
+    borderRadius: 1,
+  },
+
+  // ─── Outer scroll + tab content ───────────────────────────────
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  tabContentView: {
+    paddingTop: 20,
+  },
+
+  // ─── Charts ───────────────────────────────────────────────────
+  chartsLoadingContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  chartCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: CARD,
+    borderRadius: 20,
+    padding: 16,
+    overflow: 'hidden',
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.3,
+    marginBottom: 2,
+  },
+  chartSubtitle: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.2,
+    marginBottom: 12,
+  },
+  chart: {
+    borderRadius: 14,
+    marginLeft: -16,
+  },
+
+  // ─── Grade Distribution custom bar chart ─────────────────────
+  gradeBarChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  gradeBarSlot: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  gradeBarArea: {
+    height: 130,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    width: '100%',
+  },
+  gradeBar: {
+    width: '70%',
+    borderRadius: 4,
+  },
+  gradeBarLabel: {
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.2,
+    marginTop: 4,
+  },
+  gradeBarLabelActive: {
+    color: TEXT,
+    fontFamily: 'DMSans_800ExtraBold',
+  },
+
+  // ─── Day chip row (Weekly Intensity drill-down) ───────────────
+  dayChipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 4,
+  },
+  dayChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: SURFACE,
+    gap: 2,
+  },
+  dayChipActive: {
+    backgroundColor: TEXT,
+  },
+  dayChipEmpty: {
+    opacity: 0.35,
+  },
+  dayChipLabel: {
+    fontSize: 10,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: 0.3,
+  },
+  dayChipLabelActive: {
+    color: '#ffffff',
+  },
+  dayChipCount: {
+    fontSize: 13,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.3,
+  },
+  dayChipCountActive: {
+    color: '#ffffff',
+  },
+
+  // ─── Grade chip row (Grade Distribution drill-down) ───────────
+  gradeChipScroll: {
+    marginTop: 12,
+    marginLeft: -4,
+  },
+  gradeChipScrollContent: {
+    paddingHorizontal: 4,
+    gap: 6,
+    flexDirection: 'row',
+  },
+  gradeChip: {
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: SURFACE,
+    minWidth: 48,
+    gap: 1,
+  },
+  gradeChipActive: {
+    backgroundColor: TEXT,
+  },
+  gradeChipActivePeak: {
+    backgroundColor: TEXT,
+  },
+  gradeChipEmpty: {
+    opacity: 0.3,
+  },
+  gradeChipLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: 0.2,
+  },
+  gradeChipLabelActive: {
+    color: '#ffffff',
+  },
+  gradeChipCount: {
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+  },
+  gradeChipCountActive: {
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // ─── Drill-down detail panel ──────────────────────────────────
+  dayDetail: {
+    marginTop: 16,
+    gap: 8,
+  },
+  dayDetailHeading: {
+    fontSize: 14,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  dayDetailEmpty: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  dayDetailCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  dayDetailAccentBar: {
+    width: 4,
+    height: 36,
+    backgroundColor: PRIMARY,
+    borderRadius: 2,
+  },
+  dayDetailBody: {
+    flex: 1,
+    gap: 2,
+  },
+  dayDetailGym: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: -0.2,
+  },
+  dayDetailGrades: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
+  },
+  dayDetailProblems: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  dayDetailProblemsLabel: {
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  // ─── Sessions carousel ────────────────────────────────────────
   sectionTitle: {
     fontSize: 26,
     fontFamily: 'BebasNeue_400Regular',
     color: TEXT,
     letterSpacing: 1,
   },
-
-  // ─── Carousel ─────────────────────────────────────────────────
   carouselHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -1135,7 +1355,7 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY,
   },
 
-  // ─── Session cards ────────────────────────────────────────────
+  // ─── Session list card (legacy — kept for type safety) ────────
   card: {
     marginHorizontal: 20,
     marginBottom: 10,
@@ -1175,217 +1395,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     marginLeft: 8,
   },
-  // ─── Charts ───────────────────────────────────────────────────
-  chartsLoadingContainer: {
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  chartCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: CARD,
-    borderRadius: 20,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.3,
-    marginBottom: 2,
-  },
-  chartSubtitle: {
-    fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
-    letterSpacing: 0.2,
-    marginBottom: 12,
-  },
-  chart: {
-    borderRadius: 14,
-    marginLeft: -16, // pull left to align chart edge with card edge
-  },
-
-  // ─── Grade Distribution custom bar chart ─────────────────────
-  gradeBarChart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  gradeBarSlot: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  gradeBarArea: {
-    height: 130,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    width: '100%',
-  },
-  gradeBar: {
-    width: '70%',
-    borderRadius: 4,
-  },
-  gradeBarLabel: {
-    fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-    letterSpacing: 0.2,
-    marginTop: 4,
-  },
-  gradeBarLabelActive: {
-    color: TEXT,
-    fontFamily: 'DMSans_800ExtraBold',
-  },
-
-  // ─── Day chip row (Weekly Intensity drill-down) ────────────────
-  dayChipRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 4,
-  },
-  dayChip: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: SURFACE,
-    gap: 2,
-  },
-  dayChipActive: {
-    backgroundColor: TEXT,
-  },
-  dayChipEmpty: {
-    opacity: 0.35,
-  },
-  dayChipLabel: {
-    fontSize: 10,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
-    letterSpacing: 0.3,
-  },
-  dayChipLabelActive: {
-    color: '#ffffff',
-  },
-  dayChipCount: {
-    fontSize: 13,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.3,
-  },
-  dayChipCountActive: {
-    color: '#ffffff',
-  },
-
-  // ─── Grade chip row (Grade Distribution drill-down) ───────────
-  gradeChipScroll: {
-    marginTop: 12,
-    marginLeft: -4,
-  },
-  gradeChipScrollContent: {
-    paddingHorizontal: 4,
-    gap: 6,
-    flexDirection: 'row',
-  },
-  gradeChip: {
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: SURFACE,
-    minWidth: 48,
-    gap: 1,
-  },
-  gradeChipActive: {
-    backgroundColor: TEXT,
-  },
-  gradeChipActivePeak: {
-    backgroundColor: TEXT,
-  },
-  gradeChipEmpty: {
-    opacity: 0.3,
-  },
-  gradeChipLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: 0.2,
-  },
-  gradeChipLabelActive: {
-    color: '#ffffff',
-  },
-  gradeChipCount: {
-    fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-  },
-  gradeChipCountActive: {
-    color: 'rgba(255,255,255,0.85)',
-  },
-
-  // ─── Day detail panel ──────────────────────────────────────────
-  dayDetail: {
-    marginTop: 16,
-    gap: 8,
-  },
-  dayDetailHeading: {
-    fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-  dayDetailEmpty: {
-    fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
-  },
-  dayDetailCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-  },
-  dayDetailAccentBar: {
-    width: 4,
-    height: 36,
-    backgroundColor: PRIMARY,
-    borderRadius: 2,
-  },
-  dayDetailBody: {
-    flex: 1,
-    gap: 2,
-  },
-  dayDetailGym: {
-    fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
-    letterSpacing: -0.2,
-  },
-  dayDetailGrades: {
-    fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
-  },
-  dayDetailProblems: {
-    fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.5,
-    textAlign: 'center',
-  },
-  dayDetailProblemsLabel: {
-    fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
 
   // ─── Empty state ──────────────────────────────────────────────
   emptyState: {
@@ -1409,5 +1418,20 @@ const styles = StyleSheet.create({
     color: TEXT_SUB,
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+
+  // ─── Settings ─────────────────────────────────────────────────
+  signOutBtn: {
+    marginHorizontal: 20,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  signOutLabel: {
+    fontSize: 15,
+    fontFamily: 'DMSans_700Bold',
+    color: ACCENT,
+    letterSpacing: 0.2,
   },
 });
