@@ -31,9 +31,6 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Chart width = screen width minus card margins (20px × 2) and card padding (16px × 2)
 const CHART_WIDTH = SCREEN_WIDTH - 72;
-// Grade chart: 16px wider so that with marginLeft:-16 it fills exactly to the card's
-// right inner edge, giving V10 the room it needs without being clipped by overflow:hidden.
-const GRADE_CHART_WIDTH = SCREEN_WIDTH - 40;
 
 // Carousel card — wide enough to fill the screen with the next card peeking in from the right
 const CARD_GAP    = 12;
@@ -53,14 +50,6 @@ const BASE_CHART_CONFIG = {
 const PRIMARY_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
   color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,   // PRIMARY teal
-};
-
-// Grade distribution: paddingRight keeps V10 inside the canvas; barPercentage adds gaps between bars
-const GRADE_CHART_CONFIG = {
-  ...BASE_CHART_CONFIG,
-  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,
-  paddingRight: 70,
-  barPercentage: 0.8,
 };
 
 const ACCENT_CHART_CONFIG = {
@@ -666,29 +655,54 @@ export default function ProfileScreen() {
             <View style={styles.chartCard}>
               <Text style={styles.chartTitle}>Grade Distribution</Text>
               <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to drill down</Text>
-              <BarChart
-                data={{
-                  labels: GRADES,
-                  datasets: [{
-                    data: chartData.gradeDistribution,
-                    colors: chartData.gradeDistribution.map((_, i) =>
-                      (_opacity: number) =>
-                        i === chartData.maxGradeIndex ? '#ff507c' : '#2E7A96'
-                    ),
-                  }],
-                }}
-                width={GRADE_CHART_WIDTH}
-                height={180}
-                chartConfig={GRADE_CHART_CONFIG}
-                style={styles.chart}
-                withCustomBarColorFromData
-                flatColor
-                fromZero
-                showValuesOnTopOfBars={false}
-                withInnerLines={false}
-                yAxisLabel=""
-                yAxisSuffix=""
-              />
+              {/* Custom bar chart — built from Views so V10 is never clipped */}
+              {(() => {
+                const maxVal = Math.max(...chartData.gradeDistribution, 1);
+                return (
+                  <View style={styles.gradeBarChart}>
+                    {GRADES.map((grade, i) => {
+                      const val = chartData.gradeDistribution[i];
+                      // Proportional height; minimum 5px so 1-count bars are visible
+                      const barH = val > 0 ? Math.max((val / maxVal) * 130, 5) : 0;
+                      const isPeak = i === chartData.maxGradeIndex;
+                      const isSelected = selectedGrade === grade;
+                      return (
+                        <TouchableOpacity
+                          key={grade}
+                          style={styles.gradeBarSlot}
+                          onPress={() => setSelectedGrade(isSelected ? null : grade)}
+                          activeOpacity={val > 0 ? 0.7 : 1}
+                          disabled={val === 0}>
+                          {/* Fixed-height well — bar grows from the bottom */}
+                          <View style={styles.gradeBarArea}>
+                            {val > 0 && (
+                              <View
+                                style={[
+                                  styles.gradeBar,
+                                  {
+                                    height: barH,
+                                    backgroundColor: isPeak ? ACCENT : PRIMARY,
+                                    opacity:
+                                      selectedGrade !== null && !isSelected ? 0.35 : 1,
+                                  },
+                                ]}
+                              />
+                            )}
+                          </View>
+                          <Text
+                            style={[
+                              styles.gradeBarLabel,
+                              isSelected && styles.gradeBarLabelActive,
+                            ]}
+                            numberOfLines={1}>
+                            {grade}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })()}
 
               {/* Grade chips — horizontal scroll, one per V-grade */}
               <ScrollView
@@ -1191,6 +1205,39 @@ const styles = StyleSheet.create({
   chart: {
     borderRadius: 14,
     marginLeft: -16, // pull left to align chart edge with card edge
+  },
+
+  // ─── Grade Distribution custom bar chart ─────────────────────
+  gradeBarChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  gradeBarSlot: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  gradeBarArea: {
+    height: 130,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    width: '100%',
+  },
+  gradeBar: {
+    width: '70%',
+    borderRadius: 4,
+  },
+  gradeBarLabel: {
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.2,
+    marginTop: 4,
+  },
+  gradeBarLabelActive: {
+    color: TEXT,
+    fontFamily: 'DMSans_800ExtraBold',
   },
 
   // ─── Day chip row (Weekly Intensity drill-down) ────────────────
