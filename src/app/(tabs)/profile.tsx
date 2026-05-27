@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,8 +27,18 @@ import { supabase } from '../../lib/supabase';
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
 // Chart width = screen width minus card margins (20px × 2) and card padding (16px × 2)
-const CHART_WIDTH = Dimensions.get('window').width - 72;
+const CHART_WIDTH = SCREEN_WIDTH - 72;
+// Grade chart: 16px wider so that with marginLeft:-16 it fills exactly to the card's
+// right inner edge, giving V10 the room it needs without being clipped by overflow:hidden.
+const GRADE_CHART_WIDTH = SCREEN_WIDTH - 56;
+
+// Carousel card — wide enough to fill the screen with the next card peeking in from the right
+const CARD_GAP    = 12;
+const CARD_PEEK   = 28;  // how many px of the next card are visible
+const CARD_WIDTH  = SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK; // 20 = left margin
 
 // Shared chart config — teal bars / lines on the card background
 const BASE_CHART_CONFIG = {
@@ -43,6 +53,13 @@ const BASE_CHART_CONFIG = {
 const PRIMARY_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
   color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,   // PRIMARY teal
+};
+
+// Grade distribution uses reduced paddingRight so V10 sits inside the canvas
+const GRADE_CHART_CONFIG = {
+  ...BASE_CHART_CONFIG,
+  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,
+  paddingRight: 30,
 };
 
 const ACCENT_CHART_CONFIG = {
@@ -126,6 +143,37 @@ function SessionCard({ session }: { session: SupabaseSession }) {
   );
 }
 
+function CarouselCard({ session }: { session: SupabaseSession }) {
+  return (
+    <View style={styles.carouselCard}>
+      {/* Gym tag pill */}
+      <View style={styles.carouselPill}>
+        <Text style={styles.carouselPillText}>▲  VITAL</Text>
+      </View>
+
+      {/* Gym name — hero element */}
+      <Text style={styles.carouselGymName}>{session.gymName}</Text>
+      <Text style={styles.carouselDate}>{session.date}</Text>
+
+      {/* Divider */}
+      <View style={styles.carouselDivider} />
+
+      {/* Grade breakdown */}
+      <Text style={styles.carouselGrades} numberOfLines={2}>
+        {session.gradesSummary}
+      </Text>
+
+      {/* Problems badge */}
+      <View style={styles.carouselBadgeRow}>
+        <View style={styles.carouselBadge}>
+          <Text style={styles.carouselBadgeValue}>{session.totalProblems}</Text>
+          <Text style={styles.carouselBadgeLabel}>PROBLEMS</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [bannerUri, setBannerUri] = useState<string | null>(null);
@@ -133,6 +181,13 @@ export default function ProfileScreen() {
   const [chartData, setChartData] = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
   const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null); // 0=Mon … 6=Sun
+  const carouselRef = useRef<ScrollView>(null);
+  const [activeSession, setActiveSession] = useState(0);
+
+  const handleCarouselScroll = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
+    setActiveSession(Math.min(Math.max(index, 0), sessions.length - 1));
+  };
   const [climbEntries, setClimbEntries] = useState<ClimbEntry[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
 
@@ -509,12 +564,22 @@ export default function ProfileScreen() {
               <BarChart
                 data={{
                   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                  datasets: [{ data: chartData.weeklyIntensity }],
+                  datasets: [{
+                    data: chartData.weeklyIntensity,
+                    colors: chartData.weeklyIntensity.map((_, i) =>
+                      (_opacity: number) =>
+                        selectedWeekDay === null || selectedWeekDay === i
+                          ? '#2E7A96'
+                          : 'rgba(46, 122, 150, 0.3)'
+                    ),
+                  }],
                 }}
                 width={CHART_WIDTH}
                 height={180}
                 chartConfig={PRIMARY_CHART_CONFIG}
                 style={styles.chart}
+                withCustomBarColorFromData
+                flatColor
                 fromZero
                 showValuesOnTopOfBars={false}
                 withInnerLines={false}
@@ -611,9 +676,9 @@ export default function ProfileScreen() {
                     ),
                   }],
                 }}
-                width={CHART_WIDTH}
+                width={GRADE_CHART_WIDTH}
                 height={180}
-                chartConfig={PRIMARY_CHART_CONFIG}
+                chartConfig={GRADE_CHART_CONFIG}
                 style={styles.chart}
                 withCustomBarColorFromData
                 flatColor
@@ -709,7 +774,7 @@ export default function ProfileScreen() {
           </>
         ) : null}
 
-        {/* Sessions — live from Supabase */}
+        {/* Sessions — carousel */}
         {sessions.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🧗</Text>
@@ -718,10 +783,39 @@ export default function ProfileScreen() {
           </View>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>Your Sessions</Text>
-            {sessions.map((session) => (
-              <SessionCard key={session.id} session={session} />
-            ))}
+            <View style={styles.carouselHeader}>
+              <Text style={styles.sectionTitle}>Your Sessions</Text>
+              <Text style={styles.carouselCounter}>
+                {activeSession + 1} / {sessions.length}
+              </Text>
+            </View>
+
+            {/* Peek carousel — next card visible on the right edge */}
+            <ScrollView
+              ref={carouselRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={CARD_WIDTH + CARD_GAP}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onMomentumScrollEnd={handleCarouselScroll}
+              contentContainerStyle={styles.carouselContent}>
+              {sessions.map((session) => (
+                <CarouselCard key={session.id} session={session} />
+              ))}
+            </ScrollView>
+
+            {/* Dot indicator — dots for ≤ 7 sessions, counter for more */}
+            {sessions.length > 1 && (
+              <View style={styles.dotRow}>
+                {sessions.slice(0, Math.min(sessions.length, 7)).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[styles.dot, i === activeSession && styles.dotActive]}
+                  />
+                ))}
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -911,8 +1005,119 @@ const styles = StyleSheet.create({
     fontFamily: 'BebasNeue_400Regular',
     color: TEXT,
     letterSpacing: 1,
+  },
+
+  // ─── Carousel ─────────────────────────────────────────────────
+  carouselHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
     marginHorizontal: 20,
     marginBottom: 12,
+  },
+  carouselCounter: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.3,
+  },
+  carouselContent: {
+    paddingLeft: 20,
+    paddingRight: CARD_PEEK,
+    gap: CARD_GAP,
+  },
+  carouselCard: {
+    width: CARD_WIDTH,
+    backgroundColor: CARD,
+    borderRadius: 20,
+    padding: 20,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#b0cdd8',
+  },
+  carouselPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: PRIMARY,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  carouselPillText: {
+    fontSize: 9,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 1,
+  },
+  carouselGymName: {
+    fontSize: 26,
+    fontFamily: 'BebasNeue_400Regular',
+    color: TEXT,
+    letterSpacing: 0.5,
+    lineHeight: 30,
+  },
+  carouselDate: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.2,
+  },
+  carouselDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: DIVIDER,
+    marginVertical: 4,
+  },
+  carouselGrades: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
+    letterSpacing: 0.1,
+    lineHeight: 20,
+  },
+  carouselBadgeRow: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  carouselBadge: {
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  carouselBadgeValue: {
+    fontSize: 22,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.5,
+    lineHeight: 24,
+  },
+  carouselBadgeLabel: {
+    fontSize: 8,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: 'rgba(255,255,255,0.75)',
+    letterSpacing: 1.2,
+  },
+
+  // ─── Dot indicator ────────────────────────────────────────────
+  dotRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: DIVIDER,
+  },
+  dotActive: {
+    width: 18,
+    borderRadius: 3,
+    backgroundColor: PRIMARY,
   },
 
   // ─── Session cards ────────────────────────────────────────────
@@ -999,11 +1204,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#ffffff',
+    backgroundColor: SURFACE,
     gap: 2,
   },
   dayChipActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: TEXT,
   },
   dayChipEmpty: {
     opacity: 0.35,
@@ -1011,7 +1216,7 @@ const styles = StyleSheet.create({
   dayChipLabel: {
     fontSize: 10,
     fontFamily: 'DMSans_700Bold',
-    color: TEXT_SUB,
+    color: TEXT,
     letterSpacing: 0.3,
   },
   dayChipLabelActive: {
@@ -1042,15 +1247,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#ffffff',
+    backgroundColor: SURFACE,
     minWidth: 48,
     gap: 1,
   },
   gradeChipActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: TEXT,
   },
   gradeChipActivePeak: {
-    backgroundColor: ACCENT,  // peak grade uses the pink highlight
+    backgroundColor: TEXT,
   },
   gradeChipEmpty: {
     opacity: 0.3,
@@ -1058,7 +1263,7 @@ const styles = StyleSheet.create({
   gradeChipLabel: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_SUB,
+    color: TEXT,
     letterSpacing: 0.2,
   },
   gradeChipLabelActive: {

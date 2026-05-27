@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { togglePostLike, type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
@@ -65,7 +66,6 @@ function gradeRange(climbs: { grade: string; count: number }[]): string {
 }
 
 async function fetchSessionPosts(): Promise<Post[]> {
-  // Fetch sessions with their climbs (climbs FK is session_id → sessions.id)
   const { data: sessions, error } = await supabase
     .from('sessions')
     .select(`
@@ -84,12 +84,9 @@ async function fetchSessionPosts(): Promise<Post[]> {
     .limit(50);
 
   console.log('[fetchSessionPosts] Supabase query result — error:', error, '| sessions count:', sessions?.length ?? 0);
-  console.log('[fetchSessionPosts] Raw sessions:', sessions);
 
   if (error || !sessions || sessions.length === 0) return [];
 
-  // sessions.user_id → auth.users.id (not directly profiles.id),
-  // so batch-fetch profiles separately and join in JS.
   const userIds = [...new Set(sessions.map((s) => s.user_id))];
   const { data: profiles } = await supabase
     .from('profiles')
@@ -98,7 +95,7 @@ async function fetchSessionPosts(): Promise<Post[]> {
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  const posts = sessions.map((session) => {
+  return sessions.map((session) => {
     const profile = profileMap.get(session.user_id);
     const name = profile?.full_name || profile?.username || 'Climber';
     const grades = (session.climbs ?? []) as { grade: string; count: number }[];
@@ -125,61 +122,232 @@ async function fetchSessionPosts(): Promise<Post[]> {
 
     return post;
   });
-
-  console.log('[fetchSessionPosts] Final posts array being set to state:', posts);
-  return posts;
 }
 
 function useGreeting(name: string) {
   const hour = new Date().getHours();
   const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-  return `Good ${tod}, ${name} 👋`;
+  return `Good ${tod}, ${name}`;
 }
 
-function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }) {
-  const isPhoto = post.postType === 'photo';
+// ─── Avatar helper ────────────────────────────────────────────────────────────
 
+function Avatar({
+  post,
+  size,
+  dark,
+}: {
+  post: Post;
+  size: number;
+  dark?: boolean;
+}) {
+  if (post.avatarUrl) {
+    return (
+      <Image
+        source={{ uri: post.avatarUrl }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size * 0.3,
+          borderWidth: dark ? 2 : 0,
+          borderColor: dark ? 'rgba(255,255,255,0.6)' : 'transparent',
+        }}
+      />
+    );
+  }
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.3,
+        backgroundColor: dark ? 'rgba(255,255,255,0.25)' : post.avatarBg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: dark ? 2 : 0,
+        borderColor: dark ? 'rgba(255,255,255,0.5)' : 'transparent',
+      }}>
+      <Text
+        style={{
+          fontSize: size * 0.32,
+          fontFamily: 'DMSans_800ExtraBold',
+          color: '#ffffff',
+          letterSpacing: 0.3,
+        }}>
+        {post.initials}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Action buttons ───────────────────────────────────────────────────────────
+
+function ActionRow({
+  post,
+  onLike,
+  light,
+}: {
+  post: Post;
+  onLike: (id: string) => void;
+  light?: boolean;
+}) {
+  return (
+    <View style={[actionStyles.row, light && actionStyles.rowLight]}>
+      <TouchableOpacity
+        style={[actionStyles.btn, post.liked && actionStyles.btnActive]}
+        activeOpacity={0.7}
+        onPress={() => onLike(post.id)}>
+        <Text style={[actionStyles.icon, post.liked && actionStyles.iconActive]}>
+          {post.liked ? '♥' : '♡'}
+        </Text>
+        <Text style={[actionStyles.count, post.liked && actionStyles.countActive]}>
+          {post.likes}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={actionStyles.btn} activeOpacity={0.7}>
+        <Text style={actionStyles.icon}>◎</Text>
+        <Text style={actionStyles.count}>{post.comments}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const actionStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rowLight: {},
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: SURFACE,
+  },
+  btnActive: {
+    backgroundColor: 'rgba(255, 80, 124, 0.12)',
+  },
+  icon: {
+    fontSize: 15,
+    color: TEXT_MUTED,
+  },
+  iconActive: {
+    color: ACCENT,
+  },
+  count: {
+    fontSize: 13,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+  },
+  countActive: {
+    color: ACCENT,
+  },
+});
+
+// ─── Full-bleed card (session or photo post with media) ───────────────────────
+
+function FullBleedCard({
+  post,
+  onLike,
+}: {
+  post: Post;
+  onLike: (id: string) => void;
+}) {
+  const isSession = post.postType === 'session';
+  const mediaItem = post.media![0];
+
+  return (
+    <View style={styles.fullBleedCard}>
+      {/* Hero image */}
+      <View style={styles.heroWrapper}>
+        {mediaItem.type === 'image' ? (
+          <Image
+            source={{ uri: mediaItem.uri }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.heroImage, styles.videoPlaceholder]}>
+            <Text style={styles.videoPlayIcon}>▶</Text>
+          </View>
+        )}
+
+        {/* Top gradient + user overlay */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.0)']}
+          style={styles.heroGradient}>
+          <View style={styles.heroUserRow}>
+            <Avatar post={post} size={40} dark />
+            <View style={styles.heroUserMeta}>
+              <Text style={styles.heroUserName}>{post.name}</Text>
+              {isSession && post.gym ? (
+                <Text style={styles.heroGym}>{post.gym}</Text>
+              ) : null}
+            </View>
+            <Text style={styles.heroTimestamp}>{post.timestamp}</Text>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* Stats + actions strip */}
+      <View style={styles.strip}>
+        {isSession && post.problems !== undefined && post.difficulty ? (
+          <>
+            <View style={styles.stripStats}>
+              <View style={styles.stripStat}>
+                <Text style={styles.stripStatValue}>{post.problems}</Text>
+                <Text style={styles.stripStatLabel}>PROBLEMS</Text>
+              </View>
+              <View style={styles.stripDivider} />
+              <View style={styles.stripStat}>
+                <Text style={styles.stripStatValue}>{post.difficulty}</Text>
+                <Text style={styles.stripStatLabel}>DIFFICULTY</Text>
+              </View>
+            </View>
+            <ActionRow post={post} onLike={onLike} />
+          </>
+        ) : (
+          /* Photo-only post: just actions */
+          <View style={{ flex: 1 }}>
+            <ActionRow post={post} onLike={onLike} />
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ─── Plain card (session without photo) ──────────────────────────────────────
+
+function PlainCard({
+  post,
+  onLike,
+}: {
+  post: Post;
+  onLike: (id: string) => void;
+}) {
   return (
     <View style={styles.card}>
       {/* User row */}
       <View style={styles.userRow}>
-        {post.avatarUrl ? (
-          <Image source={{ uri: post.avatarUrl }} style={styles.avatarImage} />
-        ) : (
-          <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
-            <Text style={styles.avatarText}>{post.initials}</Text>
-          </View>
-        )}
+        <Avatar post={post} size={46} />
         <View style={styles.userMeta}>
           <Text style={styles.userName}>{post.name}</Text>
           <Text style={styles.timestamp}>{post.timestamp}</Text>
         </View>
       </View>
 
-      {/* Gym label — session posts only */}
-      {!isPhoto && post.gym ? (
+      {/* Gym label */}
+      {post.gym ? (
         <Text style={styles.gymLabel}>{post.gym}</Text>
       ) : null}
 
-      {/* Media */}
-      {post.media && post.media.length > 0 && (
-        <View style={styles.mediaContainer}>
-          {post.media[0].type === 'image' ? (
-            <Image
-              source={{ uri: post.media[0].uri }}
-              style={styles.mediaImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.videoPlaceholder}>
-              <Text style={styles.videoPlayIcon}>▶</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Stats — session posts only */}
-      {!isPhoto && post.problems !== undefined && post.difficulty ? (
+      {/* Stats */}
+      {post.problems !== undefined && post.difficulty ? (
         <View style={styles.statsBlock}>
           <View style={styles.stat}>
             <Text style={styles.statValue}>{post.problems}</Text>
@@ -194,26 +362,23 @@ function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }
       ) : null}
 
       {/* Actions */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.actionBtn, post.liked && styles.actionBtnActive]}
-          activeOpacity={0.7}
-          onPress={() => onLike(post.id)}>
-          <Text style={[styles.actionIcon, post.liked && styles.actionIconActive]}>
-            {post.liked ? '♥' : '♡'}
-          </Text>
-          <Text style={[styles.actionCount, post.liked && styles.actionCountActive]}>
-            {post.likes}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}>
-          <Text style={styles.actionIcon}>◎</Text>
-          <Text style={styles.actionCount}>{post.comments}</Text>
-        </TouchableOpacity>
+      <View style={[styles.actionsRow, { paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: DIVIDER }]}>
+        <ActionRow post={post} onLike={onLike} />
       </View>
     </View>
   );
 }
+
+// ─── FeedCard dispatcher ──────────────────────────────────────────────────────
+
+function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }) {
+  if (post.media && post.media.length > 0) {
+    return <FullBleedCard post={post} onLike={onLike} />;
+  }
+  return <PlainCard post={post} onLike={onLike} />;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
   const greeting = useGreeting('Alex');
@@ -227,7 +392,6 @@ export default function FeedScreen() {
 
       fetchSessionPosts().then((sessionPosts) => {
         if (!active) return;
-        console.log('[Feed] sessionPosts count:', sessionPosts.length, '| ids:', sessionPosts.map(p => p.id));
         setPosts(sessionPosts);
         setLoading(false);
       });
@@ -264,19 +428,17 @@ export default function FeedScreen() {
               <Text style={styles.emptyText}>Log a climb to see it here.</Text>
             </View>
           ) : (
-            (() => {
-              console.log('[Feed render] posts.length:', posts.length, '| ids:', posts.map(p => p.id));
-              return posts.map((post) => {
-                console.log('[Feed render] Rendering card for post.id:', post.id, '| postType:', post.postType);
-                return <FeedCard key={post.id} post={post} onLike={handleLike} />;
-              });
-            })()
+            posts.map((post) => (
+              <FeedCard key={post.id} post={post} onLike={handleLike} />
+            ))
           )}
         </ScrollView>
       )}
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -325,9 +487,117 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 32,
     gap: 16,
   },
+
+  // ── Full-bleed card ─────────────────────────────────────────────────────────
+  fullBleedCard: {
+    backgroundColor: BG,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  heroWrapper: {
+    position: 'relative',
+  },
+  heroImage: {
+    width: '100%',
+    height: 300,
+  },
+  videoPlaceholder: {
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayIcon: {
+    fontSize: 44,
+    color: '#ffffff',
+    opacity: 0.9,
+  },
+  heroGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 130,
+    justifyContent: 'flex-start',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  heroUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  heroUserMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  heroUserName: {
+    fontSize: 15,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.1,
+  },
+  heroGym: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: 'rgba(255,255,255,0.78)',
+    letterSpacing: 0.1,
+  },
+  heroTimestamp: {
+    fontSize: 11,
+    fontFamily: 'DMSans_600SemiBold',
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 0.1,
+  },
+
+  // ── Stats + actions strip ────────────────────────────────────────────────────
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: BG,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  stripStats: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  stripStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  stripStatValue: {
+    fontSize: 20,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.4,
+  },
+  stripStatLabel: {
+    fontSize: 9,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 1.3,
+  },
+  stripDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: DIVIDER,
+    marginHorizontal: 4,
+  },
+
+  // ── Plain card (no photo) ────────────────────────────────────────────────────
   card: {
     backgroundColor: CARD,
     borderRadius: 20,
@@ -338,24 +608,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
-  avatarText: {
-    fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
-    letterSpacing: 0.4,
   },
   userMeta: {
     flex: 1,
@@ -377,28 +629,6 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_700Bold',
     color: PRIMARY,
     letterSpacing: 0.2,
-  },
-  mediaContainer: {
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  mediaImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: 14,
-  },
-  videoPlaceholder: {
-    width: '100%',
-    height: 220,
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoPlayIcon: {
-    fontSize: 40,
-    color: TEXT,
-    opacity: 0.8,
   },
   statsBlock: {
     flexDirection: 'row',
@@ -431,38 +661,7 @@ const styles = StyleSheet.create({
     backgroundColor: DIVIDER,
     marginHorizontal: 8,
   },
-  actions: {
+  actionsRow: {
     flexDirection: 'row',
-    gap: 8,
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: DIVIDER,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: SURFACE,
-  },
-  actionBtnActive: {
-    backgroundColor: 'rgba(255, 80, 124, 0.12)',
-  },
-  actionIcon: {
-    fontSize: 16,
-    color: TEXT_MUTED,
-  },
-  actionIconActive: {
-    color: ACCENT,
-  },
-  actionCount: {
-    fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-  },
-  actionCountActive: {
-    color: ACCENT,
   },
 });
