@@ -42,8 +42,22 @@ export default function RootLayout() {
 
   // Listen to Supabase auth state
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        // Verify the user still exists in the database.
+        // getUser() makes a live request — if the account was deleted or the
+        // token is invalid, it returns an error rather than trusting the local
+        // cache. In that case, wipe the stale session and send to login.
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          await supabase.auth.signOut();
+          setSession(null);
+        } else {
+          setSession(session);
+        }
+      } else {
+        setSession(null);
+      }
       setInitialized(true);
     });
 
