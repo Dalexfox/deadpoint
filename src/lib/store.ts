@@ -117,6 +117,8 @@ export async function uploadSessionMedia(
     const path = `${user.id}/${Date.now()}.${ext}`;
     const contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
+    console.log('[uploadSessionMedia] Uploading file:', { uri, path, contentType });
+
     // Fetch the local file as a Blob, then upload to Supabase Storage
     const response = await fetch(uri);
     const blob = await response.blob();
@@ -125,16 +127,23 @@ export async function uploadSessionMedia(
       .from('session-media')
       .upload(path, blob, { contentType });
 
-    if (error) throw error;
+    if (error) {
+      console.log('[uploadSessionMedia] Supabase Storage upload error:', error);
+      throw error;
+    }
+
+    console.log('[uploadSessionMedia] Upload succeeded for path:', path);
 
     // Return the permanent public URL for the uploaded file
     const { data } = supabase.storage
       .from('session-media')
       .getPublicUrl(path);
 
+    console.log('[uploadSessionMedia] Final media_url to save:', data.publicUrl);
+
     return data.publicUrl;
-  } catch {
-    // Fail silently — caller decides whether to surface an error
+  } catch (err) {
+    console.log('[uploadSessionMedia] Caught error (returning null):', err);
     return null;
   }
 }
