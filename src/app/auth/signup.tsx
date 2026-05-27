@@ -1,0 +1,331 @@
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+
+const ACCENT = '#ff507c';
+
+export default function SignupScreen() {
+  const router = useRouter();
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSignup = async () => {
+    if (!fullName || !username || !email || !password) {
+      setError('Please fill in all fields.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    // Create the auth user
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName, username },
+      },
+    });
+
+    if (signUpError) {
+      setLoading(false);
+      setError(signUpError.message);
+      return;
+    }
+
+    // Insert profile record
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: data.user.id,
+          full_name: fullName,
+          username: username.toLowerCase().replace(/\s+/g, ''),
+          email,
+        });
+
+      if (profileError) {
+        // Profile insert failed — log but don't block the user
+        console.warn('Profile insert error:', profileError.message);
+      }
+    }
+
+    setLoading(false);
+    // Auth listener in _layout.tsx handles redirect to (tabs)
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+
+          {/* Back */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}>
+            <Text style={styles.backArrow}>‹</Text>
+            <Text style={styles.backLabel}>Log in</Text>
+          </TouchableOpacity>
+
+          {/* Heading */}
+          <View style={styles.headingBlock}>
+            <Text style={styles.heading}>JOIN{'\n'}DEADPOINT.</Text>
+            <Text style={styles.subheading}>Track your climbs. Share your sessions.</Text>
+          </View>
+
+          {/* Form */}
+          <View style={styles.form}>
+            <View style={styles.field}>
+              <Text style={styles.label}>FULL NAME</Text>
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Alex Fox"
+                placeholderTextColor="#bbbbbb"
+                autoComplete="name"
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>USERNAME</Text>
+              <View style={styles.usernameRow}>
+                <Text style={styles.usernameAt}>@</Text>
+                <TextInput
+                  style={[styles.input, styles.usernameInput]}
+                  value={username}
+                  onChangeText={(t) => setUsername(t.toLowerCase().replace(/\s+/g, ''))}
+                  placeholder="alexfox"
+                  placeholderTextColor="#bbbbbb"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>EMAIL</Text>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                placeholderTextColor="#bbbbbb"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>PASSWORD</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Min. 6 characters"
+                placeholderTextColor="#bbbbbb"
+                secureTextEntry
+                autoComplete="new-password"
+              />
+            </View>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+              onPress={handleSignup}
+              activeOpacity={0.85}
+              disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.submitLabel}>Create Account</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Log in link */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+              <Text style={styles.footerLink}>Log in</Text>
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+
+  // ─── Back ────────────────────────────────────────────────────
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    alignSelf: 'flex-start',
+    marginBottom: 36,
+  },
+  backArrow: {
+    fontSize: 28,
+    fontFamily: 'DMSans_300Light',
+    color: '#000000',
+    lineHeight: 28,
+    marginTop: -2,
+  },
+  backLabel: {
+    fontSize: 16,
+    fontFamily: 'DMSans_700Bold',
+    color: '#000000',
+  },
+
+  // ─── Heading ─────────────────────────────────────────────────
+  headingBlock: {
+    marginBottom: 36,
+    gap: 10,
+  },
+  heading: {
+    fontSize: 58,
+    fontFamily: 'BebasNeue_400Regular',
+    color: '#000000',
+    letterSpacing: 1,
+    lineHeight: 58,
+  },
+  subheading: {
+    fontSize: 15,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#888888',
+    letterSpacing: 0.1,
+    lineHeight: 22,
+  },
+
+  // ─── Form ────────────────────────────────────────────────────
+  form: {
+    gap: 16,
+    marginBottom: 32,
+  },
+  field: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#aaaaaa',
+    letterSpacing: 1.4,
+  },
+  input: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    fontSize: 16,
+    fontFamily: 'DMSans_500Medium',
+    color: '#000000',
+    flex: 1,
+  },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 14,
+    paddingLeft: 18,
+    overflow: 'hidden',
+  },
+  usernameAt: {
+    fontSize: 16,
+    fontFamily: 'DMSans_700Bold',
+    color: ACCENT,
+    marginRight: 2,
+  },
+  usernameInput: {
+    backgroundColor: 'transparent',
+    paddingLeft: 0,
+    borderRadius: 0,
+  },
+  errorText: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: ACCENT,
+    marginTop: 4,
+  },
+  submitBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  submitBtnDisabled: {
+    opacity: 0.6,
+    shadowOpacity: 0,
+  },
+  submitLabel: {
+    fontSize: 17,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+
+  // ─── Footer ──────────────────────────────────────────────────
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#888888',
+  },
+  footerLink: {
+    fontSize: 14,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: ACCENT,
+  },
+});

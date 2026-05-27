@@ -1,12 +1,13 @@
 import { DefaultTheme, ThemeProvider } from 'expo-router';
 import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
+import type { ColorValue } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 
 const ACCENT = '#ff507c';
 const INACTIVE = '#3d6b6f';
 
-type IconProps = { color: string; focused: boolean };
+type IconProps = { color: ColorValue; focused: boolean };
 
 function FeedIcon({ color, focused }: IconProps) {
   return <SymbolView name={focused ? 'square.stack.fill' : 'square.stack'} size={24} tintColor={color} />;
