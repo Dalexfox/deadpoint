@@ -73,3 +73,23 @@ export async function saveProfileAvatar(uri: string): Promise<void> {
     // fail silently for now
   }
 }
+
+// ─── Profile banner ───────────────────────────────────────────
+
+const BANNER_KEY = 'deadpoint_profile_banner';
+
+export async function getProfileBanner(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(BANNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveProfileBanner(uri: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BANNER_KEY, uri);
+  } catch {
+    // fail silently for now
+  }
+}

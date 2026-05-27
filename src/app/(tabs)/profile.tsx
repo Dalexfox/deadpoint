@@ -15,6 +15,8 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   getProfileAvatar,
   saveProfileAvatar,
+  getProfileBanner,
+  saveProfileBanner,
   saveUserPost,
 } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
@@ -79,6 +81,7 @@ function SessionCard({ session }: { session: SupabaseSession }) {
 
 export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [bannerUri, setBannerUri] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SupabaseSession[]>([]);
 
   // Stats derived from the same Supabase fetch — default while loading
@@ -90,6 +93,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     getProfileAvatar().then(setAvatarUri);
+    getProfileBanner().then(setBannerUri);
   }, []);
 
   // Every time the Profile tab gains focus, fetch sessions + climbs fresh from
@@ -210,6 +214,20 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleBannerPress = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [3, 1],   // wide crop for banner
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setBannerUri(uri);
+      saveProfileBanner(uri);
+    }
+  };
+
   const handleShare = () => {
     Alert.alert('Share to Feed', 'Add a photo or video to your feed', [
       { text: 'Choose Photo', onPress: () => shareMedia('images') },
@@ -274,9 +292,36 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* Avatar — square */}
-        <View style={styles.avatarSection}>
-          <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
+        {/* ── Banner ────────────────────────────────────────────── */}
+        <View style={styles.bannerSection}>
+          {bannerUri ? (
+            <Image source={{ uri: bannerUri }} style={styles.bannerImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.bannerPlaceholder} />
+          )}
+          {/* Camera button — tap to change banner */}
+          <TouchableOpacity
+            style={styles.bannerCameraBtn}
+            onPress={handleBannerPress}
+            activeOpacity={0.8}>
+            <SymbolView name="camera.fill" size={15} tintColor={TEXT} />
+          </TouchableOpacity>
+          {/* Torn-paper edge — overlaid at the bottom of the banner so the
+              ragged tear sits right at the boundary between banner and content */}
+          <Image
+            source={require('../../../assets/images/torn-paper.png')}
+            style={styles.tornEdge}
+            resizeMode="stretch"
+          />
+        </View>
+
+        {/* ── Identity — avatar overlaps banner, name + Add Friend ─ */}
+        <View style={styles.identitySection}>
+          {/* Avatar floats up 36 px into the banner */}
+          <TouchableOpacity
+            style={styles.avatarWrapper}
+            onPress={handleAvatarPress}
+            activeOpacity={0.85}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
             ) : (
@@ -288,8 +333,17 @@ export default function ProfileScreen() {
               <Text style={styles.avatarEditIcon}>＋</Text>
             </View>
           </TouchableOpacity>
-          <Text style={styles.name}>{USER.name}</Text>
-          <Text style={styles.username}>{USER.username}</Text>
+
+          {/* Name left, Add Friend button right */}
+          <View style={styles.nameRow}>
+            <View>
+              <Text style={styles.name}>{USER.name}</Text>
+              <Text style={styles.username}>{USER.username}</Text>
+            </View>
+            <TouchableOpacity style={styles.addFriendBtn} activeOpacity={0.7}>
+              <Text style={styles.addFriendLabel}>Add Friend</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats — live from Supabase */}
@@ -354,24 +408,68 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
 
-  // ─── Avatar — square ──────────────────────────────────────────
-  avatarSection: {
+  // ─── Banner ────────────────────────────────────────────────────
+  bannerSection: {
+    width: '100%',
+    height: 140,
+    position: 'relative',
+  },
+  bannerImage: {
+    width: '100%',
+    height: 140,
+  },
+  bannerPlaceholder: {
+    width: '100%',
+    height: 140,
+    backgroundColor: SURFACE,
+  },
+  bannerCameraBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
-    paddingTop: 24,
-    paddingBottom: 32,
+    justifyContent: 'center',
+  },
+  tornEdge: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    height: 40,
+  },
+
+  // ─── Identity (avatar + name, sits below banner) ───────────────
+  identitySection: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  avatarWrapper: {
+    marginTop: -36,          // pulls avatar 36 px up into the banner
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    position: 'relative',
   },
   avatar: {
     width: 100,
     height: 100,
-    borderRadius: 16,          // Square with soft corners
+    borderRadius: 16,        // Square with soft corners
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: BG,         // dark ring separates avatar from banner
   },
   avatarImage: {
     width: 100,
     height: 100,
-    borderRadius: 16,          // Square with soft corners
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: BG,
   },
   avatarInitials: {
     fontSize: 34,
@@ -381,11 +479,11 @@ const styles = StyleSheet.create({
   },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
+    bottom: -1,
+    right: -1,
     width: 28,
     height: 28,
-    borderRadius: 8,           // Also square to match
+    borderRadius: 8,
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
@@ -397,19 +495,36 @@ const styles = StyleSheet.create({
     color: TEXT,
     lineHeight: 18,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   name: {
-    fontSize: 30,
+    fontSize: 28,
     fontFamily: 'BebasNeue_400Regular',
     color: TEXT,
     letterSpacing: 1,
-    marginTop: 16,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   username: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
     color: TEXT_SUB,
     letterSpacing: 0.1,
+  },
+  addFriendBtn: {
+    borderWidth: 1.5,
+    borderColor: ACCENT,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  addFriendLabel: {
+    fontSize: 13,
+    fontFamily: 'DMSans_700Bold',
+    color: ACCENT,
+    letterSpacing: 0.2,
   },
 
   // ─── Stats ────────────────────────────────────────────────────
