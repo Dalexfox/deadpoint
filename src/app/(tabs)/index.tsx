@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { getUserPosts, togglePostLike, type Post } from '../../lib/store';
+import { togglePostLike, type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
 const BG         = '#ffffff';
@@ -220,10 +220,10 @@ export default function FeedScreen() {
       let active = true;
       setLoading(true);
 
-      Promise.all([fetchSessionPosts(), getUserPosts()]).then(([sessionPosts, photoPosts]) => {
+      fetchSessionPosts().then((sessionPosts) => {
         if (!active) return;
-        // Photo posts from AsyncStorage go first (they're the user's own, most recent)
-        setPosts([...photoPosts, ...sessionPosts]);
+        console.log('[Feed] sessionPosts count:', sessionPosts.length, '| ids:', sessionPosts.map(p => p.id));
+        setPosts(sessionPosts);
         setLoading(false);
       });
 
@@ -259,9 +259,13 @@ export default function FeedScreen() {
               <Text style={styles.emptyText}>Log a climb to see it here.</Text>
             </View>
           ) : (
-            posts.map((post) => (
-              <FeedCard key={post.id} post={post} onLike={handleLike} />
-            ))
+            (() => {
+              console.log('[Feed render] posts.length:', posts.length, '| ids:', posts.map(p => p.id));
+              return posts.map((post) => {
+                console.log('[Feed render] Rendering card for post.id:', post.id, '| postType:', post.postType);
+                return <FeedCard key={post.id} post={post} onLike={handleLike} />;
+              });
+            })()
           )}
         </ScrollView>
       )}
