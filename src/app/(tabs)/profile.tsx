@@ -33,7 +33,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const CHART_WIDTH = SCREEN_WIDTH - 72;
 // Grade chart: 16px wider so that with marginLeft:-16 it fills exactly to the card's
 // right inner edge, giving V10 the room it needs without being clipped by overflow:hidden.
-const GRADE_CHART_WIDTH = SCREEN_WIDTH - 56;
+const GRADE_CHART_WIDTH = SCREEN_WIDTH - 40;
 
 // Carousel card — wide enough to fill the screen with the next card peeking in from the right
 const CARD_GAP    = 12;
@@ -55,11 +55,12 @@ const PRIMARY_CHART_CONFIG = {
   color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,   // PRIMARY teal
 };
 
-// Grade distribution uses reduced paddingRight so V10 sits inside the canvas
+// Grade distribution: paddingRight keeps V10 inside the canvas; barPercentage adds gaps between bars
 const GRADE_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
   color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,
-  paddingRight: 30,
+  paddingRight: 70,
+  barPercentage: 0.8,
 };
 
 const ACCENT_CHART_CONFIG = {

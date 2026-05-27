@@ -291,13 +291,16 @@ function FullBleedCard({
             <Text style={styles.heroTimestamp}>{post.timestamp}</Text>
           </View>
         </LinearGradient>
+
+        {/* Inset border overlay on the image */}
+        <View style={styles.heroImageBorder} pointerEvents="none" />
       </View>
 
       {/* Stats + actions strip */}
       <View style={styles.strip}>
         {isSession && post.problems !== undefined && post.difficulty ? (
           <>
-            <View style={styles.stripStats}>
+            <View style={styles.stripStatsRow}>
               <View style={styles.stripStat}>
                 <Text style={styles.stripStatValue}>{post.problems}</Text>
                 <Text style={styles.stripStatLabel}>PROBLEMS</Text>
@@ -308,14 +311,12 @@ function FullBleedCard({
                 <Text style={styles.stripStatLabel}>DIFFICULTY</Text>
               </View>
             </View>
-            <ActionRow post={post} onLike={onLike} />
+            <View style={styles.stripHairline} />
           </>
-        ) : (
-          /* Photo-only post: just actions */
-          <View style={{ flex: 1 }}>
-            <ActionRow post={post} onLike={onLike} />
-          </View>
-        )}
+        ) : null}
+        <View style={styles.stripActions}>
+          <ActionRow post={post} onLike={onLike} />
+        </View>
       </View>
     </View>
   );
@@ -362,7 +363,7 @@ function PlainCard({
       ) : null}
 
       {/* Actions */}
-      <View style={[styles.actionsRow, { paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: DIVIDER }]}>
+      <View style={[styles.actionsRow, { paddingTop: 14, borderTopWidth: 1, borderTopColor: '#b0cdd8' }]}>
         <ActionRow post={post} onLike={onLike} />
       </View>
     </View>
@@ -496,7 +497,7 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
     borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1.5,
+    borderWidth: 2.5,
     borderColor: DIVIDER,
     shadowColor: '#000',
     shadowOpacity: 0.08,
@@ -530,6 +531,15 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
   },
+  heroImageBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: 1,
+    borderColor: '#b0cdd8',
+  },
   heroUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -560,18 +570,24 @@ const styles = StyleSheet.create({
 
   // ── Stats + actions strip ────────────────────────────────────────────────────
   strip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: BG,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
-  stripStats: {
-    flex: 1,
+  stripStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 0,
+    paddingBottom: 4,
+  },
+  stripHairline: {
+    height: 1,
+    backgroundColor: '#b0cdd8',
+    marginBottom: 4,
+  },
+  stripActions: {
+    flexDirection: 'row',
   },
   stripStat: {
     flex: 1,
@@ -603,7 +619,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
-    borderWidth: 1.5,
+    borderWidth: 2.5,
     borderColor: DIVIDER,
   },
   userRow: {
