@@ -603,6 +603,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
   },
   userRow: {
     flexDirection: 'row',
