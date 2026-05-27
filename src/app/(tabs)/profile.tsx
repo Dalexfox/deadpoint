@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   ScrollView,
   StyleSheet,
@@ -8,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { BarChart, LineChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import { useFocusEffect } from 'expo-router';
@@ -24,12 +27,44 @@ import { supabase } from '../../lib/supabase';
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
+// Chart width = screen width minus card margins (20px × 2) and card padding (16px × 2)
+const CHART_WIDTH = Dimensions.get('window').width - 72;
+
+// Shared chart config — teal bars / lines on the card background
+const BASE_CHART_CONFIG = {
+  backgroundColor:          '#d8eaf0',
+  backgroundGradientFrom:   '#d8eaf0',
+  backgroundGradientTo:     '#d8eaf0',
+  decimalPlaces:            0,
+  labelColor:               () => '#8bb5c4',      // TEXT_MUTED
+  propsForBackgroundLines:  { stroke: '#c8dde8' }, // DIVIDER
+};
+
+const PRIMARY_CHART_CONFIG = {
+  ...BASE_CHART_CONFIG,
+  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`,   // PRIMARY teal
+};
+
+const ACCENT_CHART_CONFIG = {
+  ...BASE_CHART_CONFIG,
+  color: (opacity = 1) => `rgba(255, 80, 124, ${opacity})`,   // ACCENT pink
+};
+
 // Maps sessions.gym_id → human-readable gym name
 const GYM_NAMES: Record<string, string> = {
   '1': 'Vital Climbing LES',
   '2': 'Vital Climbing Brooklyn',
   '3': 'Vital Climbing UES',
   '4': 'Vital Climbing UWS',
+};
+
+// Derived datasets fed into the three charts
+type ChartData = {
+  weeklyIntensity: number[];     // problems per day, Mon–Sun of current week
+  gradeDistribution: number[];   // total climb count per grade, V0–V10
+  maxGradeIndex: number;         // index of the most-climbed grade (highlighted pink)
+  monthlyVolume: number[];       // total problems per week for last 12 weeks
+  weekLabels: string[];          // e.g. ['Apr 7', '', 'Apr 21', '', ...]
 };
 
 // Shape of a session card built from Supabase data
@@ -85,6 +120,8 @@ export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [bannerUri, setBannerUri] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SupabaseSession[]>([]);
+  const [chartData, setChartData] = useState<ChartData | null>(null);
+  const [chartsLoading, setChartsLoading] = useState(true);
 
   // Stats derived from the same Supabase fetch — default while loading
   const [stats, setStats] = useState<{
@@ -172,8 +209,72 @@ export default function ProfileScreen() {
           const topGrade = topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—';
 
           setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade });
+
+          // ── 5. Derive chart data from the same fetched data ──────
+          // No extra Supabase queries needed — everything comes from
+          // rawSessions (created_at, total_problems) and allClimbs (grade, count).
+
+          // Weekly intensity: total problems per day for the current Mon–Sun week
+          const now = new Date();
+          const dayOfWeek = now.getDay(); // 0 = Sun
+          const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - daysFromMonday);
+          weekStart.setHours(0, 0, 0, 0);
+
+          const dailyCounts = [0, 0, 0, 0, 0, 0, 0]; // index 0 = Mon, 6 = Sun
+          rawSessions.forEach((s) => {
+            const d = new Date(s.created_at);
+            if (d >= weekStart) {
+              const idx = (d.getDay() + 6) % 7; // convert Sun=0 to Mon=0
+              if (idx < 7) dailyCounts[idx] += s.total_problems;
+            }
+          });
+
+          // Grade distribution: sum climb counts for each grade V0–V10
+          const gradeCounts = new Array(11).fill(0);
+          allClimbs.forEach((c) => {
+            const idx = GRADES.indexOf(c.grade);
+            if (idx >= 0) gradeCounts[idx] += c.count;
+          });
+          const maxGradeVal = Math.max(...gradeCounts);
+          const maxGradeIndex = maxGradeVal > 0 ? gradeCounts.indexOf(maxGradeVal) : -1;
+
+          // Monthly volume: total problems per week for the last 12 weeks
+          const weeklyTotals: number[] = [];
+          const weekLabels: string[] = [];
+          for (let i = 11; i >= 0; i--) {
+            const wEnd = new Date(now);
+            wEnd.setDate(now.getDate() - i * 7);
+            wEnd.setHours(23, 59, 59, 999);
+            const wStart = new Date(wEnd);
+            wStart.setDate(wEnd.getDate() - 6);
+            wStart.setHours(0, 0, 0, 0);
+
+            const weekTotal = rawSessions
+              .filter((s) => { const d = new Date(s.created_at); return d >= wStart && d <= wEnd; })
+              .reduce((sum, s) => sum + s.total_problems, 0);
+
+            weeklyTotals.push(weekTotal);
+            // Only label every other week to avoid crowding the x-axis
+            weekLabels.push(
+              i % 2 === 0
+                ? wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                : ''
+            );
+          }
+
+          setChartData({
+            weeklyIntensity: dailyCounts,
+            gradeDistribution: gradeCounts,
+            maxGradeIndex,
+            monthlyVolume: weeklyTotals,
+            weekLabels,
+          });
+          setChartsLoading(false);
         } catch {
           // fail silently — UI keeps showing last known values
+          setChartsLoading(false);
         }
       };
 
@@ -355,6 +456,87 @@ export default function ProfileScreen() {
           <View style={styles.statDivider} />
           <StatColumn label="Top Grade" value={stats.topGrade} />
         </View>
+
+        {/* ── Charts ────────────────────────────────────────────── */}
+        {chartsLoading ? (
+          <View style={styles.chartsLoadingContainer}>
+            <ActivityIndicator size="small" color={PRIMARY} />
+          </View>
+        ) : chartData ? (
+          <>
+            {/* Section 1 — Weekly Intensity */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Weekly Intensity</Text>
+              <Text style={styles.chartSubtitle}>Problems logged this week</Text>
+              <BarChart
+                data={{
+                  labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                  datasets: [{ data: chartData.weeklyIntensity }],
+                }}
+                width={CHART_WIDTH}
+                height={180}
+                chartConfig={PRIMARY_CHART_CONFIG}
+                style={styles.chart}
+                fromZero
+                showValuesOnTopOfBars={false}
+                withInnerLines={false}
+                yAxisLabel=""
+                yAxisSuffix=""
+              />
+            </View>
+
+            {/* Section 2 — Grade Distribution */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Grade Distribution</Text>
+              <Text style={styles.chartSubtitle}>Your climbs by V-grade</Text>
+              <BarChart
+                data={{
+                  labels: GRADES,
+                  datasets: [{
+                    data: chartData.gradeDistribution,
+                    // Highlight the most-climbed grade in ACCENT pink
+                    colors: chartData.gradeDistribution.map((_, i) =>
+                      (_opacity: number) =>
+                        i === chartData.maxGradeIndex ? '#ff507c' : '#2E7A96'
+                    ),
+                  }],
+                }}
+                width={CHART_WIDTH}
+                height={180}
+                chartConfig={PRIMARY_CHART_CONFIG}
+                style={styles.chart}
+                withCustomBarColorFromData
+                flatColor
+                fromZero
+                showValuesOnTopOfBars={false}
+                withInnerLines={false}
+                yAxisLabel=""
+                yAxisSuffix=""
+              />
+            </View>
+
+            {/* Section 3 — Monthly Volume */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Monthly Volume</Text>
+              <Text style={styles.chartSubtitle}>Problems logged over time</Text>
+              <LineChart
+                data={{
+                  labels: chartData.weekLabels,
+                  datasets: [{ data: chartData.monthlyVolume }],
+                }}
+                width={CHART_WIDTH}
+                height={180}
+                chartConfig={ACCENT_CHART_CONFIG}
+                style={styles.chart}
+                bezier
+                fromZero
+                withInnerLines={false}
+                withDots
+                withShadow={false}
+              />
+            </View>
+          </>
+        ) : null}
 
         {/* Sessions — live from Supabase */}
         {sessions.length === 0 ? (
@@ -602,6 +784,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     marginLeft: 8,
   },
+  // ─── Charts ───────────────────────────────────────────────────
+  chartsLoadingContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  chartCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: CARD,
+    borderRadius: 20,
+    padding: 16,
+    overflow: 'hidden',
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.3,
+    marginBottom: 2,
+  },
+  chartSubtitle: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.2,
+    marginBottom: 12,
+  },
+  chart: {
+    borderRadius: 14,
+    marginLeft: -16, // pull left to align chart edge with card edge
+  },
+
   // ─── Empty state ──────────────────────────────────────────────
   emptyState: {
     marginHorizontal: 20,
