@@ -14,7 +14,7 @@ import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
   getProfileAvatar,
-  saveProfileAvatar,
+  uploadProfileAvatar,
   getProfileBanner,
   saveProfileBanner,
   saveUserPost,
@@ -198,8 +198,12 @@ export default function ProfileScreen() {
     });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
+      // Show locally right away so the UI feels instant
       setAvatarUri(uri);
-      saveProfileAvatar(uri);
+      // Upload to Supabase Storage + write to profiles.avatar_url in background
+      uploadProfileAvatar(uri).then((publicUrl) => {
+        if (publicUrl) setAvatarUri(publicUrl);
+      });
     }
   };
 
@@ -212,7 +216,9 @@ export default function ProfileScreen() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      saveProfileAvatar(uri);
+      uploadProfileAvatar(uri).then((publicUrl) => {
+        if (publicUrl) setAvatarUri(publicUrl);
+      });
     }
   };
 

@@ -16,6 +16,7 @@ export type Post = {
   name: string;
   initials: string;
   avatarBg: string;
+  avatarUrl?: string;     // public Supabase Storage URL — shows real photo in feed
   timestamp: string;
   likes: number;
   comments: number;
@@ -74,6 +75,52 @@ export async function saveProfileAvatar(uri: string): Promise<void> {
     await AsyncStorage.setItem(AVATAR_KEY, uri);
   } catch {
     // fail silently for now
+  }
+}
+
+// ─── Profile avatar upload ────────────────────────────────────
+// Uploads the avatar to Supabase Storage, writes the public URL to
+// profiles.avatar_url, and caches it in AsyncStorage for fast local loads.
+// Always writes to the same path (avatars/{userId}.jpg) so it self-overwrites.
+
+export async function uploadProfileAvatar(uri: string): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const path = `avatars/${user.id}.jpg`;
+    const contentType = 'image/jpeg';
+
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const arrayBuffer = decode(base64);
+
+    const { error } = await supabase.storage
+      .from('session-media')
+      .upload(path, arrayBuffer, { contentType, upsert: true });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage
+      .from('session-media')
+      .getPublicUrl(path);
+
+    const publicUrl = data.publicUrl;
+
+    // Write the public URL to the profiles table so the feed can display it
+    await supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', user.id);
+
+    // Cache in AsyncStorage so the profile screen loads it instantly on next open
+    await AsyncStorage.setItem(AVATAR_KEY, publicUrl);
+
+    return publicUrl;
+  } catch (err) {
+    console.log('[uploadProfileAvatar] Error:', err);
+    return null;
   }
 }
 

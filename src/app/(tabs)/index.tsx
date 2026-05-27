@@ -93,7 +93,7 @@ async function fetchSessionPosts(): Promise<Post[]> {
   const userIds = [...new Set(sessions.map((s) => s.user_id))];
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, full_name, username')
+    .select('id, full_name, username, avatar_url')
     .in('id', userIds);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
@@ -108,6 +108,7 @@ async function fetchSessionPosts(): Promise<Post[]> {
       name,
       initials: toInitials(name),
       avatarBg: PRIMARY,
+      avatarUrl: profile?.avatar_url ?? undefined,
       timestamp: timeAgo(session.created_at),
       likes: 0,
       comments: 0,
@@ -142,9 +143,13 @@ function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }
     <View style={styles.card}>
       {/* User row */}
       <View style={styles.userRow}>
-        <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
-          <Text style={styles.avatarText}>{post.initials}</Text>
-        </View>
+        {post.avatarUrl ? (
+          <Image source={{ uri: post.avatarUrl }} style={styles.avatarImage} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: post.avatarBg }]}>
+            <Text style={styles.avatarText}>{post.initials}</Text>
+          </View>
+        )}
         <View style={styles.userMeta}>
           <Text style={styles.userName}>{post.name}</Text>
           <Text style={styles.timestamp}>{post.timestamp}</Text>
@@ -340,6 +345,11 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   },
   avatarText: {
     fontSize: 14,
