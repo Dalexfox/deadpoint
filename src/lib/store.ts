@@ -119,13 +119,14 @@ export async function uploadSessionMedia(
 
     console.log('[uploadSessionMedia] Uploading file:', { uri, path, contentType });
 
-    // Fetch the local file as a Blob, then upload to Supabase Storage
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    // FormData approach required for local file URIs in React Native —
+    // fetch/blob doesn't work with the file:// scheme.
+    const formData = new FormData();
+    formData.append('file', { uri, name: `upload.${ext}`, type: contentType } as any);
 
     const { error } = await supabase.storage
       .from('session-media')
-      .upload(path, blob, { contentType });
+      .upload(path, formData);
 
     if (error) {
       console.log('[uploadSessionMedia] Supabase Storage upload error:', error);
