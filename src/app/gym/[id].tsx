@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -34,6 +34,16 @@ export default function GymDetailScreen() {
     Object.fromEntries(GRADES.map((g) => [g, 0]))
   );
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  // After success screen shows, navigate to the Gyms tab after 2.5 s
+  useEffect(() => {
+    if (!submitted) return;
+    const timer = setTimeout(() => {
+      router.replace('/(tabs)/gyms');
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [submitted]);
 
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
 
@@ -46,40 +56,61 @@ export default function GymDetailScreen() {
   const handleSubmit = async () => {
     if (total === 0 || submitting) return;
     setSubmitting(true);
+    console.log('[handleSubmit] Starting session submit...');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      console.log('[handleSubmit] getUser result:', { user, userError });
       if (!user) throw new Error('Not logged in');
 
+      console.log('[handleSubmit] Inserting session for gym_id:', id, '| total_problems:', total);
       const { data: session, error: sessionError } = await supabase
         .from('sessions')
         .insert({ user_id: user.id, gym_id: id, total_problems: total })
         .select('id')
         .single();
+      console.log('[handleSubmit] Session insert result:', { session, sessionError });
 
       if (sessionError) throw sessionError;
 
       const climbRows = GRADES
         .filter((g) => counts[g] > 0)
         .map((g) => ({ session_id: session.id, grade: g, count: counts[g] }));
+      console.log('[handleSubmit] Climbs to insert:', climbRows);
 
-      const { error: climbsError } = await supabase
+      const { data: climbsData, error: climbsError } = await supabase
         .from('climbs')
-        .insert(climbRows);
+        .insert(climbRows)
+        .select();
+      console.log('[handleSubmit] Climbs insert result:', { climbsData, climbsError });
 
       if (climbsError) throw climbsError;
 
-      Alert.alert('Session logged!', `${total} problem${total === 1 ? '' : 's'} saved.`, [
-        { text: 'OK', onPress: () => router.replace('/(tabs)/gyms') },
-      ]);
+      console.log('[handleSubmit] Session saved successfully! Showing success screen.');
+      setSubmitted(true);
     } catch (err: any) {
+      console.log('[handleSubmit] ERROR:', err);
       Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
     } finally {
       setSubmitting(false);
+      console.log('[handleSubmit] Done.');
     }
   };
 
   if (!gym) return null;
+
+  // Success screen — identical to the Log tab's success state
+  if (submitted) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.successScreen}>
+          <Text style={styles.successEmoji}>🧗</Text>
+          <Text style={styles.successTitle}>SESSION LOGGED</Text>
+          <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -344,5 +375,28 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_800ExtraBold',
     color: TEXT,
     letterSpacing: 0.2,
+  },
+
+  // ─── Success screen (mirrors Log tab) ─────────────────────────
+  successScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  successEmoji: {
+    fontSize: 64,
+  },
+  successTitle: {
+    fontSize: 52,
+    fontFamily: 'BebasNeue_400Regular',
+    color: TEXT,
+    letterSpacing: 2,
+  },
+  successSub: {
+    fontSize: 16,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
+    letterSpacing: 0.1,
   },
 });

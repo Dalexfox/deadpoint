@@ -19,6 +19,10 @@ import {
   saveUserPost,
   type Post,
 } from '../../lib/store';
+import { supabase } from '../../lib/supabase';
+
+// V-scale order used to determine hardest grade sent
+const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
 const BG = '#0c1e21';
 const CARD = '#142829';
@@ -32,12 +36,9 @@ const USER = {
   name: 'Alex Fox',
   username: '@alexfox',
   initials: 'AF',
-  totalClimbs: 142,
-  gymsVisited: 9,
-  currentStreak: 7,
 };
 
-function StatColumn({ label, value }: { label: string; value: number }) {
+function StatColumn({ label, value }: { label: string; value: string | number }) {
   return (
     <View style={styles.statColumn}>
       <Text style={styles.statValue}>{value}</Text>
@@ -84,13 +85,74 @@ export default function ProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
 
+  // Real stats from Supabase — default to '—' while loading
+  const [stats, setStats] = useState<{
+    totalClimbs: number;
+    gymsVisited: number;
+    topGrade: string;
+  }>({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
+
   useEffect(() => {
     getProfileAvatar().then(setAvatarUri);
   }, []);
 
+  // Fetch real stats from Supabase
+  const fetchStats = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // All sessions for this user (gives us gym list + session IDs)
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('sessions')
+        .select('id, gym_id')
+        .eq('user_id', user.id);
+
+      if (sessionsError || !sessions) return;
+
+      // Unique gyms visited — count distinct gym_id values
+      const uniqueGyms = new Set(sessions.map((s) => s.gym_id)).size;
+
+      // No sessions yet — set zeros and bail early
+      if (sessions.length === 0) {
+        setStats({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
+        return;
+      }
+
+      // All climbs across every session for this user
+      const sessionIds = sessions.map((s) => s.id);
+      const { data: climbs, error: climbsError } = await supabase
+        .from('climbs')
+        .select('grade, count')
+        .in('session_id', sessionIds);
+
+      if (climbsError || !climbs) {
+        setStats({ totalClimbs: 0, gymsVisited: uniqueGyms, topGrade: '—' });
+        return;
+      }
+
+      // Total climbs = sum of all individual problem counts
+      const totalClimbs = climbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
+
+      // Hardest grade = highest index in the V-scale array
+      let topGradeIndex = -1;
+      climbs.forEach((c) => {
+        const idx = GRADES.indexOf(c.grade);
+        if (idx > topGradeIndex) topGradeIndex = idx;
+      });
+      const topGrade = topGradeIndex >= 0 ? GRADES[topGradeIndex] : '—';
+
+      setStats({ totalClimbs, gymsVisited: uniqueGyms, topGrade });
+    } catch {
+      // fail silently — stats stay at defaults
+    }
+  };
+
+  // Refresh both posts and stats every time the Profile tab comes into focus
   useFocusEffect(
     useCallback(() => {
       getUserPosts().then(setUserPosts);
+      fetchStats();
     }, [])
   );
 
@@ -214,13 +276,13 @@ export default function ProfileScreen() {
           <Text style={styles.username}>{USER.username}</Text>
         </View>
 
-        {/* Stats */}
+        {/* Stats — live from Supabase */}
         <View style={styles.statsRow}>
-          <StatColumn label="Total Climbs" value={USER.totalClimbs} />
+          <StatColumn label="Total Climbs" value={stats.totalClimbs} />
           <View style={styles.statDivider} />
-          <StatColumn label="Gyms Visited" value={USER.gymsVisited} />
+          <StatColumn label="Gyms Visited" value={stats.gymsVisited} />
           <View style={styles.statDivider} />
-          <StatColumn label="Day Streak" value={USER.currentStreak} />
+          <StatColumn label="Top Grade" value={stats.topGrade} />
         </View>
 
         {/* Posts */}
