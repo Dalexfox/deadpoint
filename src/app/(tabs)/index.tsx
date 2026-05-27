@@ -83,6 +83,9 @@ async function fetchSessionPosts(): Promise<Post[]> {
     .order('created_at', { ascending: false })
     .limit(50);
 
+  console.log('[fetchSessionPosts] Supabase query result — error:', error, '| sessions count:', sessions?.length ?? 0);
+  console.log('[fetchSessionPosts] Raw sessions:', sessions);
+
   if (error || !sessions || sessions.length === 0) return [];
 
   // sessions.user_id → auth.users.id (not directly profiles.id),
@@ -95,7 +98,7 @@ async function fetchSessionPosts(): Promise<Post[]> {
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  return sessions.map((session) => {
+  const posts = sessions.map((session) => {
     const profile = profileMap.get(session.user_id);
     const name = profile?.full_name || profile?.username || 'Climber';
     const grades = (session.climbs ?? []) as { grade: string; count: number }[];
@@ -121,6 +124,9 @@ async function fetchSessionPosts(): Promise<Post[]> {
 
     return post;
   });
+
+  console.log('[fetchSessionPosts] Final posts array being set to state:', posts);
+  return posts;
 }
 
 function useGreeting(name: string) {

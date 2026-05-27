@@ -103,9 +103,10 @@ export default function GymDetailScreen() {
   // ─── Submit ───────────────────────────────────────────────────
 
   const handleSubmit = async () => {
+    console.log('[GymDetail handleSubmit] Called. total:', total, '| submitting:', submitting, '| media:', media);
     if (total === 0 || submitting) return;
     setSubmitting(true);
-    console.log('[handleSubmit] Starting session submit...');
+    console.log('[GymDetail handleSubmit] Starting session submit...');
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();

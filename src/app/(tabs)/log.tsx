@@ -84,6 +84,7 @@ export default function LogScreen() {
   };
 
   const handleSubmit = async () => {
+    console.log('[Log handleSubmit] Called. canSubmit:', canSubmit, '| submitting:', submitting, '| media:', media);
     if (!canSubmit || submitting) return;
     setSubmitting(true);
 
@@ -99,7 +100,11 @@ export default function LogScreen() {
       // If the upload fails, mediaUrl will be null and we save without it.
       let mediaUrl: string | null = null;
       if (media) {
+        console.log('[Log handleSubmit] Calling uploadSessionMedia with:', { uri: media.uri, type: media.type });
         mediaUrl = await uploadSessionMedia(media.uri, media.type);
+        console.log('[Log handleSubmit] uploadSessionMedia result:', mediaUrl ?? 'null (upload failed)');
+      } else {
+        console.log('[Log handleSubmit] No media attached — skipping upload.');
       }
 
       // Insert the session row (with optional media_url)
