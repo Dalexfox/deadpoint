@@ -613,6 +613,15 @@ export default function ProfileScreen() {
         })}
       </View>
 
+      {/* ── Stats bar — fixed below tab bar, Overview tab only ───── */}
+      {activeTab === 'overview' && <View style={styles.statsRow}>
+        <StatColumn label="Total Climbs" value={stats.totalClimbs} />
+        <View style={styles.statDivider} />
+        <StatColumn label="Gyms Visited" value={stats.gymsVisited} />
+        <View style={styles.statDivider} />
+        <StatColumn label="Top Grade" value={stats.topGrade} />
+      </View>}
+
       {/* ── Single scroll: profile header + active tab content ──── */}
       <ScrollView
         style={styles.scroll}
@@ -675,15 +684,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <StatColumn label="Total Climbs" value={stats.totalClimbs} />
-          <View style={styles.statDivider} />
-          <StatColumn label="Gyms Visited" value={stats.gymsVisited} />
-          <View style={styles.statDivider} />
-          <StatColumn label="Top Grade" value={stats.topGrade} />
-        </View>
-        </View>
+</View>
 
       {/* ── Overview tab — charts ───────────────────────────────── */}
       {activeTab === 'overview' && (
@@ -1534,11 +1535,10 @@ const styles = StyleSheet.create({
   // ─── Stats ────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    paddingVertical: 20,
-    marginBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: BG,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
   },
   statColumn: {
     flex: 1,
