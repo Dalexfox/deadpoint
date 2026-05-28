@@ -1,17 +1,22 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect } from 'expo-router';
-import { togglePostLike, type Post } from '../../lib/store';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
 const BG         = '#ffffff';
@@ -24,6 +29,8 @@ const TEXT_SUB   = '#3d7a8a';
 const TEXT_MUTED = '#8bb5c4';
 const DIVIDER    = '#c8dde8';
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 const GYM_NAMES: Record<string, string> = {
   '1': 'Vital Climbing LES',
   '2': 'Vital Climbing Brooklyn',
@@ -32,6 +39,20 @@ const GYM_NAMES: Record<string, string> = {
 };
 
 const GRADE_ORDER = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type CommentItem = {
+  id: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  avatarUrl: string | null;
+  content: string;
+  createdAt: string;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -65,7 +86,8 @@ function gradeRange(climbs: { grade: string; count: number }[]): string {
   return `${active[0]} – ${active[active.length - 1]}`;
 }
 
-async function fetchSessionPosts(): Promise<Post[]> {
+// Fetch sessions from Supabase, including real like/comment counts and liked status
+async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> {
   const { data: sessions, error } = await supabase
     .from('sessions')
     .select(`
@@ -83,17 +105,46 @@ async function fetchSessionPosts(): Promise<Post[]> {
     .order('created_at', { ascending: false })
     .limit(50);
 
-  console.log('[fetchSessionPosts] Supabase query result — error:', error, '| sessions count:', sessions?.length ?? 0);
+  console.log('[fetchSessionPosts] error:', error, '| count:', sessions?.length ?? 0);
 
   if (error || !sessions || sessions.length === 0) return [];
 
+  const sessionIds = sessions.map((s) => s.id);
   const userIds = [...new Set(sessions.map((s) => s.user_id))];
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, username, avatar_url')
-    .in('id', userIds);
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+  // Batch-fetch profiles, likes, and comment counts in parallel
+  const [profilesResult, likesResult, commentsResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, username, avatar_url')
+      .in('id', userIds),
+    supabase
+      .from('likes')
+      .select('session_id, user_id')
+      .in('session_id', sessionIds),
+    supabase
+      .from('comments')
+      .select('session_id')
+      .in('session_id', sessionIds),
+  ]);
+
+  const profileMap = new Map((profilesResult.data ?? []).map((p) => [p.id, p]));
+
+  // Build like count + liked-by-me maps from the flat likes rows
+  const likeCountMap: Record<string, number> = {};
+  const likedByMeMap: Record<string, boolean> = {};
+  (likesResult.data ?? []).forEach((l) => {
+    likeCountMap[l.session_id] = (likeCountMap[l.session_id] ?? 0) + 1;
+    if (currentUserId && l.user_id === currentUserId) {
+      likedByMeMap[l.session_id] = true;
+    }
+  });
+
+  // Build comment count map from flat comment rows
+  const commentCountMap: Record<string, number> = {};
+  (commentsResult.data ?? []).forEach((c) => {
+    commentCountMap[c.session_id] = (commentCountMap[c.session_id] ?? 0) + 1;
+  });
 
   return sessions.map((session) => {
     const profile = profileMap.get(session.user_id);
@@ -107,9 +158,9 @@ async function fetchSessionPosts(): Promise<Post[]> {
       avatarBg: PRIMARY,
       avatarUrl: profile?.avatar_url ?? undefined,
       timestamp: timeAgo(session.created_at),
-      likes: 0,
-      comments: 0,
-      liked: false,
+      likes: likeCountMap[session.id] ?? 0,
+      comments: commentCountMap[session.id] ?? 0,
+      liked: likedByMeMap[session.id] ?? false,
       postType: 'session',
       gym: GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
       problems: session.total_problems,
@@ -185,27 +236,34 @@ function Avatar({
 function ActionRow({
   post,
   onLike,
+  onComment,
   light,
 }: {
   post: Post;
   onLike: (id: string) => void;
+  onComment: (id: string) => void;
   light?: boolean;
 }) {
   return (
     <View style={[actionStyles.row, light && actionStyles.rowLight]}>
+      {/* Like button — pink when liked */}
       <TouchableOpacity
-        style={[actionStyles.btn, post.liked && actionStyles.btnActive]}
+        style={[actionStyles.btn, post.liked && actionStyles.btnLiked]}
         activeOpacity={0.7}
         onPress={() => onLike(post.id)}>
-        <Text style={[actionStyles.icon, post.liked && actionStyles.iconActive]}>
+        <Text style={[actionStyles.icon, post.liked && actionStyles.iconLiked]}>
           {post.liked ? '♥' : '♡'}
         </Text>
-        <Text style={[actionStyles.count, post.liked && actionStyles.countActive]}>
+        <Text style={[actionStyles.count, post.liked && actionStyles.countLiked]}>
           {post.likes}
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={actionStyles.btn} activeOpacity={0.7}>
+      {/* Comment button — opens sheet */}
+      <TouchableOpacity
+        style={actionStyles.btn}
+        activeOpacity={0.7}
+        onPress={() => onComment(post.id)}>
         <Text style={actionStyles.icon}>◎</Text>
         <Text style={actionStyles.count}>{post.comments}</Text>
       </TouchableOpacity>
@@ -228,14 +286,14 @@ const actionStyles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: SURFACE,
   },
-  btnActive: {
+  btnLiked: {
     backgroundColor: 'rgba(255, 80, 124, 0.12)',
   },
   icon: {
     fontSize: 15,
     color: TEXT_MUTED,
   },
-  iconActive: {
+  iconLiked: {
     color: ACCENT,
   },
   count: {
@@ -243,19 +301,21 @@ const actionStyles = StyleSheet.create({
     fontFamily: 'DMSans_700Bold',
     color: TEXT_MUTED,
   },
-  countActive: {
+  countLiked: {
     color: ACCENT,
   },
 });
 
-// ─── Full-bleed card (session or photo post with media) ───────────────────────
+// ─── Full-bleed card (session with photo) ────────────────────────────────────
 
 function FullBleedCard({
   post,
   onLike,
+  onComment,
 }: {
   post: Post;
   onLike: (id: string) => void;
+  onComment: (id: string) => void;
 }) {
   const isSession = post.postType === 'session';
   const mediaItem = post.media![0];
@@ -292,7 +352,7 @@ function FullBleedCard({
           </View>
         </LinearGradient>
 
-        {/* Inset border overlay on the image */}
+        {/* Inset border overlay */}
         <View style={styles.heroImageBorder} pointerEvents="none" />
       </View>
 
@@ -315,7 +375,7 @@ function FullBleedCard({
           </>
         ) : null}
         <View style={styles.stripActions}>
-          <ActionRow post={post} onLike={onLike} />
+          <ActionRow post={post} onLike={onLike} onComment={onComment} />
         </View>
       </View>
     </View>
@@ -327,9 +387,11 @@ function FullBleedCard({
 function PlainCard({
   post,
   onLike,
+  onComment,
 }: {
   post: Post;
   onLike: (id: string) => void;
+  onComment: (id: string) => void;
 }) {
   return (
     <View style={styles.card}>
@@ -364,7 +426,7 @@ function PlainCard({
 
       {/* Actions */}
       <View style={[styles.actionsRow, { paddingTop: 14, borderTopWidth: 1, borderTopColor: '#b0cdd8' }]}>
-        <ActionRow post={post} onLike={onLike} />
+        <ActionRow post={post} onLike={onLike} onComment={onComment} />
       </View>
     </View>
   );
@@ -372,40 +434,180 @@ function PlainCard({
 
 // ─── FeedCard dispatcher ──────────────────────────────────────────────────────
 
-function FeedCard({ post, onLike }: { post: Post; onLike: (id: string) => void }) {
+function FeedCard({
+  post,
+  onLike,
+  onComment,
+}: {
+  post: Post;
+  onLike: (id: string) => void;
+  onComment: (id: string) => void;
+}) {
   if (post.media && post.media.length > 0) {
-    return <FullBleedCard post={post} onLike={onLike} />;
+    return <FullBleedCard post={post} onLike={onLike} onComment={onComment} />;
   }
-  return <PlainCard post={post} onLike={onLike} />;
+  return <PlainCard post={post} onLike={onLike} onComment={onComment} />;
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
   const greeting = useGreeting('Alex');
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // Comment sheet state
+  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
+  const [commentSheetSessionId, setCommentSheetSessionId] = useState<string | null>(null);
+  const [commentsList, setCommentsList] = useState<CommentItem[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
+  const commentsScrollRef = useRef<ScrollView>(null);
+
+  // Load feed on every focus
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setLoading(true);
 
-      fetchSessionPosts().then((sessionPosts) => {
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id ?? null;
+        if (!active) return;
+        setCurrentUserId(userId);
+
+        const sessionPosts = await fetchSessionPosts(userId);
         if (!active) return;
         setPosts(sessionPosts);
         setLoading(false);
-      });
+      })();
 
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }, [])
   );
 
+  // Optimistic like toggle — update UI immediately, sync Supabase in background
   const handleLike = async (id: string) => {
-    const updated = await togglePostLike(posts, id);
-    setPosts(updated);
+    if (!currentUserId) return;
+
+    const post = posts.find((p) => p.id === id);
+    if (!post) return;
+
+    const wasLiked = post.liked;
+
+    // Update state immediately (optimistic)
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 }
+          : p
+      )
+    );
+
+    // Sync with Supabase
+    if (wasLiked) {
+      await supabase
+        .from('likes')
+        .delete()
+        .eq('user_id', currentUserId)
+        .eq('session_id', id);
+    } else {
+      await supabase
+        .from('likes')
+        .insert({ user_id: currentUserId, session_id: id });
+    }
+  };
+
+  // Open comment sheet + fetch comments for the selected session
+  const openCommentSheet = async (sessionId: string) => {
+    setCommentSheetSessionId(sessionId);
+    setCommentSheetVisible(true);
+    setCommentsLoading(true);
+    setCommentsList([]);
+    setCommentInput('');
+
+    const { data: comments } = await supabase
+      .from('comments')
+      .select('id, user_id, content, created_at')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (comments && comments.length > 0) {
+      // Batch-fetch commenter profiles
+      const commentUserIds = [...new Set(comments.map((c) => c.user_id))];
+      const { data: commentProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, username, avatar_url')
+        .in('id', commentUserIds);
+
+      const commentProfileMap = new Map((commentProfiles ?? []).map((p) => [p.id, p]));
+
+      const items: CommentItem[] = comments.map((c) => {
+        const profile = commentProfileMap.get(c.user_id);
+        return {
+          id: c.id,
+          userId: c.user_id,
+          username: profile?.username ?? 'climber',
+          fullName: profile?.full_name ?? 'Climber',
+          avatarUrl: profile?.avatar_url ?? null,
+          content: c.content,
+          createdAt: c.created_at,
+        };
+      });
+      setCommentsList(items);
+    }
+
+    setCommentsLoading(false);
+  };
+
+  // Post a new comment, update list + count in real time
+  const handleSendComment = async () => {
+    if (!commentInput.trim() || !commentSheetSessionId || !currentUserId || sendingComment) return;
+
+    const content = commentInput.trim();
+    setSendingComment(true);
+    setCommentInput('');
+
+    const { data: newComment, error } = await supabase
+      .from('comments')
+      .insert({ user_id: currentUserId, session_id: commentSheetSessionId, content })
+      .select('id, user_id, content, created_at')
+      .single();
+
+    if (!error && newComment) {
+      // Get the commenter's own profile for display (only needed on first comment)
+      const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('full_name, username')
+        .eq('id', currentUserId)
+        .single();
+
+      const item: CommentItem = {
+        id: newComment.id,
+        userId: newComment.user_id,
+        username: myProfile?.username ?? 'climber',
+        fullName: myProfile?.full_name ?? 'Climber',
+        content: newComment.content,
+        createdAt: newComment.created_at,
+      };
+
+      setCommentsList((prev) => [...prev, item]);
+
+      // Bump comment count on the feed card immediately
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === commentSheetSessionId ? { ...p, comments: p.comments + 1 } : p
+        )
+      );
+
+      // Scroll to new comment
+      setTimeout(() => commentsScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+
+    setSendingComment(false);
   };
 
   return (
@@ -430,10 +632,140 @@ export default function FeedScreen() {
             </View>
           ) : (
             posts.map((post) => (
-              <FeedCard key={post.id} post={post} onLike={handleLike} />
+              <FeedCard
+                key={post.id}
+                post={post}
+                onLike={handleLike}
+                onComment={openCommentSheet}
+              />
             ))
           )}
         </ScrollView>
+      )}
+
+      {/* Comment bottom sheet — conditionally rendered so it fully unmounts on close */}
+      {commentSheetVisible && (
+        <Modal
+          visible
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCommentSheetVisible(false)}>
+          <View style={commentStyles.modalContainer}>
+            {/* Flex:1 TouchableOpacity fills space above the sheet — tap to dismiss */}
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setCommentSheetVisible(false)}
+            />
+
+            {/* Sheet anchored to bottom */}
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+              <View style={commentStyles.sheet}>
+                {/* Drag handle */}
+                <View style={commentStyles.sheetHandle} />
+
+                {/* Header */}
+                <View style={commentStyles.sheetHeader}>
+                  <Text style={commentStyles.sheetTitle}>Comments</Text>
+                  <TouchableOpacity
+                    onPress={() => setCommentSheetVisible(false)}
+                    hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
+                    <Text style={commentStyles.sheetClose}>×</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Comment list */}
+                <ScrollView
+                  ref={commentsScrollRef}
+                  style={commentStyles.commentList}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 8 }}>
+                  {commentsLoading ? (
+                    <ActivityIndicator
+                      color={PRIMARY}
+                      style={{ marginTop: 36, marginBottom: 36 }}
+                    />
+                  ) : commentsList.length === 0 ? (
+                    <View style={commentStyles.emptyComments}>
+                      <Text style={commentStyles.emptyCommentsTitle}>No comments yet</Text>
+                      <Text style={commentStyles.emptyCommentsSub}>
+                        Be the first to say something!
+                      </Text>
+                    </View>
+                  ) : (
+                    commentsList.map((comment) => (
+                      <View key={comment.id} style={commentStyles.commentRow}>
+                        {/* Avatar — real photo if available, initials fallback */}
+                        {comment.avatarUrl ? (
+                          <Image
+                            source={{ uri: comment.avatarUrl }}
+                            style={commentStyles.commentAvatarImg}
+                          />
+                        ) : (
+                          <View style={commentStyles.commentAvatar}>
+                            <Text style={commentStyles.commentAvatarText}>
+                              {toInitials(comment.fullName)}
+                            </Text>
+                          </View>
+                        )}
+                        {/* Content */}
+                        <View style={commentStyles.commentContent}>
+                          <View style={commentStyles.commentMeta}>
+                            {/* Tap name to visit profile */}
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                setCommentSheetVisible(false);
+                                if (comment.userId === currentUserId) {
+                                  router.navigate('/(tabs)/profile');
+                                } else {
+                                  router.push(`/user/${comment.userId}`);
+                                }
+                              }}>
+                              <Text style={commentStyles.commentName}>{comment.fullName}</Text>
+                            </TouchableOpacity>
+                            <Text style={commentStyles.commentTime}>
+                              {timeAgo(comment.createdAt)}
+                            </Text>
+                          </View>
+                          <Text style={commentStyles.commentText}>{comment.content}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+
+                {/* Input row */}
+                <View style={commentStyles.inputRow}>
+                  <TextInput
+                    style={commentStyles.input}
+                    placeholder="Add a comment..."
+                    placeholderTextColor={TEXT_MUTED}
+                    value={commentInput}
+                    onChangeText={setCommentInput}
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendComment}
+                    blurOnSubmit={false}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      commentStyles.sendBtn,
+                      (!commentInput.trim() || sendingComment) && commentStyles.sendBtnDisabled,
+                    ]}
+                    onPress={handleSendComment}
+                    disabled={!commentInput.trim() || sendingComment}
+                    activeOpacity={0.7}>
+                    {sendingComment ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={commentStyles.sendBtnText}>Send</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -681,5 +1013,168 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
+  },
+});
+
+// ─── Comment sheet styles ─────────────────────────────────────────────────────
+
+const commentStyles = StyleSheet.create({
+  // Outer Modal container — dark semi-transparent backdrop
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  // The sheet panel itself
+  sheet: {
+    backgroundColor: BG,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+    maxHeight: SCREEN_HEIGHT * 0.78,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: DIVIDER,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 22,
+    fontFamily: 'BebasNeue_400Regular',
+    color: TEXT,
+    letterSpacing: 1,
+  },
+  sheetClose: {
+    fontSize: 30,
+    color: TEXT_MUTED,
+    lineHeight: 34,
+  },
+  // Scrollable comment list
+  commentList: {
+    maxHeight: SCREEN_HEIGHT * 0.44,
+  },
+  // Empty state
+  emptyComments: {
+    paddingVertical: 44,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyCommentsTitle: {
+    fontSize: 20,
+    fontFamily: 'BebasNeue_400Regular',
+    color: TEXT,
+    letterSpacing: 1,
+  },
+  emptyCommentsSub: {
+    fontSize: 14,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  // Individual comment row
+  commentRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+  },
+  commentAvatarImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    flexShrink: 0,
+  },
+  commentAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  commentAvatarText: {
+    fontSize: 13,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  },
+  commentContent: {
+    flex: 1,
+    gap: 4,
+  },
+  commentMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  commentName: {
+    fontSize: 13,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+  },
+  commentTime: {
+    fontSize: 11,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  commentText: {
+    fontSize: 14,
+    fontFamily: 'DMSans_400Regular',
+    color: TEXT,
+    lineHeight: 20,
+  },
+  // Input + send
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: DIVIDER,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    fontSize: 15,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT,
+  },
+  sendBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 64,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  sendBtnDisabled: {
+    backgroundColor: TEXT_MUTED,
+    shadowOpacity: 0,
+    opacity: 0.55,
+  },
+  sendBtnText: {
+    fontSize: 15,
+    fontFamily: 'DMSans_700Bold',
+    color: '#ffffff',
   },
 });
