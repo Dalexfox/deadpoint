@@ -153,6 +153,7 @@ async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> 
 
     const post: Post = {
       id: session.id,
+      userId: session.user_id,
       name,
       initials: toInitials(name),
       avatarBg: PRIMARY,
@@ -312,10 +313,12 @@ function FullBleedCard({
   post,
   onLike,
   onComment,
+  onPressUser,
 }: {
   post: Post;
   onLike: (id: string) => void;
   onComment: (id: string) => void;
+  onPressUser: (userId: string) => void;
 }) {
   const isSession = post.postType === 'session';
   const mediaItem = post.media![0];
@@ -341,13 +344,19 @@ function FullBleedCard({
           colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.0)']}
           style={styles.heroGradient}>
           <View style={styles.heroUserRow}>
-            <Avatar post={post} size={40} dark />
-            <View style={styles.heroUserMeta}>
-              <Text style={styles.heroUserName}>{post.name}</Text>
-              {isSession && post.gym ? (
-                <Text style={styles.heroGym}>{post.gym}</Text>
-              ) : null}
-            </View>
+            {/* Tappable: avatar + name → user profile */}
+            <TouchableOpacity
+              style={styles.heroUserTouchable}
+              activeOpacity={0.8}
+              onPress={() => post.userId && onPressUser(post.userId)}>
+              <Avatar post={post} size={40} dark />
+              <View style={styles.heroUserMeta}>
+                <Text style={styles.heroUserName}>{post.name}</Text>
+                {isSession && post.gym ? (
+                  <Text style={styles.heroGym}>{post.gym}</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
             <Text style={styles.heroTimestamp}>{post.timestamp}</Text>
           </View>
         </LinearGradient>
@@ -388,21 +397,26 @@ function PlainCard({
   post,
   onLike,
   onComment,
+  onPressUser,
 }: {
   post: Post;
   onLike: (id: string) => void;
   onComment: (id: string) => void;
+  onPressUser: (userId: string) => void;
 }) {
   return (
     <View style={styles.card}>
-      {/* User row */}
-      <View style={styles.userRow}>
+      {/* User row — tappable to visit profile */}
+      <TouchableOpacity
+        style={styles.userRow}
+        activeOpacity={0.8}
+        onPress={() => post.userId && onPressUser(post.userId)}>
         <Avatar post={post} size={46} />
         <View style={styles.userMeta}>
           <Text style={styles.userName}>{post.name}</Text>
           <Text style={styles.timestamp}>{post.timestamp}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Gym label */}
       {post.gym ? (
@@ -438,15 +452,52 @@ function FeedCard({
   post,
   onLike,
   onComment,
+  onPressUser,
 }: {
   post: Post;
   onLike: (id: string) => void;
   onComment: (id: string) => void;
+  onPressUser: (userId: string) => void;
 }) {
   if (post.media && post.media.length > 0) {
-    return <FullBleedCard post={post} onLike={onLike} onComment={onComment} />;
+    return <FullBleedCard post={post} onLike={onLike} onComment={onComment} onPressUser={onPressUser} />;
   }
-  return <PlainCard post={post} onLike={onLike} onComment={onComment} />;
+  return <PlainCard post={post} onLike={onLike} onComment={onComment} onPressUser={onPressUser} />;
+}
+
+// ─── Search result components ─────────────────────────────────────────────────
+
+function GymResultRow({ gymName, onPress }: { gymName: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={searchStyles.gymRow} activeOpacity={0.75} onPress={onPress}>
+      <View style={searchStyles.gymRowLeft}>
+        <Text style={searchStyles.gymRowTag}>GYM</Text>
+        <Text style={searchStyles.gymRowName}>{gymName}</Text>
+      </View>
+      <Text style={searchStyles.gymRowChevron}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+function MiniSessionCard({ post }: { post: Post }) {
+  const mediaItem = post.media![0];
+  return (
+    <View style={searchStyles.miniCard}>
+      <Image
+        source={{ uri: mediaItem.uri }}
+        style={searchStyles.miniThumb}
+        resizeMode="cover"
+      />
+      <View style={searchStyles.miniInfo}>
+        <Text style={searchStyles.miniGym} numberOfLines={1}>{post.gym}</Text>
+        <Text style={searchStyles.miniMeta}>
+          {post.difficulty}
+          {post.problems !== undefined ? ` · ${post.problems} problems` : ''}
+        </Text>
+        <Text style={searchStyles.miniName} numberOfLines={1}>{post.name}</Text>
+      </View>
+    </View>
+  );
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -457,6 +508,7 @@ export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Comment sheet state
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
@@ -488,6 +540,15 @@ export default function FeedScreen() {
       return () => { active = false; };
     }, [])
   );
+
+  // Navigate to a user's profile — own profile goes to the tab, others to /user/[id]
+  const handlePressUser = useCallback((userId: string) => {
+    if (userId === currentUserId) {
+      router.navigate('/(tabs)/profile');
+    } else {
+      router.push(`/user/${userId}`);
+    }
+  }, [currentUserId, router]);
 
   // Optimistic like toggle — update UI immediately, sync Supabase in background
   const handleLike = async (id: string) => {
@@ -578,10 +639,9 @@ export default function FeedScreen() {
       .single();
 
     if (!error && newComment) {
-      // Get the commenter's own profile for display (only needed on first comment)
       const { data: myProfile } = await supabase
         .from('profiles')
-        .select('full_name, username')
+        .select('full_name, username, avatar_url')
         .eq('id', currentUserId)
         .single();
 
@@ -590,6 +650,7 @@ export default function FeedScreen() {
         userId: newComment.user_id,
         username: myProfile?.username ?? 'climber',
         fullName: myProfile?.full_name ?? 'Climber',
+        avatarUrl: myProfile?.avatar_url ?? null,
         content: newComment.content,
         createdAt: newComment.created_at,
       };
@@ -610,18 +671,103 @@ export default function FeedScreen() {
     setSendingComment(false);
   };
 
+  // ─── Derived search state ──────────────────────────────────────────────────
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const isSearching = trimmedQuery.length > 0;
+
+  const gymResults = isSearching
+    ? Object.entries(GYM_NAMES).filter(([, name]) =>
+        name.toLowerCase().includes(trimmedQuery)
+      )
+    : [];
+
+  const sessionMediaResults = isSearching
+    ? posts.filter(
+        (p) => p.media && p.media.length > 0 && p.gym?.toLowerCase().includes(trimmedQuery)
+      )
+    : [];
+
+  const hasResults = gymResults.length > 0 || sessionMediaResults.length > 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.subheading}>Your crew is crushing it.</Text>
+      </View>
+
+      {/* Search bar */}
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon}>⌕</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search gyms and sessions..."
+          placeholderTextColor={TEXT_MUTED}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={styles.searchClear}>×</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={PRIMARY} />
         </View>
+      ) : isSearching ? (
+        /* ── Search results ─────────────────────────────────────────────────── */
+        <ScrollView
+          contentContainerStyle={styles.searchResultsContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          {!hasResults ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No results</Text>
+              <Text style={styles.emptyText}>Try a different gym name</Text>
+            </View>
+          ) : (
+            <>
+              {gymResults.length > 0 && (
+                <View style={searchStyles.section}>
+                  <Text style={searchStyles.sectionLabel}>GYMS</Text>
+                  <View style={searchStyles.sectionCard}>
+                    {gymResults.map(([gymId, gymName], idx) => (
+                      <View key={gymId}>
+                        {idx > 0 && <View style={searchStyles.rowDivider} />}
+                        <GymResultRow
+                          gymName={gymName}
+                          onPress={() => router.push(`/gym/${gymId}`)}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {sessionMediaResults.length > 0 && (
+                <View style={searchStyles.section}>
+                  <Text style={searchStyles.sectionLabel}>SESSIONS WITH MEDIA</Text>
+                  <View style={searchStyles.miniGrid}>
+                    {sessionMediaResults.map((post) => (
+                      <MiniSessionCard key={post.id} post={post} />
+                    ))}
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
       ) : (
+        /* ── Normal feed ────────────────────────────────────────────────────── */
         <ScrollView
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}>
@@ -637,6 +783,7 @@ export default function FeedScreen() {
                 post={post}
                 onLike={handleLike}
                 onComment={openCommentSheet}
+                onPressUser={handlePressUser}
               />
             ))
           )}
@@ -781,7 +928,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 28,
+    paddingBottom: 16,
   },
   greeting: {
     fontSize: 42,
@@ -797,6 +944,37 @@ const styles = StyleSheet.create({
     marginTop: 6,
     letterSpacing: 0.1,
   },
+
+  // ── Search bar ───────────────────────────────────────────────────────────────
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+  },
+  searchIcon: {
+    fontSize: 18,
+    color: TEXT_MUTED,
+    lineHeight: 22,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT,
+    padding: 0,
+  },
+  searchClear: {
+    fontSize: 22,
+    color: TEXT_MUTED,
+    lineHeight: 24,
+  },
+
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -823,8 +1001,11 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 16,
   },
+  searchResultsContainer: {
+    paddingBottom: 40,
+  },
 
-  // ── Full-bleed card ─────────────────────────────────────────────────────────
+  // ── Full-bleed card ──────────────────────────────────────────────────────────
   fullBleedCard: {
     backgroundColor: BG,
     borderRadius: 20,
@@ -875,7 +1056,12 @@ const styles = StyleSheet.create({
   heroUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  heroUserTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 11,
+    flex: 1,
   },
   heroUserMeta: {
     flex: 1,
@@ -1013,6 +1199,103 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
+  },
+});
+
+// ─── Search result styles ─────────────────────────────────────────────────────
+
+const searchStyles = StyleSheet.create({
+  section: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_MUTED,
+    letterSpacing: 1.4,
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+  // Gym results grouped in a card
+  sectionCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  gymRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  gymRowLeft: {
+    gap: 2,
+  },
+  gymRowTag: {
+    fontSize: 10,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: PRIMARY,
+    letterSpacing: 1.4,
+  },
+  gymRowName: {
+    fontSize: 16,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: -0.1,
+  },
+  gymRowChevron: {
+    fontSize: 22,
+    color: TEXT_MUTED,
+    lineHeight: 26,
+  },
+  rowDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: DIVIDER,
+    marginHorizontal: 18,
+  },
+  // Mini session cards (sessions with media)
+  miniGrid: {
+    gap: 10,
+  },
+  miniCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  miniThumb: {
+    width: 80,
+    height: 80,
+  },
+  miniInfo: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 3,
+  },
+  miniGym: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: -0.1,
+  },
+  miniMeta: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
+  },
+  miniName: {
+    fontSize: 12,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT_MUTED,
   },
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,6 +40,13 @@ type UserStats = {
   gymsVisited: number;
 };
 
+type FollowUser = {
+  id:        string;
+  fullName:  string;
+  username:  string | null;
+  avatarUrl: string | null;
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toInitials(name: string): string {
@@ -59,6 +67,17 @@ export default function UserProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [isFollowing,        setIsFollowing]        = useState(false);
+  const [followerCount,      setFollowerCount]       = useState(0);
+  const [followingCount,     setFollowingCount]      = useState(0);
+  const [followersVisible,   setFollowersVisible]    = useState(false);
+  const [followingVisible,   setFollowingVisible]    = useState(false);
+  const [followersList,      setFollowersList]       = useState<FollowUser[]>([]);
+  const [followingList,      setFollowingList]       = useState<FollowUser[]>([]);
+  const [followListLoading,  setFollowListLoading]   = useState(false);
+  const [followActionLoading, setFollowActionLoading] = useState(false);
+  const [currentUserId,      setCurrentUserId]       = useState<string | null>(null);
 
   useEffect(() => {
     if (id) loadProfile(id);
@@ -112,8 +131,95 @@ export default function UserProfileScreen() {
       gymsVisited: gymSet.size,
     });
 
+    // Follow data (graceful — follows table may not exist yet)
+    try {
+      const { data: { user: me } } = await supabase.auth.getUser();
+      if (me) {
+        setCurrentUserId(me.id);
+        const [{ count: fc }, { count: fgc }] = await Promise.all([
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+        ]);
+        setFollowerCount(fc ?? 0);
+        setFollowingCount(fgc ?? 0);
+        if (me.id !== userId) {
+          const { count: alreadyFollowing } = await supabase
+            .from('follows').select('*', { count: 'exact', head: true })
+            .eq('follower_id', me.id).eq('following_id', userId);
+          setIsFollowing((alreadyFollowing ?? 0) > 0);
+        }
+      }
+    } catch { /* follows table may not exist yet */ }
+
     setLoading(false);
   }
+
+  const handleFollowToggle = async () => {
+    if (!currentUserId || !id) return;
+    setFollowActionLoading(true);
+    try {
+      if (isFollowing) {
+        await supabase.from('follows').delete()
+          .eq('follower_id', currentUserId).eq('following_id', id);
+        setIsFollowing(false);
+        setFollowerCount((prev) => Math.max(0, prev - 1));
+      } else {
+        await supabase.from('follows').insert({ follower_id: currentUserId, following_id: id });
+        setIsFollowing(true);
+        setFollowerCount((prev) => prev + 1);
+      }
+    } catch { /* silent */ } finally {
+      setFollowActionLoading(false);
+    }
+  };
+
+  const handleOpenFollowers = async () => {
+    setFollowersVisible(true);
+    setFollowListLoading(true);
+    try {
+      const { data: followsData } = await supabase
+        .from('follows').select('follower_id').eq('following_id', id);
+      const ids = (followsData ?? []).map((f: { follower_id: string }) => f.follower_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles').select('id, full_name, username, avatar_url').in('id', ids);
+        setFollowersList((profiles ?? []).map((p: { id: string; full_name: string | null; username: string | null; avatar_url: string | null }) => ({
+          id: p.id, fullName: p.full_name ?? 'Climber',
+          username: p.username ?? null, avatarUrl: p.avatar_url ?? null,
+        })));
+      } else {
+        setFollowersList([]);
+      }
+    } catch {
+      setFollowersList([]);
+    } finally {
+      setFollowListLoading(false);
+    }
+  };
+
+  const handleOpenFollowing = async () => {
+    setFollowingVisible(true);
+    setFollowListLoading(true);
+    try {
+      const { data: followsData } = await supabase
+        .from('follows').select('following_id').eq('follower_id', id);
+      const ids = (followsData ?? []).map((f: { following_id: string }) => f.following_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles').select('id, full_name, username, avatar_url').in('id', ids);
+        setFollowingList((profiles ?? []).map((p: { id: string; full_name: string | null; username: string | null; avatar_url: string | null }) => ({
+          id: p.id, fullName: p.full_name ?? 'Climber',
+          username: p.username ?? null, avatarUrl: p.avatar_url ?? null,
+        })));
+      } else {
+        setFollowingList([]);
+      }
+    } catch {
+      setFollowingList([]);
+    } finally {
+      setFollowListLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -161,6 +267,36 @@ export default function UserProfileScreen() {
             {profile?.bio ? (
               <Text style={styles.bio}>{profile.bio}</Text>
             ) : null}
+
+            {/* Follow / Following toggle — hidden when viewing own profile */}
+            {currentUserId && currentUserId !== id && (
+              <TouchableOpacity
+                style={[styles.followBtn, isFollowing && styles.followBtnActive]}
+                onPress={handleFollowToggle}
+                disabled={followActionLoading}
+                activeOpacity={0.8}>
+                <Text style={[styles.followBtnLabel, isFollowing && styles.followBtnLabelActive]}>
+                  {followActionLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Follower / following counts */}
+            <View style={styles.followCountRow}>
+              <TouchableOpacity onPress={handleOpenFollowers} activeOpacity={0.7}>
+                <Text style={styles.followCountText}>
+                  <Text style={styles.followCountNum}>{followerCount}</Text>
+                  {' '}<Text style={styles.followCountLabel}>followers</Text>
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.followCountDot}> · </Text>
+              <TouchableOpacity onPress={handleOpenFollowing} activeOpacity={0.7}>
+                <Text style={styles.followCountText}>
+                  <Text style={styles.followCountNum}>{followingCount}</Text>
+                  {' '}<Text style={styles.followCountLabel}>following</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* ── Stats bar ── */}
@@ -183,6 +319,93 @@ export default function UserProfileScreen() {
 
         </ScrollView>
       )}
+
+      {/* ── Followers bottom sheet ────────────────────────────────── */}
+      {followersVisible && (
+        <Modal visible animationType="slide" transparent onRequestClose={() => setFollowersVisible(false)}>
+          <View style={styles.sheetBackdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setFollowersVisible(false)} />
+            <View style={styles.sheetPanel}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeaderRow}>
+                <Text style={styles.sheetTitle}>Followers</Text>
+                <TouchableOpacity onPress={() => setFollowersVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.sheetCloseBtn}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
+                {followListLoading ? (
+                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                ) : followersList.length === 0 ? (
+                  <Text style={styles.sheetEmpty}>No followers yet</Text>
+                ) : (
+                  followersList.map((u) => (
+                    <View key={u.id} style={styles.sheetUserRow}>
+                      {u.avatarUrl ? (
+                        <Image source={{ uri: u.avatarUrl }} style={styles.sheetAvatar} />
+                      ) : (
+                        <View style={[styles.sheetAvatar, styles.sheetAvatarFallback]}>
+                          <Text style={styles.sheetAvatarInitials}>
+                            {u.fullName.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('')}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.sheetUserInfo}>
+                        <Text style={styles.sheetUserName}>{u.fullName}</Text>
+                        {u.username ? <Text style={styles.sheetUserUsername}>@{u.username}</Text> : null}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ── Following bottom sheet ────────────────────────────────── */}
+      {followingVisible && (
+        <Modal visible animationType="slide" transparent onRequestClose={() => setFollowingVisible(false)}>
+          <View style={styles.sheetBackdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setFollowingVisible(false)} />
+            <View style={styles.sheetPanel}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeaderRow}>
+                <Text style={styles.sheetTitle}>Following</Text>
+                <TouchableOpacity onPress={() => setFollowingVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.sheetCloseBtn}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
+                {followListLoading ? (
+                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                ) : followingList.length === 0 ? (
+                  <Text style={styles.sheetEmpty}>No one followed yet</Text>
+                ) : (
+                  followingList.map((u) => (
+                    <View key={u.id} style={styles.sheetUserRow}>
+                      {u.avatarUrl ? (
+                        <Image source={{ uri: u.avatarUrl }} style={styles.sheetAvatar} />
+                      ) : (
+                        <View style={[styles.sheetAvatar, styles.sheetAvatarFallback]}>
+                          <Text style={styles.sheetAvatarInitials}>
+                            {u.fullName.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('')}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.sheetUserInfo}>
+                        <Text style={styles.sheetUserName}>{u.fullName}</Text>
+                        {u.username ? <Text style={styles.sheetUserUsername}>@{u.username}</Text> : null}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
     </SafeAreaView>
   );
 }
@@ -317,5 +540,144 @@ const styles = StyleSheet.create({
     height: 36,
     backgroundColor: DIVIDER,
     marginHorizontal: 8,
+  },
+
+  // ── Follow button ─────────────────────────────────────────────────────────────
+  followBtn: {
+    backgroundColor: PRIMARY,
+    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  followBtnActive: {
+    backgroundColor: SURFACE,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+  },
+  followBtnLabel: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+  followBtnLabelActive: {
+    color: TEXT,
+  },
+  followCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  followCountText: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  followCountNum: {
+    fontSize: 13,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+  },
+  followCountLabel: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+  followCountDot: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+
+  // ── Follow sheet ──────────────────────────────────────────────────────────────
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  sheetPanel: {
+    backgroundColor: BG,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '60%',
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: DIVIDER,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT,
+    letterSpacing: -0.3,
+  },
+  sheetCloseBtn: {
+    fontSize: 26,
+    color: TEXT_MUTED,
+    lineHeight: 30,
+    paddingHorizontal: 4,
+  },
+  sheetList: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  sheetEmpty: {
+    fontSize: 14,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    textAlign: 'center',
+    paddingVertical: 32,
+  },
+  sheetUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+  },
+  sheetAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 11,
+  },
+  sheetAvatarFallback: {
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetAvatarInitials: {
+    fontSize: 16,
+    fontFamily: 'DMSans_700Bold',
+    color: '#ffffff',
+  },
+  sheetUserInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  sheetUserName: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT,
+    letterSpacing: -0.1,
+  },
+  sheetUserUsername: {
+    fontSize: 12,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_SUB,
   },
 });

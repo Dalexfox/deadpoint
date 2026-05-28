@@ -18,6 +18,9 @@ function GymsIcon({ color, focused }: IconProps) {
 function LogIcon({ color, focused }: IconProps) {
   return <SymbolView name={focused ? 'book.fill' : 'book'} size={24} tintColor={color} />;
 }
+function ExploreIcon({ color, focused }: IconProps) {
+  return <SymbolView name={focused ? 'magnifyingglass.circle.fill' : 'magnifyingglass'} size={24} tintColor={color} />;
+}
 function ProfileIcon({ color, focused }: IconProps) {
   return <SymbolView name={focused ? 'person.fill' : 'person'} size={24} tintColor={color} />;
 }
@@ -43,6 +46,10 @@ export default function TabsLayout() {
           options={{ title: 'Gyms', tabBarIcon: (p) => <GymsIcon {...p} /> }}
         />
         <Tabs.Screen
+          name="explore"
+          options={{ title: 'Explore', tabBarIcon: (p) => <ExploreIcon {...p} /> }}
+        />
+        <Tabs.Screen
           name="log"
           options={{ title: 'Log', tabBarIcon: (p) => <LogIcon {...p} /> }}
         />
@@ -50,7 +57,6 @@ export default function TabsLayout() {
           name="profile"
           options={{ title: 'Profile', tabBarIcon: (p) => <ProfileIcon {...p} /> }}
         />
-        <Tabs.Screen name="explore" options={{ href: null }} />
       </Tabs>
     </ThemeProvider>
   );

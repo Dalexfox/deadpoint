@@ -17,6 +17,7 @@ export type Post = {
   initials: string;
   avatarBg: string;
   avatarUrl?: string;     // public Supabase Storage URL — shows real photo in feed
+  userId?: string;        // Supabase auth user ID — used for profile tap-through
   timestamp: string;
   likes: number;
   comments: number;

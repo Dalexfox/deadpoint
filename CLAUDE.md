@@ -184,6 +184,15 @@ likes (
   unique(user_id, session_id)
 )
 
+-- Follow relationships
+follows (
+  id uuid primary key default gen_random_uuid(),
+  follower_id uuid references auth.users(id) on delete cascade,
+  following_id uuid references auth.users(id) on delete cascade,
+  created_at timestamp with time zone default now(),
+  unique(follower_id, following_id)
+)
+
 -- Session comments
 comments (
   id uuid primary key default gen_random_uuid(),
@@ -258,9 +267,10 @@ src/app/
     login.tsx          — Email + password login
     signup.tsx         — Full name, username, email, password sign up
   (tabs)/
-    _layout.tsx        — Tab bar (Feed, Gyms, Log, Profile)
+    _layout.tsx        — Tab bar (Feed, Gyms, Explore, Log, Profile)
     index.tsx          — Feed screen
     gyms.tsx           — Gyms list
+    explore.tsx        — Explore / find climbers
     log.tsx            — Log a session
     profile.tsx        — User profile
   gym/
@@ -276,18 +286,31 @@ src/lib/
   store.ts             — AsyncStorage helpers, media upload, avatar upload
 ```
 
-### 4 Main Tabs
+### 5 Main Tabs
 1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes and comments are fully Supabase-backed. Profile avatars from `profiles.avatar_url` shown on cards.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
-3. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
-4. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
+3. **Explore** — Find and follow other climbers. See Explore tab section below.
+4. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
+5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) that scroll vertically.
    - **Sessions tab** — swipeable horizontal carousel of past sessions.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
    - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
    - Stats bar (Total Climbs, Gyms Visited, Top Grade) fetched live from Supabase on every focus.
-   - Add Friend outline button on the identity row.
+   - **Invite Friends** button (PRIMARY teal outline) on the identity row — triggers `Share.share()` with an invite message.
+   - **Follower / following counts** row below the identity block — tapping "followers" or "following" opens a bottom-sheet Modal listing those users.
+   - **Followers sheet** — avatar + name/username list; no action buttons (read-only).
+   - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately.
+
+### Explore Tab (`/explore`)
+- "EXPLORE" BebasNeue header, SURFACE search bar with `magnifyingglass` SF Symbol icon
+- **Search** — TextInput debounced 350ms; queries `profiles` with `.ilike('username', '%q%')`; filters out the current user. Results show when query is non-empty.
+- **Suggested Climbers** — shown when search is empty. Finds users who have sessions at the same gyms as the current user (queries `sessions` by `gym_id`), excludes self and already-followed users, batch-fetches their profiles.
+- **User rows** — circular avatar (real photo or PRIMARY initials fallback), `full_name` (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), Follow/Following toggle button.
+- **Follow button** — PRIMARY solid background + white label when not following; SURFACE background + DIVIDER border + TEXT_MUTED label when following. Optimistic: UI updates immediately, then writes to/deletes from `follows` table.
+- **Empty state** — "Log a session to find climbers at your gym." shown if no suggestions.
+- `followingSet` is a `Set<string>` of following_ids; refreshed on every screen focus via `useFocusEffect`.
 
 ### Gym Detail (`/gym/[id]`)
 - Per-grade counter (V0–V10) with increment/decrement
@@ -341,7 +364,10 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Header with `‹` back chevron (DMSans_300Light) and centred "PROFILE" title (BebasNeue).
 - Square avatar (`width: 100, height: 100, borderRadius: 16`) — real photo or PRIMARY initials fallback.
 - Full name (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), bio (DMSans_400Regular, TEXT_MUTED) — each only renders if set.
+- **Follow / Following toggle button** — PRIMARY solid + white label when not following; SURFACE background + DIVIDER border + TEXT label when following. Hidden if viewing own profile (`currentUserId === id`). Optimistic: updates `isFollowing` and `followerCount` immediately, then writes to/deletes from `follows` table.
+- **Follower / following counts** — tappable `X followers · Y following` row; opens bottom-sheet Modals listing those users (avatar + name/username, no action buttons since this is not your own profile).
 - Stats bar (SURFACE background, borderRadius: 20): **Total Climbs · Top Grade · Gyms Visited** — computed live from the user's sessions+climbs in Supabase, same logic as the self-profile.
+- All follow data is fetched inside a `try/catch` so the screen renders correctly even if the `follows` table doesn't exist.
 
 ## Current Gyms (Phase 1 — NYC)
 - Vital Climbing LES (id: 1, Lower East Side)
@@ -362,7 +388,7 @@ Posts have a `postType` field: `'session'` or `'photo'`
 ## Features — MVP Status
 
 ### ✅ Built
-- Bottom tab navigation (Feed, Gyms, Log, Profile)
+- Bottom tab navigation (Feed, Gyms, Explore, Log, Profile)
 - Gym detail page with per-grade V-scale climb logger (saves to Supabase)
 - Log tab saves sessions to Supabase (`sessions` + `climbs` tables)
 - Photo/video upload from Log screen and Gym Detail (uploads to Supabase Storage, `media_url` saved)
@@ -382,7 +408,8 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
-- Add Friend outline button on Profile
+- **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
+- **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
@@ -390,7 +417,9 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - Full light color system across all screens
 
 ### 🔜 Phase 2
-- [ ] Friends / following system
+- [x] Follow infrastructure (`follows` table + RLS) — done
+- [x] Follower/following counts on profiles + bottom-sheet user lists — done
+- [ ] Feed filtered to followed users only
 - [ ] Push notifications
 - [ ] More gyms (expand beyond NYC Vital locations)
 
@@ -404,7 +433,7 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - Always use **expo-router** for navigation, NEVER react-navigation
 - Always keep compatibility with **Expo SDK 56**
 - Use the **light palette** defined above — BG white, CARD/SURFACE `#d8eaf0`, PRIMARY `#2E7A96`, ACCENT `#ff507c`
-- ACCENT (`#ff507c`) is ONLY for: like buttons, submit/log buttons, wordmark, success screen titles, Add Friend button, Monthly Volume chart line, Grade Distribution peak bar
+- ACCENT (`#ff507c`) is ONLY for: like buttons, submit/log buttons, wordmark, success screen titles, Monthly Volume chart line, Grade Distribution peak bar
 - PRIMARY (`#2E7A96`) is for: everything else that needs a color — tabs, banners, gym tags, selectors, nav buttons, carousel pills
 - Auth screens use **white backgrounds** with `#0d2b36` heading text — intentionally minimal
 - **Bebas Neue** for all display headings, **DM Sans** for all body/UI text
