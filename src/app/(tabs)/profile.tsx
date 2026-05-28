@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -164,6 +165,11 @@ export default function ProfileScreen() {
   const [activeSession, setActiveSession] = useState(0);
   const carouselRef = useRef<ScrollView>(null);
 
+  const [editName, setEditName]         = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editBio, setEditBio]           = useState('');
+  const [savingProfile, setSavingProfile]     = useState(false);
+
   const [stats, setStats] = useState<{
     totalClimbs: number;
     gymsVisited: number;
@@ -188,6 +194,18 @@ export default function ProfileScreen() {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
+
+          // ── 0. Profile fields (for Settings edit form) ──────────
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('full_name, username, bio')
+            .eq('id', user.id)
+            .single();
+          if (profileRow) {
+            setEditName(profileRow.full_name ?? '');
+            setEditUsername(profileRow.username ?? '');
+            setEditBio(profileRow.bio ?? '');
+          }
 
           // ── 1. Sessions ─────────────────────────────────────────
           const { data: rawSessions, error: sessionsError } = await supabase
@@ -399,9 +417,43 @@ export default function ProfileScreen() {
     Alert.alert('Posted!', 'Your photo is now live on the feed.');
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.replace('/auth/login');
+  const handleSignOut = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut();
+          router.replace('/auth/login');
+        },
+      },
+    ]);
+  };
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: editName.trim(),
+          username:  editUsername.trim().replace(/^@/, ''),
+          bio:       editBio.trim(),
+        })
+        .eq('id', user.id);
+      if (error) {
+        Alert.alert('Error', 'Could not save changes. Please try again.');
+      } else {
+        Alert.alert('Saved', 'Your profile has been updated.');
+      }
+    } catch {
+      Alert.alert('Error', 'Something went wrong.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -478,6 +530,7 @@ export default function ProfileScreen() {
             <View>
               <Text style={styles.name}>{USER.name}</Text>
               <Text style={styles.username}>{USER.username}</Text>
+              {editBio ? <Text style={styles.headerBio}>{editBio}</Text> : null}
             </View>
             <TouchableOpacity style={styles.addFriendBtn} activeOpacity={0.7}>
               <Text style={styles.addFriendLabel}>Add Friend</Text>
@@ -788,12 +841,69 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* ── Settings tab — placeholder ───────────────────────────── */}
+      {/* ── Settings tab ─────────────────────────────────────────── */}
       {activeTab === 'settings' && (
         <View style={styles.tabContentView}>
+
+          {/* Edit Profile */}
+          <Text style={styles.settingsSectionLabel}>Edit Profile</Text>
+          <View style={styles.settingsCard}>
+
+            <Text style={styles.inputLabel}>Full Name</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Your full name"
+              placeholderTextColor={TEXT_MUTED}
+              autoCapitalize="words"
+              returnKeyType="next"
+            />
+
+            <Text style={styles.inputLabel}>Username</Text>
+            <View style={styles.usernameRow}>
+              <Text style={styles.usernameAt}>@</Text>
+              <TextInput
+                style={styles.usernameInput}
+                value={editUsername}
+                onChangeText={setEditUsername}
+                placeholder="username"
+                placeholderTextColor={TEXT_MUTED}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+            </View>
+
+            <Text style={styles.inputLabel}>Bio</Text>
+            <TextInput
+              style={styles.bioInput}
+              value={editBio}
+              onChangeText={setEditBio}
+              placeholder="Tell the community about yourself…"
+              placeholderTextColor={TEXT_MUTED}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={[styles.saveBtn, savingProfile && { opacity: 0.6 }]}
+              onPress={handleSaveProfile}
+              activeOpacity={0.8}
+              disabled={savingProfile}>
+              <Text style={styles.saveBtnLabel}>
+                {savingProfile ? 'Saving…' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+
+          {/* Log Out */}
           <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.8}>
             <Text style={styles.signOutLabel}>Log Out</Text>
           </TouchableOpacity>
+
         </View>
       )}
 
@@ -931,6 +1041,13 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_600SemiBold',
     color: TEXT_SUB,
     letterSpacing: 0.1,
+  },
+  headerBio: {
+    fontSize: 14,
+    fontFamily: 'DMSans_400Regular',
+    color: TEXT_MUTED,
+    letterSpacing: 0.1,
+    marginTop: 4,
   },
   addFriendBtn: {
     borderWidth: 1.5,
@@ -1421,9 +1538,90 @@ const styles = StyleSheet.create({
   },
 
   // ─── Settings ─────────────────────────────────────────────────
+  settingsSectionLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_MUTED,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  settingsCard: {
+    marginHorizontal: 20,
+    marginBottom: 28,
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_MUTED,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  textInput: {
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT,
+  },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+  },
+  usernameAt: {
+    fontSize: 15,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_SUB,
+    marginRight: 2,
+  },
+  usernameInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT,
+  },
+  bioInput: {
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
+    fontSize: 15,
+    fontFamily: 'DMSans_500Medium',
+    color: TEXT,
+    minHeight: 90,
+  },
+  saveBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  saveBtnLabel: {
+    fontSize: 17,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
   signOutBtn: {
     marginHorizontal: 20,
-    backgroundColor: SURFACE,
+    borderWidth: 1.5,
+    borderColor: '#e53935',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
@@ -1431,7 +1629,7 @@ const styles = StyleSheet.create({
   signOutLabel: {
     fontSize: 15,
     fontFamily: 'DMSans_700Bold',
-    color: ACCENT,
+    color: '#e53935',
     letterSpacing: 0.2,
   },
 });
