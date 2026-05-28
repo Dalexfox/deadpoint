@@ -287,7 +287,7 @@ src/lib/
 ```
 
 ### 5 Main Tabs
-1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes and comments are fully Supabase-backed. Profile avatars from `profiles.avatar_url` shown on cards.
+1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes and comments are fully Supabase-backed. Profile avatars from `profiles.avatar_url` shown on cards. Search bar below the greeting header filters gyms and sessions. Tapping the avatar or name on any card navigates to that user's profile.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
@@ -302,6 +302,20 @@ src/lib/
    - **Follower / following counts** row below the identity block — tapping "followers" or "following" opens a bottom-sheet Modal listing those users.
    - **Followers sheet** — avatar + name/username list; no action buttons (read-only).
    - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately.
+
+### Feed Search
+- Search bar sits between the greeting header and the feed list — SURFACE background, `borderRadius: 14`, `⌕` text icon on left, `×` clear button on right when query is non-empty.
+- **Gym results** — filters `GYM_NAMES` entries whose name includes the query (case-insensitive). Rendered in a grouped CARD-background card with hairline dividers between rows. Each row shows a "GYM" tag (PRIMARY), the gym name, and a `›` chevron. Tapping navigates to `/gym/[id]`.
+- **Session results** — filters the already-loaded posts for entries that have `media` AND whose `gym` name includes the query. Shown as mini cards: 80×80 thumbnail on the left, gym name + grade/difficulty + climber name on the right.
+- Empty state: "No results / Try a different gym name" when neither section has matches.
+- Clearing the query (× button or empty TextInput) returns to the normal feed.
+- `keyboardShouldPersistTaps="handled"` on the results ScrollView so tapping a row works while the keyboard is open.
+
+### Feed Card Tap-Through
+- **Full-bleed cards (with photo):** the avatar + name/gym block inside the gradient overlay is a `TouchableOpacity` (`heroUserTouchable` style — `flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1`). The timestamp sits outside the touchable at the row end.
+- **Plain cards (no photo):** the entire `userRow` (avatar + name + timestamp) is a `TouchableOpacity`.
+- Navigation: if `post.userId === currentUserId` → `router.navigate('/(tabs)/profile')`; otherwise → `router.push('/user/[id]')`.
+- `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Explore Tab (`/explore`)
 - "EXPLORE" BebasNeue header, SURFACE search bar with `magnifyingglass` SF Symbol icon
@@ -357,6 +371,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - **Comment sheet** — conditionally rendered `{commentSheetVisible && <Modal>}` (slide animation, transparent backdrop). Layout: flex:1 `TouchableOpacity` fills space above the sheet to dismiss on backdrop tap; `KeyboardAvoidingView` wraps the sheet panel at the bottom.
 - Comment rows show real avatar photo (`borderRadius: 11` square) when `avatar_url` is set, initials fallback otherwise.
 - **Tap commenter name** — closes the sheet, then navigates: own comment → `/(tabs)/profile`; other user → `/user/[userId]`.
+- **Tap avatar / name on feed card** — navigates to profile without opening the comment sheet (see Feed Card Tap-Through above).
 - **Post a comment** — inserts to `comments` table, appends to local list, bumps the feed card count in real time. Send button in ACCENT pink, disabled + muted when input is empty.
 
 ### User Profile Page (`/user/[id]`)
@@ -408,6 +423,8 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
+- **Feed search bar** — filters gyms (from `GYM_NAMES`) and sessions with media by gym name; gym rows tap → `/gym/[id]`; session mini cards show thumbnail + grade + climber
+- **Feed card tap-through** — tapping avatar or name on any feed card navigates to that user's profile (own → Profile tab, other → `/user/[id]`)
 - **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
