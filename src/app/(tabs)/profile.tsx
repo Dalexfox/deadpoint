@@ -168,7 +168,10 @@ export default function ProfileScreen() {
   const [editName, setEditName]         = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio]           = useState('');
-  const [savingProfile, setSavingProfile]     = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Committed values — only update after a successful Save Changes
+  const [displayBio, setDisplayBio] = useState('');
 
   const [stats, setStats] = useState<{
     totalClimbs: number;
@@ -205,6 +208,7 @@ export default function ProfileScreen() {
             setEditName(profileRow.full_name ?? '');
             setEditUsername(profileRow.username ?? '');
             setEditBio(profileRow.bio ?? '');
+            setDisplayBio(profileRow.bio ?? '');
           }
 
           // ── 1. Sessions ─────────────────────────────────────────
@@ -447,6 +451,7 @@ export default function ProfileScreen() {
       if (error) {
         Alert.alert('Error', 'Could not save changes. Please try again.');
       } else {
+        setDisplayBio(editBio.trim());
         Alert.alert('Saved', 'Your profile has been updated.');
       }
     } catch {
@@ -530,7 +535,7 @@ export default function ProfileScreen() {
             <View>
               <Text style={styles.name}>{USER.name}</Text>
               <Text style={styles.username}>{USER.username}</Text>
-              {editBio ? <Text style={styles.headerBio}>{editBio}</Text> : null}
+              {displayBio ? <Text style={styles.headerBio}>{displayBio}</Text> : null}
             </View>
             <TouchableOpacity style={styles.addFriendBtn} activeOpacity={0.7}>
               <Text style={styles.addFriendLabel}>Add Friend</Text>
