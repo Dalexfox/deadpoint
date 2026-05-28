@@ -132,6 +132,7 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 - **Base64 decode:** `base64-arraybuffer` — use `decode()` for reliable base64→ArrayBuffer in Hermes (never atob())
 - **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart (Weekly Intensity) and LineChart (Monthly Volume) on Profile. Grade Distribution uses a fully custom View-based bar chart (no chart-kit) to avoid label clipping.
 - **Gradients:** `expo-linear-gradient` (feed card photo overlay)
+- **Video:** `expo-av` is installed (`package.json`) but **requires a development build** — it does NOT work in Expo Go (throws `ExponentAV` native module error). For video playback in Expo Go, use `Linking.openURL(url)` to hand off to the system player. When a dev build is available, swap in `expo-av Video`.
 - **Platform:** iOS first (iPhone)
 
 ## Supabase Setup
@@ -149,8 +150,11 @@ profiles (
   username text unique,
   email text,
   avatar_url text,           -- public Supabase Storage URL for profile photo
+  bio text,                  -- optional short bio, shown below @username in profile header
   created_at timestamp with time zone default now()
 )
+-- ⚠️ bio column must be added manually if not present:
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio text;
 
 -- Climbing sessions
 sessions (
@@ -258,8 +262,9 @@ src/lib/
 4. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) that scroll vertically.
    - **Sessions tab** — swipeable horizontal carousel of past sessions.
-   - **Settings tab** — Log Out button (calls `supabase.auth.signOut()` → redirects to `/auth/login`).
+   - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
+   - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
    - Stats bar (Total Climbs, Gyms Visited, Top Grade) fetched live from Supabase on every focus.
    - Add Friend outline button on the identity row.
 
@@ -273,8 +278,20 @@ src/lib/
 ### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
 1. **Weekly Intensity** — `react-native-chart-kit` BarChart of problems per day Mon–Sun. Uses `withCustomBarColorFromData` + `flatColor`: selected day bar is solid `#2E7A96`, others `rgba(46,122,150,0.3)`. Tap a day chip to drill into sessions for that day.
-2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit BarChart — it clipped V10). Each bar is a proportional `View` inside a fixed-height well. Peak bar: ACCENT pink. Others: PRIMARY teal. Non-selected bars dim to 0.35 opacity when a grade is active. Tapping a bar or chip sets `selectedGrade` to show the drill-down panel.
+2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit — it clipped V10). Collapsed card: compact 130px bars + grade chips + drill-down list. Tap `↗` to expand inline (no Modal — avoids iOS touch-blocking bugs): expanded shows 180px bars + grade chips + tappable session rows. Tap `×` to collapse. State: `selectedGrade` (collapsed) and `modalSelectedGrade` (expanded) are separate. **Tapping any climb row** (collapsed or expanded) opens the full-screen media viewer.
 3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. ACCENT line color, bezier curve.
+
+### Profile Media Viewer
+- Full-screen `Modal` with `animationType="fade"`, **conditionally rendered** (`{mediaViewerVisible && <Modal>}`) so it fully unmounts on close and never blocks touches on the profile scroll view.
+- **Photos** — `Image` component, `resizeMode="contain"`, black background, info strip at bottom (gym · grade count · date).
+- **Videos** — `Linking.openURL(url)` hands off to the iPhone system player (expo-av requires a dev build and crashes in Expo Go).
+- **No media** — centred "No media attached" white text on black background.
+- Close `×` button top-right (white, always visible).
+
+### Profile Edit State
+Two separate state buckets to prevent live-typing from updating the displayed header:
+- `editName / editUsername / editBio` — bound to the Settings form inputs; set from Supabase on every screen focus
+- `displayBio` — what shows below `@username` in the profile header; only updated after a successful Save Changes
 
 ### Profile Tab Bar
 - Three equal-width tabs: **Overview · Sessions · Settings**
@@ -321,9 +338,11 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Profile 3-tab layout** — Overview / Sessions / Settings tabs with fixed tab bar
 - **Profile stats dashboard** — 3 interactive charts (Weekly Intensity, Grade Distribution, Monthly Volume) in Overview tab
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
-- **Grade Distribution custom bar chart** — built from Views, no chart-kit clipping
+- **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
+- **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
 - **Session carousel** — swipeable peek carousel with light blue border cards in Sessions tab
-- **Sign out** — Log Out button in Settings tab, wired to `supabase.auth.signOut()`
+- **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
+- **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
 - Add Friend outline button on Profile
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
@@ -334,7 +353,6 @@ Posts have a `postType` field: `'session'` or `'photo'`
 ### 🔜 Phase 2
 - [ ] Friends / following system
 - [ ] Likes and comments persisted in Supabase
-- [ ] Edit profile (name, username, bio)
 - [ ] Push notifications
 - [ ] More gyms (expand beyond NYC Vital locations)
 
@@ -359,6 +377,9 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Media uploads:** ALWAYS use `expo-file-system/legacy` readAsStringAsync → `base64-arraybuffer` decode() → ArrayBuffer → supabase.storage.upload(). NEVER use fetch+blob or FormData.
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
 - **Gym names:** there is no `gyms` table — use a local `GYM_NAMES` constant in each file
+- **Video playback:** NEVER import `expo-av` in Expo Go projects — it throws a native module crash at import time. Use `Linking.openURL(url)` for video in Expo Go. `expo-av` is ready in `package.json` for when a dev build is made.
+- **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
+- **Modals that overlay scrollable content:** ALWAYS conditionally render them (`{visible && <Modal visible>}`) so they fully unmount when closed and cannot intercept touches on the screen behind them.
 - After every completed task, **commit and push to GitHub**
 - GitHub repo: https://github.com/Dalexfox/deadpoint.git
 
