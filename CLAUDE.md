@@ -52,6 +52,7 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 - ✅ Add Friend button border + text (social action)
 - ✅ Monthly Volume line chart line color
 - ✅ Peak bar in Grade Distribution chart
+- ✅ Comment sheet Send button
 - ❌ Navigation buttons → use PRIMARY
 - ❌ Grade selectors / radio buttons → use PRIMARY
 - ❌ Banners / stat cards → use PRIMARY
@@ -173,6 +174,24 @@ climbs (
   grade text,
   count int
 )
+
+-- Post likes (one row per user-per-session like; unique constraint prevents double-liking)
+likes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  session_id uuid references sessions(id) on delete cascade,
+  created_at timestamp with time zone default now(),
+  unique(user_id, session_id)
+)
+
+-- Session comments
+comments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  session_id uuid references sessions(id) on delete cascade,
+  content text not null,
+  created_at timestamp with time zone default now()
+)
 ```
 
 ### ⚠️ Critical: sessions.user_id → auth.users (NOT profiles)
@@ -246,6 +265,8 @@ src/app/
     profile.tsx        — User profile
   gym/
     [id].tsx           — Gym detail + per-grade climb counter (saves to Supabase)
+  user/
+    [id].tsx           — View-only profile page for other users
 ```
 
 ### Key Source Files
@@ -256,7 +277,7 @@ src/lib/
 ```
 
 ### 4 Main Tabs
-1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes are interactive. Profile avatars from `profiles.avatar_url` shown on cards.
+1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes and comments are fully Supabase-backed. Profile avatars from `profiles.avatar_url` shown on cards.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
 4. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
@@ -307,6 +328,21 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Each card: teal `▲ VITAL` pill, BebasNeue gym name, date, grade summary, problems badge
 - `borderWidth: 1.5, borderColor: '#b0cdd8'` (light blue border)
 
+### Feed Likes & Comments (Supabase-backed)
+- **Like toggle** — optimistic: UI updates immediately, then inserts/deletes from `likes` table in background. Heart filled ACCENT when liked, outline when not.
+- **Feed load** — `fetchSessionPosts` fires 3 parallel queries (profiles, likes, comments) and builds counts + liked-by-me state in JS maps. No waterfall.
+- **Comment sheet** — conditionally rendered `{commentSheetVisible && <Modal>}` (slide animation, transparent backdrop). Layout: flex:1 `TouchableOpacity` fills space above the sheet to dismiss on backdrop tap; `KeyboardAvoidingView` wraps the sheet panel at the bottom.
+- Comment rows show real avatar photo (`borderRadius: 11` square) when `avatar_url` is set, initials fallback otherwise.
+- **Tap commenter name** — closes the sheet, then navigates: own comment → `/(tabs)/profile`; other user → `/user/[userId]`.
+- **Post a comment** — inserts to `comments` table, appends to local list, bumps the feed card count in real time. Send button in ACCENT pink, disabled + muted when input is empty.
+
+### User Profile Page (`/user/[id]`)
+- Route: `src/app/user/[id].tsx` — pushed via `router.push(\`/user/${userId}\`)` from the comment sheet name tap.
+- Header with `‹` back chevron (DMSans_300Light) and centred "PROFILE" title (BebasNeue).
+- Square avatar (`width: 100, height: 100, borderRadius: 16`) — real photo or PRIMARY initials fallback.
+- Full name (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), bio (DMSans_400Regular, TEXT_MUTED) — each only renders if set.
+- Stats bar (SURFACE background, borderRadius: 20): **Total Climbs · Top Grade · Gyms Visited** — computed live from the user's sessions+climbs in Supabase, same logic as the self-profile.
+
 ## Current Gyms (Phase 1 — NYC)
 - Vital Climbing LES (id: 1, Lower East Side)
 - Vital Climbing Brooklyn (id: 2, Brooklyn)
@@ -343,6 +379,9 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Session carousel** — swipeable peek carousel with light blue border cards in Sessions tab
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
+- **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
+- **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
+- **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
 - Add Friend outline button on Profile
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
@@ -352,7 +391,6 @@ Posts have a `postType` field: `'session'` or `'photo'`
 
 ### 🔜 Phase 2
 - [ ] Friends / following system
-- [ ] Likes and comments persisted in Supabase
 - [ ] Push notifications
 - [ ] More gyms (expand beyond NYC Vital locations)
 
