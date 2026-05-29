@@ -503,11 +503,12 @@ function MiniSessionCard({ post }: { post: Post }) {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
-  const greeting = useGreeting('Alex');
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState('');
+  const greeting = useGreeting(userName);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Comment sheet state
@@ -530,6 +531,17 @@ export default function FeedScreen() {
         const userId = user?.id ?? null;
         if (!active) return;
         setCurrentUserId(userId);
+
+        if (userId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', userId)
+            .single();
+          if (!active) return;
+          const first = (profile?.full_name ?? '').split(' ')[0];
+          setUserName(first);
+        }
 
         const sessionPosts = await fetchSessionPosts(userId);
         if (!active) return;
