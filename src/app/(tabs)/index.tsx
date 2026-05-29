@@ -694,7 +694,7 @@ const card = StyleSheet.create({
   // Top tab row
   tabRow: {
     position: 'absolute',
-    top: 14,
+    top: 32,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -708,7 +708,7 @@ const card = StyleSheet.create({
     paddingVertical: 4,
   },
   tabActiveText: {
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: 'DMSans_700Bold',
     color: '#ffffff',
     letterSpacing: -0.2,
@@ -721,7 +721,7 @@ const card = StyleSheet.create({
     marginTop: 4,
   },
   tabInactive: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'DMSans_500Medium',
     color: 'rgba(255,255,255,0.55)',
     letterSpacing: -0.1,

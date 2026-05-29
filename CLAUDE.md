@@ -308,7 +308,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 
 - **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2E7A96 → #0d2b36'` for sessions without media.
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
-- **Top tab row** — `absolute, top: 14`. Three tabs: `Following` (inactive, `rgba(255,255,255,0.55)`) | `For You` (active, white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
+- **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
   1. Avatar circle (50px, white ring border, `overflow: hidden`) + "follow" label → `onPressUser`
   2. Heart `♥/♡` + like count → `onLike` (filled ACCENT when liked)
