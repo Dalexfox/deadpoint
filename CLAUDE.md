@@ -84,16 +84,17 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 - Stats/surface blocks: `borderRadius: 14`, `backgroundColor: SURFACE`
 - Grade chips: `borderRadius: 10`, `backgroundColor: SURFACE` (active: `TEXT` `#0d2b36` bg + white label; unselected: SURFACE bg + TEXT label)
 
-### Feed Cards — two variants
-**With photo (full-bleed):**
-- Card: `backgroundColor: BG`, `borderRadius: 20`, `overflow: hidden`, `borderWidth: 1.5 / DIVIDER`
-- Hero image fills full card width, `height: 300`, `resizeMode: cover`
-- `LinearGradient` (`rgba(0,0,0,0.58) → transparent`) overlays top 130px — avatar, name, gym, timestamp sit inside it in white text
-- Stats (PROBLEMS / DIFFICULTY) + like/comment actions in a white strip below the image, single compact row
-- Avatar in overlay: square `borderRadius ~30%`, semi-transparent white ring border
+### Feed Cards (TikTok full-screen)
+Each card fills the entire screen. Two background variants:
+- **With media** — full-screen `Image` or `expo-av Video` background
+- **Without media** — `LinearGradient '#2E7A96 → #0d2b36'` background
 
-**Without photo (plain):**
-- `backgroundColor: CARD`, `borderRadius: 20`, `padding: 20` — existing layout unchanged
+Overlays (all `position: 'absolute'`):
+- **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down
+- **Top tab row** — Following / For You / Nearby tabs at `top: 32`
+- **Right action rail** — avatar, like, comment, share, gym icons stacked on right
+- **Bottom-left** — `@username` only
+- **Stats bar** — `height: 64`, `rgba(0,0,0,0.50)`, pinned to bottom: **left** — top grade in ACCENT pink + `GRADE` label; **right** — `📍 gymName` in white
 
 ### Profile Session Carousel Cards
 - `borderRadius: 20`, `backgroundColor: CARD`
@@ -166,8 +167,11 @@ sessions (
   gym_id text,
   total_problems int,
   media_url text,            -- public Supabase Storage URL for session photo/video
+  notes text,                -- optional description/notes entered on the log screen
   created_at timestamp with time zone default now()
 )
+-- ⚠️ notes column must be added manually if not present:
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes text;
 
 -- Individual climbs within a session
 climbs (
@@ -292,7 +296,7 @@ src/lib/
 1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase ordered by `created_at` descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
-4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Submit.
+4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym, add optional notes. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Notes saved to `sessions.notes`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Notes → Submit.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
    - **My Climbs tab** — swipeable horizontal carousel of past sessions. Cards show top grade (ACCENT pink), optional notes, gym name, date, VITAL pill, and a media thumbnail when present.
@@ -337,9 +341,9 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `followingSet` is a `Set<string>` of following_ids; refreshed on every screen focus via `useFocusEffect`.
 
 ### Gym Detail (`/gym/[id]`)
-- Logs one climb at a time: optional photo/video, single V-grade chip selector (V0–V10), fixed Submit button in footer
-- Form order: Photo/Video → Difficulty → Submit (gym is already shown in the fixed header)
-- Submit saves `total_problems: 1` to `sessions` and one `climbs` row `{ grade, count: 1 }`
+- Logs one climb at a time: optional photo/video, single V-grade chip selector (V0–V10), optional notes, fixed Submit button in footer
+- Form order: Photo/Video → Difficulty → Notes → Submit (gym is already shown in the fixed header)
+- Submit saves `total_problems: 1` to `sessions` and one `climbs` row `{ grade, count: 1 }`; notes saved to `sessions.notes`
 - Requires authenticated user (`supabase.auth.getUser()`)
 - Shows "SESSION LOGGED" success screen for 2.5s, then navigates back to Gyms tab
 - `useFocusEffect` on Profile tab picks up new sessions automatically on next visit
@@ -369,7 +373,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - The three computed values (`tabBarStyle`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`) are passed to `screenOptions` and update automatically on every tab switch.
 
 ### Profile Tab Bar
-- Three equal-width tabs: **Overview · Sessions · Settings**
+- Three equal-width tabs: **Overview · My Climbs · Settings**
 - Active tab: `DMSans_800ExtraBold` label in `PRIMARY`, 2px `PRIMARY` underline indicator pinned to bottom
 - Inactive tabs: same label style in `TEXT_MUTED`
 - Background `BG` white, `hairlineWidth` bottom border in `DIVIDER`
@@ -409,8 +413,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 
 ## Difficulty Scale
 V-scale standard for bouldering: V0 (easiest) through V10 (hardest).
-On the Log screen, users pick a single overall difficulty.
-On Gym Detail, users log how many problems at each grade individually.
+Both the Log screen and Gym Detail log one climb at a time with a single V-grade chip selector.
 
 ## Post Types
 Posts have a `postType` field: `'session'` or `'photo'`
@@ -434,13 +437,14 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
-- **Session carousel** — swipeable peek carousel with light blue border cards in My Climbs tab
+- **My Climbs tab** (formerly "Sessions") — swipeable peek carousel; cards show top grade (ACCENT pink, 28px), optional notes, hairline divider, gym name (BebasNeue), date, VITAL pill; media thumbnail (113×150) absolutely positioned on right, vertically centered to full card height
+- **Notes / description field** — multiline text input on Log screen and Gym Detail; saves to `sessions.notes`; displayed on My Climbs cards when present
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
 - **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
-- **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or gradient bg; right rail with like/comment/share/gym; bottom stats bar with grade mini bars
+- **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or teal→dark gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (ACCENT pink) + gym name only
 - **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
 - **Feed card tap-through** — right rail avatar navigates to that user's profile (own → Profile tab, other → `/user/[id]`)
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d2b36` background + white tints on `/`; all other tabs use the normal light style
