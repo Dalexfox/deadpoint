@@ -177,37 +177,6 @@ async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> 
   });
 }
 
-// ─── Grade mini bars ──────────────────────────────────────────────────────────
-
-function GradeBars({
-  climbs,
-  topGrade,
-}: {
-  climbs: { grade: string; count: number }[];
-  topGrade?: string;
-}) {
-  if (climbs.length === 0) {
-    return <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: 'DMSans_700Bold' }}>—</Text>;
-  }
-  const maxCount = Math.max(...climbs.map(c => c.count));
-  const BAR_MAX = 22;
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: BAR_MAX }}>
-      {climbs.map(c => (
-        <View
-          key={c.grade}
-          style={{
-            width: 5,
-            height: Math.max(4, (c.count / maxCount) * BAR_MAX),
-            backgroundColor: c.grade === topGrade ? ACCENT : 'rgba(46,122,150,0.9)',
-            borderRadius: 2,
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
 // ─── Full-screen card ─────────────────────────────────────────────────────────
 
 function FullScreenCard({
@@ -359,35 +328,24 @@ function FullScreenCard({
         </TouchableOpacity>
       </View>
 
-      {/* ── Bottom-left info (username + gym pill) ───────────────────────────── */}
+      {/* ── Bottom-left info (username) ──────────────────────────────────────── */}
       <View style={[card.bottomInfo, { bottom: STATS_BAR_H + 16 }]}>
         <Text style={card.username}>{displayName}</Text>
-        {post.gym ? (
-          <View style={card.gymPill}>
-            <Text style={card.gymPillText}>{'📍  '}{post.gym}</Text>
-          </View>
-        ) : null}
       </View>
 
       {/* ── Stats bar ────────────────────────────────────────────────────────── */}
       <View style={[card.statsBar, { height: STATS_BAR_H }]}>
-        <View style={card.statSection}>
-          <Text style={card.statValue}>{post.problems ?? '—'}</Text>
-          <Text style={card.statLabel}>PROBLEMS</Text>
+        <View style={card.statGradeSection}>
+          <Text style={card.statGradeValue}>{post.topGrade ?? '—'}</Text>
+          <Text style={card.statGradeLabel}>GRADE</Text>
         </View>
 
         <View style={card.statDivider} />
 
-        <View style={card.statSection}>
-          <Text style={card.statValue}>{post.topGrade ?? '—'}</Text>
-          <Text style={card.statLabel}>TOP GRADE</Text>
-        </View>
-
-        <View style={card.statDivider} />
-
-        <View style={[card.statSection, { flex: 1.5 }]}>
-          <GradeBars climbs={post.climbsData ?? []} topGrade={post.topGrade} />
-          <Text style={card.statLabel}>GRADES</Text>
+        <View style={card.statGymSection}>
+          <Text style={card.statGymText} numberOfLines={1}>
+            {'📍  '}{post.gym ?? '—'}
+          </Text>
         </View>
       </View>
     </View>
@@ -868,28 +826,40 @@ const card = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  statSection: {
-    flex: 1,
+  // Left section — grade in ACCENT pink
+  statGradeSection: {
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
+    paddingRight: 4,
   },
-  statValue: {
-    fontSize: 18,
+  statGradeValue: {
+    fontSize: 22,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
-    letterSpacing: -0.3,
+    color: '#ff507c',
+    letterSpacing: -0.4,
   },
-  statLabel: {
+  statGradeLabel: {
     fontSize: 8,
     fontFamily: 'DMSans_700Bold',
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 1.3,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 1.4,
   },
   statDivider: {
     width: 1,
     height: 28,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    marginHorizontal: 4,
+    marginHorizontal: 16,
+  },
+  // Right section — gym name
+  statGymSection: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  statGymText: {
+    fontSize: 16,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#ffffff',
+    letterSpacing: 0.1,
   },
 });
 
