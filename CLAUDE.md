@@ -287,7 +287,7 @@ src/lib/
 ```
 
 ### 5 Main Tabs
-1. **Feed** — Social feed. Fetches real sessions live from Supabase (no placeholder data). Cards with photos use a full-bleed hero layout (image edge-to-edge, user info overlaid with a dark gradient, stats + actions in a white strip below). Cards without photos use the plain CARD-background style. Likes and comments are fully Supabase-backed. Profile avatars from `profiles.avatar_url` shown on cards. Search bar below the greeting header filters gyms and sessions. Tapping the avatar or name on any card navigates to that user's profile.
+1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase ordered by `created_at` descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
@@ -303,18 +303,27 @@ src/lib/
    - **Followers sheet** — avatar + name/username list; no action buttons (read-only).
    - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately.
 
+### Feed Card Layout (TikTok-style full-screen)
+Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with all overlays `position: 'absolute'`:
+
+- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2E7A96 → #0d2b36'` for sessions without media.
+- **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
+- **Top tab row** — `absolute, top: 14`. Three tabs: `Following` (inactive, `rgba(255,255,255,0.55)`) | `For You` (active, white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
+- **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
+  1. Avatar circle (50px, white ring border, `overflow: hidden`) + "follow" label → `onPressUser`
+  2. Heart `♥/♡` + like count → `onLike` (filled ACCENT when liked)
+  3. `◎` + comment count → `onComment` (opens comment sheet)
+  4. `↗` + "share" label → `Share.share()` native sheet
+  5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) and gym pill (PRIMARY bg, white text, 📍 prefix).
+- **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Three sections: `[problems] PROBLEMS` | `[topGrade] TOP GRADE` | `GradeBars` mini chart + `GRADES`.
+  - `GradeBars` — `View` bars aligned to `flex-end`, bar width 5px, max height 22px, scaled by count. Peak bar (matches `topGrade`) is ACCENT pink; others are `rgba(46,122,150,0.9)` teal.
+
 ### Feed Search
-- Search bar sits between the greeting header and the feed list — SURFACE background, `borderRadius: 14`, `⌕` text icon on left, `×` clear button on right when query is non-empty.
-- **Gym results** — filters `GYM_NAMES` entries whose name includes the query (case-insensitive). Rendered in a grouped CARD-background card with hairline dividers between rows. Each row shows a "GYM" tag (PRIMARY), the gym name, and a `›` chevron. Tapping navigates to `/gym/[id]`.
-- **Session results** — filters the already-loaded posts for entries that have `media` AND whose `gym` name includes the query. Shown as mini cards: 80×80 thumbnail on the left, gym name + grade/difficulty + climber name on the right.
-- Empty state: "No results / Try a different gym name" when neither section has matches.
-- Clearing the query (× button or empty TextInput) returns to the normal feed.
-- `keyboardShouldPersistTaps="handled"` on the results ScrollView so tapping a row works while the keyboard is open.
+- Search bar was removed from the Feed in the TikTok rewrite. Lives in Explore tab (Phase 2 plan).
 
 ### Feed Card Tap-Through
-- **Full-bleed cards (with photo):** the avatar + name/gym block inside the gradient overlay is a `TouchableOpacity` (`heroUserTouchable` style — `flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1`). The timestamp sits outside the touchable at the row end.
-- **Plain cards (no photo):** the entire `userRow` (avatar + name + timestamp) is a `TouchableOpacity`.
-- Navigation: if `post.userId === currentUserId` → `router.navigate('/(tabs)/profile')`; otherwise → `router.push('/user/[id]')`.
+- Right rail avatar + "follow" tap → `onPressUser`: own profile → `/(tabs)/profile`, other → `/user/[id]`.
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Explore Tab (`/explore`)
@@ -349,7 +358,13 @@ Three chart cards, all data derived from the existing sessions+climbs fetch (zer
 ### Profile Edit State
 Two separate state buckets to prevent live-typing from updating the displayed header:
 - `editName / editUsername / editBio` — bound to the Settings form inputs; set from Supabase on every screen focus
-- `displayBio` — what shows below `@username` in the profile header; only updated after a successful Save Changes
+- `displayName / displayUsername / displayBio` — what shows in the profile header; all three only update after a successful Save Changes (or on initial fetch). `toInitials(displayName)` drives the avatar fallback initials. `displayUsername` renders as `@{displayUsername}` with a null-guard so the row is hidden until data loads.
+
+### App Tab Bar (bottom nav)
+- `src/app/(tabs)/_layout.tsx` uses `usePathname()` to detect the active tab.
+- **Feed tab (`/`)** — dark theme: `backgroundColor: #0d2b36`, `borderTopColor: #1a3d4f`, active tint `#ffffff`, inactive tint `rgba(255,255,255,0.38)`. Matches the full-screen dark feed background.
+- **All other tabs** — light theme: `backgroundColor: #ffffff`, `borderTopColor: #c8dde8`, active tint `PRIMARY`, inactive tint `INACTIVE`. Normal app style.
+- The three computed values (`tabBarStyle`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`) are passed to `screenOptions` and update automatically on every tab switch.
 
 ### Profile Tab Bar
 - Three equal-width tabs: **Overview · Sessions · Settings**
@@ -423,8 +438,11 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
-- **Feed search bar** — filters gyms (from `GYM_NAMES`) and sessions with media by gym name; gym rows tap → `/gym/[id]`; session mini cards show thumbnail + grade + climber
-- **Feed card tap-through** — tapping avatar or name on any feed card navigates to that user's profile (own → Profile tab, other → `/user/[id]`)
+- **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or gradient bg; right rail with like/comment/share/gym; bottom stats bar with grade mini bars
+- **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
+- **Feed card tap-through** — right rail avatar navigates to that user's profile (own → Profile tab, other → `/user/[id]`)
+- **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d2b36` background + white tints on `/`; all other tabs use the normal light style
+- **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
@@ -461,9 +479,10 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Media uploads:** ALWAYS use `expo-file-system/legacy` readAsStringAsync → `base64-arraybuffer` decode() → ArrayBuffer → supabase.storage.upload(). NEVER use fetch+blob or FormData.
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
 - **Gym names:** there is no `gyms` table — use a local `GYM_NAMES` constant in each file
-- **Video playback:** NEVER import `expo-av` in Expo Go projects — it throws a native module crash at import time. Use `Linking.openURL(url)` for video in Expo Go. `expo-av` is ready in `package.json` for when a dev build is made.
+- **Video playback:** `expo-av` IS used in the Feed (`index.tsx`) for TikTok-style video autoplay (`shouldPlay={isActive}`). It is loaded via a **dynamic `require()` inside `try/catch`** (not a static import) so Expo Go doesn't crash — if the native module is absent, `VideoPlayer` is `null` and video cards fall back to a static thumbnail. A TODO comment marks where to restore the static import once a dev build is set up. The Profile media viewer still uses `Linking.openURL(url)` as its own fallback.
 - **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
 - **Modals that overlay scrollable content:** ALWAYS conditionally render them (`{visible && <Modal visible>}`) so they fully unmount when closed and cannot intercept touches on the screen behind them.
+- **Never hardcode user data** — names, usernames, initials, and any other per-user values must always come from Supabase (`profiles` table) via state variables. No `const USER = { name: '...' }` constants or similar placeholders in production code. Use the `displayName / displayUsername / displayBio` pattern (committed header state) and `toInitials(displayName)` for avatar fallbacks.
 - After every completed task, **commit and push to GitHub**
 - GitHub repo: https://github.com/Dalexfox/deadpoint.git
 

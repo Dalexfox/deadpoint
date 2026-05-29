@@ -1,5 +1,4 @@
-import { DefaultTheme, ThemeProvider } from 'expo-router';
-import { Tabs } from 'expo-router';
+import { DefaultTheme, ThemeProvider, Tabs, usePathname } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import type { ColorValue } from 'react-native';
 import { SymbolView } from 'expo-symbols';
@@ -26,14 +25,23 @@ function ProfileIcon({ color, focused }: IconProps) {
 }
 
 export default function TabsLayout() {
+  // usePathname returns '/' for the Feed tab (index) and '/gyms', '/explore',
+  // '/log', '/profile' for all others. Switch the tab bar dark on Feed only.
+  const pathname = usePathname();
+  const isFeed   = pathname === '/';
+
+  const tabBarStyle = isFeed ? styles.tabBarDark : styles.tabBarLight;
+  const activeTint  = isFeed ? '#ffffff'         : PRIMARY;
+  const inactiveTint = isFeed ? 'rgba(255,255,255,0.38)' : INACTIVE;
+
   return (
     <ThemeProvider value={DefaultTheme}>
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: PRIMARY,
-          tabBarInactiveTintColor: INACTIVE,
-          tabBarStyle: styles.tabBar,
+          tabBarActiveTintColor: activeTint,
+          tabBarInactiveTintColor: inactiveTint,
+          tabBarStyle: tabBarStyle,
           tabBarLabelStyle: styles.tabLabel,
         }}
       >
@@ -63,9 +71,14 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
+  tabBarLight: {
     backgroundColor: '#ffffff',
     borderTopColor: '#c8dde8',
+    elevation: 0,
+  },
+  tabBarDark: {
+    backgroundColor: '#0d2b36',
+    borderTopColor: '#1a3d4f',
     elevation: 0,
   },
   tabLabel: {

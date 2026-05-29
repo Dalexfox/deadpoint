@@ -1,17 +1,26 @@
+/**
+ * Feed screen — TikTok-style full-screen vertical swipeable feed.
+ *
+ * expo-av is loaded via a dynamic require() below instead of a static import.
+ * See the "expo-av dynamic load" comment for the full explanation.
+ */
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,17 +28,36 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
-const BG         = '#ffffff';
-const CARD       = '#d8eaf0';
-const SURFACE    = '#d8eaf0';
+// ─── expo-av dynamic load ─────────────────────────────────────────────────────
+// expo-av requires a development build. In Expo Go the native ExponentAV module
+// is absent, and a static top-level import crashes the whole app at launch —
+// the error surfaces immediately, before any screen renders.
+//
+// Workaround: defer the load to runtime with require() inside try/catch. If the
+// native module is present (dev build / EAS client), VideoPlayer is assigned the
+// real Video component and autoplay works normally. If it throws (Expo Go),
+// VideoPlayer stays null and video cards fall back to a static thumbnail image.
+//
+// TODO: once a dev build is in place, replace this block with:
+//   import { Video } from 'expo-av';
+// and rename VideoPlayer back to Video throughout this file.
+let VideoPlayer: React.ComponentType<any> | null = null;
+try {
+  VideoPlayer = require('expo-av').Video;
+} catch {
+  // expo-av native module unavailable (Expo Go) — video cards show thumbnail
+}
+
+// ─── Colors ───────────────────────────────────────────────────────────────────
 const ACCENT     = '#ff507c';
 const PRIMARY    = '#2E7A96';
 const TEXT       = '#0d2b36';
-const TEXT_SUB   = '#3d7a8a';
 const TEXT_MUTED = '#8bb5c4';
 const DIVIDER    = '#c8dde8';
+const SURFACE    = '#d8eaf0';
+const BG         = '#ffffff';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const GYM_NAMES: Record<string, string> = {
   '1': 'Vital Climbing LES',
@@ -38,7 +66,10 @@ const GYM_NAMES: Record<string, string> = {
   '4': 'Vital Climbing UWS',
 };
 
-const GRADE_ORDER = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
+const GRADE_ORDER = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
+
+// Height of the dark stats strip at the bottom of each card
+const STATS_BAR_H = 64;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,104 +99,74 @@ function timeAgo(dateStr: string): string {
 }
 
 function toInitials(name: string): string {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0].toUpperCase())
-    .join('');
+  return name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
 }
 
-function gradeRange(climbs: { grade: string; count: number }[]): string {
-  const active = climbs
-    .filter((c) => c.count > 0)
-    .map((c) => c.grade)
-    .sort((a, b) => GRADE_ORDER.indexOf(a) - GRADE_ORDER.indexOf(b));
-  if (active.length === 0) return '—';
-  if (active.length === 1) return active[0];
-  return `${active[0]} – ${active[active.length - 1]}`;
+function topGradeFromClimbs(climbs: { grade: string; count: number }[]): string | undefined {
+  return climbs
+    .filter(c => c.count > 0)
+    .sort((a, b) => GRADE_ORDER.indexOf(b.grade) - GRADE_ORDER.indexOf(a.grade))[0]?.grade;
 }
 
-// Fetch sessions from Supabase, including real like/comment counts and liked status
+// ─── Supabase fetch ───────────────────────────────────────────────────────────
+
 async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> {
   const { data: sessions, error } = await supabase
     .from('sessions')
-    .select(`
-      id,
-      user_id,
-      gym_id,
-      total_problems,
-      media_url,
-      created_at,
-      climbs (
-        grade,
-        count
-      )
-    `)
+    .select('id, user_id, gym_id, total_problems, media_url, created_at, climbs(grade,count)')
     .order('created_at', { ascending: false })
     .limit(50);
 
-  console.log('[fetchSessionPosts] error:', error, '| count:', sessions?.length ?? 0);
-
   if (error || !sessions || sessions.length === 0) return [];
 
-  const sessionIds = sessions.map((s) => s.id);
-  const userIds = [...new Set(sessions.map((s) => s.user_id))];
+  const sessionIds = sessions.map(s => s.id);
+  const userIds    = [...new Set(sessions.map(s => s.user_id))];
 
-  // Batch-fetch profiles, likes, and comment counts in parallel
-  const [profilesResult, likesResult, commentsResult] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('id, full_name, username, avatar_url')
-      .in('id', userIds),
-    supabase
-      .from('likes')
-      .select('session_id, user_id')
-      .in('session_id', sessionIds),
-    supabase
-      .from('comments')
-      .select('session_id')
-      .in('session_id', sessionIds),
+  const [profilesRes, likesRes, commentsRes] = await Promise.all([
+    supabase.from('profiles').select('id,full_name,username,avatar_url').in('id', userIds),
+    supabase.from('likes').select('session_id,user_id').in('session_id', sessionIds),
+    supabase.from('comments').select('session_id').in('session_id', sessionIds),
   ]);
 
-  const profileMap = new Map((profilesResult.data ?? []).map((p) => [p.id, p]));
+  const profileMap = new Map((profilesRes.data ?? []).map(p => [p.id, p]));
 
-  // Build like count + liked-by-me maps from the flat likes rows
-  const likeCountMap: Record<string, number> = {};
+  const likeCountMap: Record<string, number>  = {};
   const likedByMeMap: Record<string, boolean> = {};
-  (likesResult.data ?? []).forEach((l) => {
+  (likesRes.data ?? []).forEach(l => {
     likeCountMap[l.session_id] = (likeCountMap[l.session_id] ?? 0) + 1;
-    if (currentUserId && l.user_id === currentUserId) {
-      likedByMeMap[l.session_id] = true;
-    }
+    if (currentUserId && l.user_id === currentUserId) likedByMeMap[l.session_id] = true;
   });
 
-  // Build comment count map from flat comment rows
   const commentCountMap: Record<string, number> = {};
-  (commentsResult.data ?? []).forEach((c) => {
+  (commentsRes.data ?? []).forEach(c => {
     commentCountMap[c.session_id] = (commentCountMap[c.session_id] ?? 0) + 1;
   });
 
-  return sessions.map((session) => {
+  return sessions.map(session => {
     const profile = profileMap.get(session.user_id);
-    const name = profile?.full_name || profile?.username || 'Climber';
-    const grades = (session.climbs ?? []) as { grade: string; count: number }[];
+    const name    = profile?.full_name || profile?.username || 'Climber';
+    const grades  = (session.climbs ?? []) as { grade: string; count: number }[];
+    const active  = grades.filter(g => g.count > 0);
 
     const post: Post = {
-      id: session.id,
-      userId: session.user_id,
+      id:          session.id,
+      userId:      session.user_id,
+      username:    profile?.username ?? undefined,
       name,
-      initials: toInitials(name),
-      avatarBg: PRIMARY,
-      avatarUrl: profile?.avatar_url ?? undefined,
-      timestamp: timeAgo(session.created_at),
-      likes: likeCountMap[session.id] ?? 0,
-      comments: commentCountMap[session.id] ?? 0,
-      liked: likedByMeMap[session.id] ?? false,
-      postType: 'session',
-      gym: GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
-      problems: session.total_problems,
-      difficulty: gradeRange(grades),
+      initials:    toInitials(name),
+      avatarBg:    PRIMARY,
+      avatarUrl:   profile?.avatar_url ?? undefined,
+      timestamp:   timeAgo(session.created_at),
+      likes:       likeCountMap[session.id] ?? 0,
+      comments:    commentCountMap[session.id] ?? 0,
+      liked:       likedByMeMap[session.id] ?? false,
+      postType:    'session',
+      gym:         GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
+      gymId:       session.gym_id,
+      problems:    session.total_problems,
+      difficulty:  undefined,
+      topGrade:    topGradeFromClimbs(grades),
+      climbsData:  active,
     };
 
     if (session.media_url) {
@@ -176,325 +177,218 @@ async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> 
   });
 }
 
-function useGreeting(name: string) {
-  const hour = new Date().getHours();
-  const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-  return `Good ${tod}, ${name}`;
-}
+// ─── Grade mini bars ──────────────────────────────────────────────────────────
 
-// ─── Avatar helper ────────────────────────────────────────────────────────────
-
-function Avatar({
-  post,
-  size,
-  dark,
+function GradeBars({
+  climbs,
+  topGrade,
 }: {
-  post: Post;
-  size: number;
-  dark?: boolean;
+  climbs: { grade: string; count: number }[];
+  topGrade?: string;
 }) {
-  if (post.avatarUrl) {
-    return (
-      <Image
-        source={{ uri: post.avatarUrl }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size * 0.3,
-          borderWidth: dark ? 2 : 0,
-          borderColor: dark ? 'rgba(255,255,255,0.6)' : 'transparent',
-        }}
-      />
-    );
+  if (climbs.length === 0) {
+    return <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: 'DMSans_700Bold' }}>—</Text>;
   }
+  const maxCount = Math.max(...climbs.map(c => c.count));
+  const BAR_MAX = 22;
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.3,
-        backgroundColor: dark ? 'rgba(255,255,255,0.25)' : post.avatarBg,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: dark ? 2 : 0,
-        borderColor: dark ? 'rgba(255,255,255,0.5)' : 'transparent',
-      }}>
-      <Text
-        style={{
-          fontSize: size * 0.32,
-          fontFamily: 'DMSans_800ExtraBold',
-          color: '#ffffff',
-          letterSpacing: 0.3,
-        }}>
-        {post.initials}
-      </Text>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: BAR_MAX }}>
+      {climbs.map(c => (
+        <View
+          key={c.grade}
+          style={{
+            width: 5,
+            height: Math.max(4, (c.count / maxCount) * BAR_MAX),
+            backgroundColor: c.grade === topGrade ? ACCENT : 'rgba(46,122,150,0.9)',
+            borderRadius: 2,
+          }}
+        />
+      ))}
     </View>
   );
 }
 
-// ─── Action buttons ───────────────────────────────────────────────────────────
+// ─── Full-screen card ─────────────────────────────────────────────────────────
 
-function ActionRow({
+function FullScreenCard({
   post,
-  onLike,
-  onComment,
-  light,
-}: {
-  post: Post;
-  onLike: (id: string) => void;
-  onComment: (id: string) => void;
-  light?: boolean;
-}) {
-  return (
-    <View style={[actionStyles.row, light && actionStyles.rowLight]}>
-      {/* Like button — pink when liked */}
-      <TouchableOpacity
-        style={[actionStyles.btn, post.liked && actionStyles.btnLiked]}
-        activeOpacity={0.7}
-        onPress={() => onLike(post.id)}>
-        <Text style={[actionStyles.icon, post.liked && actionStyles.iconLiked]}>
-          {post.liked ? '♥' : '♡'}
-        </Text>
-        <Text style={[actionStyles.count, post.liked && actionStyles.countLiked]}>
-          {post.likes}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Comment button — opens sheet */}
-      <TouchableOpacity
-        style={actionStyles.btn}
-        activeOpacity={0.7}
-        onPress={() => onComment(post.id)}>
-        <Text style={actionStyles.icon}>◎</Text>
-        <Text style={actionStyles.count}>{post.comments}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const actionStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  rowLight: {},
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: SURFACE,
-  },
-  btnLiked: {
-    backgroundColor: 'rgba(255, 80, 124, 0.12)',
-  },
-  icon: {
-    fontSize: 15,
-    color: TEXT_MUTED,
-  },
-  iconLiked: {
-    color: ACCENT,
-  },
-  count: {
-    fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-  },
-  countLiked: {
-    color: ACCENT,
-  },
-});
-
-// ─── Full-bleed card (session with photo) ────────────────────────────────────
-
-function FullBleedCard({
-  post,
+  height,
+  isActive,
   onLike,
   onComment,
   onPressUser,
+  onShare,
+  onGym,
 }: {
-  post: Post;
-  onLike: (id: string) => void;
-  onComment: (id: string) => void;
+  post:        Post;
+  height:      number;
+  isActive:    boolean;
+  onLike:      (id: string) => void;
+  onComment:   (id: string) => void;
   onPressUser: (userId: string) => void;
+  onShare:     (post: Post) => void;
+  onGym:       (gymId: string) => void;
 }) {
-  const isSession = post.postType === 'session';
-  const mediaItem = post.media![0];
+  const hasMedia  = !!(post.media && post.media.length > 0);
+  const mediaItem = hasMedia ? post.media![0] : null;
+  const isVideo   = mediaItem?.type === 'video';
+
+  const displayName = post.username ? `@${post.username}` : post.name;
 
   return (
-    <View style={styles.fullBleedCard}>
-      {/* Hero image */}
-      <View style={styles.heroWrapper}>
-        {mediaItem.type === 'image' ? (
+    <View style={{ width: SCREEN_WIDTH, height, backgroundColor: '#000' }}>
+
+      {/* ── Background ──────────────────────────────────────────────────────── */}
+      {hasMedia ? (
+        isVideo ? (
+          // VideoPlayer is null in Expo Go (expo-av unavailable) — show thumbnail
+          VideoPlayer ? (
+            <VideoPlayer
+              source={{ uri: mediaItem!.uri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              isLooping
+              shouldPlay={isActive}
+            />
+          ) : (
+            // Expo Go fallback: static thumbnail until a dev build is available
+            <Image
+              source={{ uri: mediaItem!.uri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
+          )
+        ) : (
           <Image
-            source={{ uri: mediaItem.uri }}
-            style={styles.heroImage}
+            source={{ uri: mediaItem!.uri }}
+            style={StyleSheet.absoluteFill}
             resizeMode="cover"
           />
-        ) : (
-          <View style={[styles.heroImage, styles.videoPlaceholder]}>
-            <Text style={styles.videoPlayIcon}>▶</Text>
-          </View>
-        )}
-
-        {/* Top gradient + user overlay */}
+        )
+      ) : (
+        // No media — teal-to-dark gradient background
         <LinearGradient
-          colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.0)']}
-          style={styles.heroGradient}>
-          <View style={styles.heroUserRow}>
-            {/* Tappable: avatar + name → user profile */}
-            <TouchableOpacity
-              style={styles.heroUserTouchable}
-              activeOpacity={0.8}
-              onPress={() => post.userId && onPressUser(post.userId)}>
-              <Avatar post={post} size={40} dark />
-              <View style={styles.heroUserMeta}>
-                <Text style={styles.heroUserName}>{post.name}</Text>
-                {isSession && post.gym ? (
-                  <Text style={styles.heroGym}>{post.gym}</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-            <Text style={styles.heroTimestamp}>{post.timestamp}</Text>
-          </View>
-        </LinearGradient>
+          colors={['#2E7A96', '#0d2b36']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        />
+      )}
 
-        {/* Inset border overlay */}
-        <View style={styles.heroImageBorder} pointerEvents="none" />
-      </View>
-
-      {/* Stats + actions strip */}
-      <View style={styles.strip}>
-        {isSession && post.problems !== undefined && post.difficulty ? (
-          <>
-            <View style={styles.stripStatsRow}>
-              <View style={styles.stripStat}>
-                <Text style={styles.stripStatValue}>{post.problems}</Text>
-                <Text style={styles.stripStatLabel}>PROBLEMS</Text>
-              </View>
-              <View style={styles.stripDivider} />
-              <View style={styles.stripStat}>
-                <Text style={styles.stripStatValue}>{post.difficulty}</Text>
-                <Text style={styles.stripStatLabel}>DIFFICULTY</Text>
-              </View>
-            </View>
-            <View style={styles.stripHairline} />
-          </>
-        ) : null}
-        <View style={styles.stripActions}>
-          <ActionRow post={post} onLike={onLike} onComment={onComment} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── Plain card (session without photo) ──────────────────────────────────────
-
-function PlainCard({
-  post,
-  onLike,
-  onComment,
-  onPressUser,
-}: {
-  post: Post;
-  onLike: (id: string) => void;
-  onComment: (id: string) => void;
-  onPressUser: (userId: string) => void;
-}) {
-  return (
-    <View style={styles.card}>
-      {/* User row — tappable to visit profile */}
-      <TouchableOpacity
-        style={styles.userRow}
-        activeOpacity={0.8}
-        onPress={() => post.userId && onPressUser(post.userId)}>
-        <Avatar post={post} size={46} />
-        <View style={styles.userMeta}>
-          <Text style={styles.userName}>{post.name}</Text>
-          <Text style={styles.timestamp}>{post.timestamp}</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Gym label */}
-      {post.gym ? (
-        <Text style={styles.gymLabel}>{post.gym}</Text>
-      ) : null}
-
-      {/* Stats */}
-      {post.problems !== undefined && post.difficulty ? (
-        <View style={styles.statsBlock}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{post.problems}</Text>
-            <Text style={styles.statLabel}>PROBLEMS</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{post.difficulty}</Text>
-            <Text style={styles.statLabel}>DIFFICULTY</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Actions */}
-      <View style={[styles.actionsRow, { paddingTop: 14, borderTopWidth: 1, borderTopColor: '#b0cdd8' }]}>
-        <ActionRow post={post} onLike={onLike} onComment={onComment} />
-      </View>
-    </View>
-  );
-}
-
-// ─── FeedCard dispatcher ──────────────────────────────────────────────────────
-
-function FeedCard({
-  post,
-  onLike,
-  onComment,
-  onPressUser,
-}: {
-  post: Post;
-  onLike: (id: string) => void;
-  onComment: (id: string) => void;
-  onPressUser: (userId: string) => void;
-}) {
-  if (post.media && post.media.length > 0) {
-    return <FullBleedCard post={post} onLike={onLike} onComment={onComment} onPressUser={onPressUser} />;
-  }
-  return <PlainCard post={post} onLike={onLike} onComment={onComment} onPressUser={onPressUser} />;
-}
-
-// ─── Search result components ─────────────────────────────────────────────────
-
-function GymResultRow({ gymName, onPress }: { gymName: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={searchStyles.gymRow} activeOpacity={0.75} onPress={onPress}>
-      <View style={searchStyles.gymRowLeft}>
-        <Text style={searchStyles.gymRowTag}>GYM</Text>
-        <Text style={searchStyles.gymRowName}>{gymName}</Text>
-      </View>
-      <Text style={searchStyles.gymRowChevron}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
-function MiniSessionCard({ post }: { post: Post }) {
-  const mediaItem = post.media![0];
-  return (
-    <View style={searchStyles.miniCard}>
-      <Image
-        source={{ uri: mediaItem.uri }}
-        style={searchStyles.miniThumb}
-        resizeMode="cover"
+      {/* ── Bottom vignette for readability ─────────────────────────────────── */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.75)']}
+        style={[StyleSheet.absoluteFill, { top: height * 0.42 }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        pointerEvents="none"
       />
-      <View style={searchStyles.miniInfo}>
-        <Text style={searchStyles.miniGym} numberOfLines={1}>{post.gym}</Text>
-        <Text style={searchStyles.miniMeta}>
-          {post.difficulty}
-          {post.problems !== undefined ? ` · ${post.problems} problems` : ''}
-        </Text>
-        <Text style={searchStyles.miniName} numberOfLines={1}>{post.name}</Text>
+
+      {/* ── Top tab row: Following | FOR YOU | Nearby ───────────────────────── */}
+      <View style={card.tabRow}>
+        <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
+          <Text style={card.tabInactive}>Following</Text>
+        </TouchableOpacity>
+
+        <View style={card.tabItem}>
+          <Text style={card.tabActiveText}>For You</Text>
+          <View style={card.tabIndicator} />
+        </View>
+
+        <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
+          <Text style={card.tabInactive}>Nearby</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Right action rail ───────────────────────────────────────────────── */}
+      <View style={[card.rail, { bottom: STATS_BAR_H + 20 }]}>
+
+        {/* Avatar → profile */}
+        <TouchableOpacity
+          style={card.railItem}
+          activeOpacity={0.8}
+          onPress={() => post.userId && onPressUser(post.userId)}>
+          <View style={card.avatarRing}>
+            {post.avatarUrl ? (
+              <Image source={{ uri: post.avatarUrl }} style={card.railAvatar} />
+            ) : (
+              <View style={[card.railAvatar, card.railAvatarFallback]}>
+                <Text style={card.railAvatarText}>{post.initials}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={card.railLabel}>follow</Text>
+        </TouchableOpacity>
+
+        {/* Like */}
+        <TouchableOpacity
+          style={card.railItem}
+          activeOpacity={0.8}
+          onPress={() => onLike(post.id)}>
+          <Text style={[card.railIcon, post.liked && card.railIconLiked]}>
+            {post.liked ? '♥' : '♡'}
+          </Text>
+          <Text style={card.railCount}>{post.likes}</Text>
+        </TouchableOpacity>
+
+        {/* Comment */}
+        <TouchableOpacity
+          style={card.railItem}
+          activeOpacity={0.8}
+          onPress={() => onComment(post.id)}>
+          <Text style={card.railIcon}>◎</Text>
+          <Text style={card.railCount}>{post.comments}</Text>
+        </TouchableOpacity>
+
+        {/* Share */}
+        <TouchableOpacity
+          style={card.railItem}
+          activeOpacity={0.8}
+          onPress={() => onShare(post)}>
+          <Text style={card.railIcon}>↗</Text>
+          <Text style={card.railLabel}>share</Text>
+        </TouchableOpacity>
+
+        {/* Gym */}
+        <TouchableOpacity
+          style={card.railItem}
+          activeOpacity={0.8}
+          onPress={() => post.gymId && onGym(post.gymId)}>
+          <Text style={card.railIcon}>⬡</Text>
+          <Text style={card.railLabel}>gym</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Bottom-left info (username + gym pill) ───────────────────────────── */}
+      <View style={[card.bottomInfo, { bottom: STATS_BAR_H + 16 }]}>
+        <Text style={card.username}>{displayName}</Text>
+        {post.gym ? (
+          <View style={card.gymPill}>
+            <Text style={card.gymPillText}>{'📍  '}{post.gym}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── Stats bar ────────────────────────────────────────────────────────── */}
+      <View style={[card.statsBar, { height: STATS_BAR_H }]}>
+        <View style={card.statSection}>
+          <Text style={card.statValue}>{post.problems ?? '—'}</Text>
+          <Text style={card.statLabel}>PROBLEMS</Text>
+        </View>
+
+        <View style={card.statDivider} />
+
+        <View style={card.statSection}>
+          <Text style={card.statValue}>{post.topGrade ?? '—'}</Text>
+          <Text style={card.statLabel}>TOP GRADE</Text>
+        </View>
+
+        <View style={card.statDivider} />
+
+        <View style={[card.statSection, { flex: 1.5 }]}>
+          <GradeBars climbs={post.climbsData ?? []} topGrade={post.topGrade} />
+          <Text style={card.statLabel}>GRADES</Text>
+        </View>
       </View>
     </View>
   );
@@ -503,21 +397,32 @@ function MiniSessionCard({ post }: { post: Post }) {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
-  const greeting = useGreeting('Alex');
   const router = useRouter();
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Comment sheet state
-  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
+  const [posts,         setPosts]         = useState<Post[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [activeIndex,   setActiveIndex]   = useState(0);
+  const [cardHeight,    setCardHeight]    = useState(0);
+
+  // Comment sheet
+  const [commentSheetVisible,   setCommentSheetVisible]   = useState(false);
   const [commentSheetSessionId, setCommentSheetSessionId] = useState<string | null>(null);
-  const [commentsList, setCommentsList] = useState<CommentItem[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentInput, setCommentInput] = useState('');
-  const [sendingComment, setSendingComment] = useState(false);
+  const [commentsList,          setCommentsList]          = useState<CommentItem[]>([]);
+  const [commentsLoading,       setCommentsLoading]       = useState(false);
+  const [commentInput,          setCommentInput]          = useState('');
+  const [sendingComment,        setSendingComment]        = useState(false);
   const commentsScrollRef = useRef<ScrollView>(null);
+
+  // FlatList viewability — refs are required; cannot be inline functions
+  const onViewableItemsChangedRef = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+        setActiveIndex(viewableItems[0].index!);
+      }
+    }
+  );
+  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 60 });
 
   // Load feed on every focus
   useFocusEffect(
@@ -541,7 +446,7 @@ export default function FeedScreen() {
     }, [])
   );
 
-  // Navigate to a user's profile — own profile goes to the tab, others to /user/[id]
+  // Navigate to profile — own → tab, other → /user/[id]
   const handlePressUser = useCallback((userId: string) => {
     if (userId === currentUserId) {
       router.navigate('/(tabs)/profile');
@@ -550,39 +455,38 @@ export default function FeedScreen() {
     }
   }, [currentUserId, router]);
 
-  // Optimistic like toggle — update UI immediately, sync Supabase in background
+  // Native share sheet
+  const handleShare = useCallback(async (post: Post) => {
+    try {
+      await Share.share({
+        message: `Check out this climb at ${post.gym ?? 'the gym'} on Deadpoint! 🧗`,
+      });
+    } catch {
+      // user dismissed
+    }
+  }, []);
+
+  // Optimistic like toggle
   const handleLike = async (id: string) => {
     if (!currentUserId) return;
-
-    const post = posts.find((p) => p.id === id);
+    const post = posts.find(p => p.id === id);
     if (!post) return;
-
     const wasLiked = post.liked;
 
-    // Update state immediately (optimistic)
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 }
-          : p
+    setPosts(prev =>
+      prev.map(p =>
+        p.id === id ? { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 } : p
       )
     );
 
-    // Sync with Supabase
     if (wasLiked) {
-      await supabase
-        .from('likes')
-        .delete()
-        .eq('user_id', currentUserId)
-        .eq('session_id', id);
+      await supabase.from('likes').delete().eq('user_id', currentUserId).eq('session_id', id);
     } else {
-      await supabase
-        .from('likes')
-        .insert({ user_id: currentUserId, session_id: id });
+      await supabase.from('likes').insert({ user_id: currentUserId, session_id: id });
     }
   };
 
-  // Open comment sheet + fetch comments for the selected session
+  // Open comment sheet + fetch comments
   const openCommentSheet = async (sessionId: string) => {
     setCommentSheetSessionId(sessionId);
     setCommentSheetVisible(true);
@@ -592,42 +496,41 @@ export default function FeedScreen() {
 
     const { data: comments } = await supabase
       .from('comments')
-      .select('id, user_id, content, created_at')
+      .select('id,user_id,content,created_at')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true });
 
     if (comments && comments.length > 0) {
-      // Batch-fetch commenter profiles
-      const commentUserIds = [...new Set(comments.map((c) => c.user_id))];
+      const commentUserIds = [...new Set(comments.map(c => c.user_id))];
       const { data: commentProfiles } = await supabase
         .from('profiles')
-        .select('id, full_name, username, avatar_url')
+        .select('id,full_name,username,avatar_url')
         .in('id', commentUserIds);
 
-      const commentProfileMap = new Map((commentProfiles ?? []).map((p) => [p.id, p]));
+      const profileMap = new Map((commentProfiles ?? []).map(p => [p.id, p]));
 
-      const items: CommentItem[] = comments.map((c) => {
-        const profile = commentProfileMap.get(c.user_id);
-        return {
-          id: c.id,
-          userId: c.user_id,
-          username: profile?.username ?? 'climber',
-          fullName: profile?.full_name ?? 'Climber',
-          avatarUrl: profile?.avatar_url ?? null,
-          content: c.content,
-          createdAt: c.created_at,
-        };
-      });
-      setCommentsList(items);
+      setCommentsList(
+        comments.map(c => {
+          const p = profileMap.get(c.user_id);
+          return {
+            id:        c.id,
+            userId:    c.user_id,
+            username:  p?.username  ?? 'climber',
+            fullName:  p?.full_name ?? 'Climber',
+            avatarUrl: p?.avatar_url ?? null,
+            content:   c.content,
+            createdAt: c.created_at,
+          };
+        })
+      );
     }
 
     setCommentsLoading(false);
   };
 
-  // Post a new comment, update list + count in real time
+  // Post a new comment
   const handleSendComment = async () => {
     if (!commentInput.trim() || !commentSheetSessionId || !currentUserId || sendingComment) return;
-
     const content = commentInput.trim();
     setSendingComment(true);
     setCommentInput('');
@@ -635,257 +538,166 @@ export default function FeedScreen() {
     const { data: newComment, error } = await supabase
       .from('comments')
       .insert({ user_id: currentUserId, session_id: commentSheetSessionId, content })
-      .select('id, user_id, content, created_at')
+      .select('id,user_id,content,created_at')
       .single();
 
     if (!error && newComment) {
       const { data: myProfile } = await supabase
         .from('profiles')
-        .select('full_name, username, avatar_url')
+        .select('full_name,username,avatar_url')
         .eq('id', currentUserId)
         .single();
 
-      const item: CommentItem = {
-        id: newComment.id,
-        userId: newComment.user_id,
-        username: myProfile?.username ?? 'climber',
-        fullName: myProfile?.full_name ?? 'Climber',
-        avatarUrl: myProfile?.avatar_url ?? null,
-        content: newComment.content,
-        createdAt: newComment.created_at,
-      };
+      setCommentsList(prev => [
+        ...prev,
+        {
+          id:        newComment.id,
+          userId:    newComment.user_id,
+          username:  myProfile?.username  ?? 'climber',
+          fullName:  myProfile?.full_name ?? 'Climber',
+          avatarUrl: myProfile?.avatar_url ?? null,
+          content:   newComment.content,
+          createdAt: newComment.created_at,
+        },
+      ]);
 
-      setCommentsList((prev) => [...prev, item]);
-
-      // Bump comment count on the feed card immediately
-      setPosts((prev) =>
-        prev.map((p) =>
+      setPosts(prev =>
+        prev.map(p =>
           p.id === commentSheetSessionId ? { ...p, comments: p.comments + 1 } : p
         )
       );
 
-      // Scroll to new comment
       setTimeout(() => commentsScrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
 
     setSendingComment(false);
   };
 
-  // ─── Derived search state ──────────────────────────────────────────────────
-  const trimmedQuery = searchQuery.trim().toLowerCase();
-  const isSearching = trimmedQuery.length > 0;
-
-  const gymResults = isSearching
-    ? Object.entries(GYM_NAMES).filter(([, name]) =>
-        name.toLowerCase().includes(trimmedQuery)
-      )
-    : [];
-
-  const sessionMediaResults = isSearching
-    ? posts.filter(
-        (p) => p.media && p.media.length > 0 && p.gym?.toLowerCase().includes(trimmedQuery)
-      )
-    : [];
-
-  const hasResults = gymResults.length > 0 || sessionMediaResults.length > 0;
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.greeting}>{greeting}</Text>
-        <Text style={styles.subheading}>Your crew is crushing it.</Text>
-      </View>
+    <SafeAreaView style={screen.container} edges={['top']}>
+      {/* Measure the exact content height (window minus status bar minus tab bar) */}
+      <View
+        style={{ flex: 1 }}
+        onLayout={e => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== cardHeight) setCardHeight(h);
+        }}>
 
-      {/* Search bar */}
-      <View style={styles.searchWrap}>
-        <Text style={styles.searchIcon}>⌕</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search gyms and sessions..."
-          placeholderTextColor={TEXT_MUTED}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchQuery('')}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={styles.searchClear}>×</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-        </View>
-      ) : isSearching ? (
-        /* ── Search results ─────────────────────────────────────────────────── */
-        <ScrollView
-          contentContainerStyle={styles.searchResultsContainer}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled">
-          {!hasResults ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No results</Text>
-              <Text style={styles.emptyText}>Try a different gym name</Text>
-            </View>
-          ) : (
-            <>
-              {gymResults.length > 0 && (
-                <View style={searchStyles.section}>
-                  <Text style={searchStyles.sectionLabel}>GYMS</Text>
-                  <View style={searchStyles.sectionCard}>
-                    {gymResults.map(([gymId, gymName], idx) => (
-                      <View key={gymId}>
-                        {idx > 0 && <View style={searchStyles.rowDivider} />}
-                        <GymResultRow
-                          gymName={gymName}
-                          onPress={() => router.push(`/gym/${gymId}`)}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {sessionMediaResults.length > 0 && (
-                <View style={searchStyles.section}>
-                  <Text style={searchStyles.sectionLabel}>SESSIONS WITH MEDIA</Text>
-                  <View style={searchStyles.miniGrid}>
-                    {sessionMediaResults.map((post) => (
-                      <MiniSessionCard key={post.id} post={post} />
-                    ))}
-                  </View>
-                </View>
-              )}
-            </>
-          )}
-        </ScrollView>
-      ) : (
-        /* ── Normal feed ────────────────────────────────────────────────────── */
-        <ScrollView
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}>
-          {posts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No sessions yet</Text>
-              <Text style={styles.emptyText}>Log a climb to see it here.</Text>
-            </View>
-          ) : (
-            posts.map((post) => (
-              <FeedCard
-                key={post.id}
-                post={post}
+        {loading || cardHeight === 0 ? (
+          <View style={screen.center}>
+            <ActivityIndicator size="large" color="#ffffff" />
+          </View>
+        ) : posts.length === 0 ? (
+          <View style={screen.center}>
+            <Text style={screen.emptyTitle}>No sessions yet</Text>
+            <Text style={screen.emptyText}>Log a climb to see it here.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={posts}
+            keyExtractor={item => item.id}
+            renderItem={({ item, index }) => (
+              <FullScreenCard
+                post={item}
+                height={cardHeight}
+                isActive={index === activeIndex}
                 onLike={handleLike}
                 onComment={openCommentSheet}
                 onPressUser={handlePressUser}
+                onShare={handleShare}
+                onGym={gymId => router.push(`/gym/${gymId}`)}
               />
-            ))
-          )}
-        </ScrollView>
-      )}
+            )}
+            pagingEnabled
+            showsVerticalScrollIndicator={false}
+            snapToInterval={cardHeight}
+            decelerationRate="fast"
+            onViewableItemsChanged={onViewableItemsChangedRef.current}
+            viewabilityConfig={viewabilityConfigRef.current}
+            getItemLayout={(_, index) => ({
+              length: cardHeight,
+              offset: cardHeight * index,
+              index,
+            })}
+          />
+        )}
+      </View>
 
-      {/* Comment bottom sheet — conditionally rendered so it fully unmounts on close */}
+      {/* ── Comment bottom sheet — conditionally rendered so it fully unmounts ── */}
       {commentSheetVisible && (
         <Modal
           visible
           animationType="slide"
           transparent
           onRequestClose={() => setCommentSheetVisible(false)}>
-          <View style={commentStyles.modalContainer}>
-            {/* Flex:1 TouchableOpacity fills space above the sheet — tap to dismiss */}
+          <View style={comment.modalContainer}>
             <TouchableOpacity
               style={{ flex: 1 }}
               activeOpacity={1}
               onPress={() => setCommentSheetVisible(false)}
             />
 
-            {/* Sheet anchored to bottom */}
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-              <View style={commentStyles.sheet}>
-                {/* Drag handle */}
-                <View style={commentStyles.sheetHandle} />
+              <View style={comment.sheet}>
+                <View style={comment.sheetHandle} />
 
-                {/* Header */}
-                <View style={commentStyles.sheetHeader}>
-                  <Text style={commentStyles.sheetTitle}>Comments</Text>
+                <View style={comment.sheetHeader}>
+                  <Text style={comment.sheetTitle}>Comments</Text>
                   <TouchableOpacity
                     onPress={() => setCommentSheetVisible(false)}
                     hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-                    <Text style={commentStyles.sheetClose}>×</Text>
+                    <Text style={comment.sheetClose}>×</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Comment list */}
                 <ScrollView
                   ref={commentsScrollRef}
-                  style={commentStyles.commentList}
+                  style={comment.commentList}
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={{ paddingBottom: 8 }}>
                   {commentsLoading ? (
-                    <ActivityIndicator
-                      color={PRIMARY}
-                      style={{ marginTop: 36, marginBottom: 36 }}
-                    />
+                    <ActivityIndicator color={PRIMARY} style={{ marginVertical: 36 }} />
                   ) : commentsList.length === 0 ? (
-                    <View style={commentStyles.emptyComments}>
-                      <Text style={commentStyles.emptyCommentsTitle}>No comments yet</Text>
-                      <Text style={commentStyles.emptyCommentsSub}>
-                        Be the first to say something!
-                      </Text>
+                    <View style={comment.emptyComments}>
+                      <Text style={comment.emptyTitle}>No comments yet</Text>
+                      <Text style={comment.emptySub}>Be the first to say something!</Text>
                     </View>
                   ) : (
-                    commentsList.map((comment) => (
-                      <View key={comment.id} style={commentStyles.commentRow}>
-                        {/* Avatar — real photo if available, initials fallback */}
-                        {comment.avatarUrl ? (
-                          <Image
-                            source={{ uri: comment.avatarUrl }}
-                            style={commentStyles.commentAvatarImg}
-                          />
+                    commentsList.map(c => (
+                      <View key={c.id} style={comment.row}>
+                        {c.avatarUrl ? (
+                          <Image source={{ uri: c.avatarUrl }} style={comment.avatarImg} />
                         ) : (
-                          <View style={commentStyles.commentAvatar}>
-                            <Text style={commentStyles.commentAvatarText}>
-                              {toInitials(comment.fullName)}
-                            </Text>
+                          <View style={comment.avatarFallback}>
+                            <Text style={comment.avatarText}>{toInitials(c.fullName)}</Text>
                           </View>
                         )}
-                        {/* Content */}
-                        <View style={commentStyles.commentContent}>
-                          <View style={commentStyles.commentMeta}>
-                            {/* Tap name to visit profile */}
+                        <View style={comment.rowContent}>
+                          <View style={comment.rowMeta}>
                             <TouchableOpacity
                               activeOpacity={0.7}
                               onPress={() => {
                                 setCommentSheetVisible(false);
-                                if (comment.userId === currentUserId) {
+                                if (c.userId === currentUserId) {
                                   router.navigate('/(tabs)/profile');
                                 } else {
-                                  router.push(`/user/${comment.userId}`);
+                                  router.push(`/user/${c.userId}`);
                                 }
                               }}>
-                              <Text style={commentStyles.commentName}>{comment.fullName}</Text>
+                              <Text style={comment.name}>{c.fullName}</Text>
                             </TouchableOpacity>
-                            <Text style={commentStyles.commentTime}>
-                              {timeAgo(comment.createdAt)}
-                            </Text>
+                            <Text style={comment.time}>{timeAgo(c.createdAt)}</Text>
                           </View>
-                          <Text style={commentStyles.commentText}>{comment.content}</Text>
+                          <Text style={comment.text}>{c.content}</Text>
                         </View>
                       </View>
                     ))
                   )}
                 </ScrollView>
 
-                {/* Input row */}
-                <View style={commentStyles.inputRow}>
+                <View style={comment.inputRow}>
                   <TextInput
-                    style={commentStyles.input}
+                    style={comment.input}
                     placeholder="Add a comment..."
                     placeholderTextColor={TEXT_MUTED}
                     value={commentInput}
@@ -896,16 +708,16 @@ export default function FeedScreen() {
                   />
                   <TouchableOpacity
                     style={[
-                      commentStyles.sendBtn,
-                      (!commentInput.trim() || sendingComment) && commentStyles.sendBtnDisabled,
+                      comment.sendBtn,
+                      (!commentInput.trim() || sendingComment) && comment.sendBtnDisabled,
                     ]}
                     onPress={handleSendComment}
                     disabled={!commentInput.trim() || sendingComment}
                     activeOpacity={0.7}>
                     {sendingComment ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
+                      <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={commentStyles.sendBtnText}>Send</Text>
+                      <Text style={comment.sendBtnText}>Send</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -918,396 +730,202 @@ export default function FeedScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Card styles ──────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BG,
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 16,
-  },
-  greeting: {
-    fontSize: 42,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
-    lineHeight: 46,
-  },
-  subheading: {
-    fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
-    marginTop: 6,
-    letterSpacing: 0.1,
-  },
-
-  // ── Search bar ───────────────────────────────────────────────────────────────
-  searchWrap: {
+const card = StyleSheet.create({
+  // Top tab row
+  tabRow: {
+    position: 'absolute',
+    top: 14,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    zIndex: 10,
+  },
+  tabItem: {
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
-  searchIcon: {
-    fontSize: 18,
-    color: TEXT_MUTED,
-    lineHeight: 22,
+  tabActiveText: {
+    fontSize: 16,
+    fontFamily: 'DMSans_700Bold',
+    color: '#ffffff',
+    letterSpacing: -0.2,
   },
-  searchInput: {
-    flex: 1,
+  tabIndicator: {
+    alignSelf: 'stretch',
+    height: 2.5,
+    backgroundColor: ACCENT,
+    borderRadius: 2,
+    marginTop: 4,
+  },
+  tabInactive: {
     fontSize: 15,
     fontFamily: 'DMSans_500Medium',
-    color: TEXT,
-    padding: 0,
-  },
-  searchClear: {
-    fontSize: 22,
-    color: TEXT_MUTED,
-    lineHeight: 24,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: -0.1,
   },
 
-  loadingContainer: {
-    flex: 1,
+  // Right action rail
+  rail: {
+    position: 'absolute',
+    right: 12,
+    alignItems: 'center',
+    gap: 22,
+    zIndex: 10,
+  },
+  railItem: {
+    alignItems: 'center',
+    gap: 5,
+  },
+  avatarRing: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    overflow: 'hidden',
+  },
+  railAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  railAvatarFallback: {
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyState: {
-    paddingTop: 60,
+  railAvatarText: {
+    fontSize: 15,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  },
+  railIcon: {
+    fontSize: 28,
+    color: '#ffffff',
+    lineHeight: 32,
+  },
+  railIconLiked: {
+    color: ACCENT,
+  },
+  railCount: {
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+  railLabel: {
+    fontSize: 11,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  },
+
+  // Bottom-left info
+  bottomInfo: {
+    position: 'absolute',
+    left: 16,
+    right: 80,   // clear the action rail
+    gap: 9,
+    zIndex: 10,
+  },
+  username: {
+    fontSize: 16,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.2,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  gymPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: PRIMARY,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  gymPillText: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: '#ffffff',
+    letterSpacing: 0.1,
+  },
+
+  // Stats bar
+  statsBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  statSection: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  statLabel: {
+    fontSize: 8,
+    fontFamily: 'DMSans_700Bold',
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 1.3,
+  },
+  statDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 4,
+  },
+});
+
+// ─── Screen styles ────────────────────────────────────────────────────────────
+
+const screen = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
   },
   emptyTitle: {
     fontSize: 28,
     fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    color: '#ffffff',
     letterSpacing: 1,
   },
   emptyText: {
     fontSize: 15,
     fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
-  },
-  list: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 16,
-  },
-  searchResultsContainer: {
-    paddingBottom: 40,
-  },
-
-  // ── Full-bleed card ──────────────────────────────────────────────────────────
-  fullBleedCard: {
-    backgroundColor: BG,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2.5,
-    borderColor: DIVIDER,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  heroWrapper: {
-    position: 'relative',
-  },
-  heroImage: {
-    width: '100%',
-    height: 300,
-  },
-  videoPlaceholder: {
-    backgroundColor: SURFACE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoPlayIcon: {
-    fontSize: 44,
-    color: '#ffffff',
-    opacity: 0.9,
-  },
-  heroGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 130,
-    justifyContent: 'flex-start',
-    paddingTop: 16,
-    paddingHorizontal: 16,
-  },
-  heroImageBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderWidth: 1,
-    borderColor: '#b0cdd8',
-  },
-  heroUserRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  heroUserTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    flex: 1,
-  },
-  heroUserMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  heroUserName: {
-    fontSize: 15,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
-    letterSpacing: -0.1,
-  },
-  heroGym: {
-    fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: 'rgba(255,255,255,0.78)',
-    letterSpacing: 0.1,
-  },
-  heroTimestamp: {
-    fontSize: 11,
-    fontFamily: 'DMSans_600SemiBold',
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 0.1,
-  },
-
-  // ── Stats + actions strip ────────────────────────────────────────────────────
-  strip: {
-    flexDirection: 'column',
-    backgroundColor: BG,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  stripStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 4,
-  },
-  stripHairline: {
-    height: 1,
-    backgroundColor: '#b0cdd8',
-    marginBottom: 4,
-  },
-  stripActions: {
-    flexDirection: 'row',
-  },
-  stripStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 3,
-  },
-  stripStatValue: {
-    fontSize: 20,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.4,
-  },
-  stripStatLabel: {
-    fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.3,
-  },
-  stripDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: DIVIDER,
-    marginHorizontal: 4,
-  },
-
-  // ── Plain card (no photo) ────────────────────────────────────────────────────
-  card: {
-    backgroundColor: CARD,
-    borderRadius: 20,
-    padding: 20,
-    gap: 16,
-    borderWidth: 2.5,
-    borderColor: DIVIDER,
-  },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  userMeta: {
-    flex: 1,
-    gap: 3,
-  },
-  userName: {
-    fontSize: 16,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.2,
-  },
-  timestamp: {
-    fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
-  },
-  gymLabel: {
-    fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: PRIMARY,
-    letterSpacing: 0.2,
-  },
-  statsBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-  },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 5,
-  },
-  statValue: {
-    fontSize: 24,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.4,
-  },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: DIVIDER,
-    marginHorizontal: 8,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-  },
-});
-
-// ─── Search result styles ─────────────────────────────────────────────────────
-
-const searchStyles = StyleSheet.create({
-  section: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.4,
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-  // Gym results grouped in a card
-  sectionCard: {
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: DIVIDER,
-    overflow: 'hidden',
-  },
-  gymRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  gymRowLeft: {
-    gap: 2,
-  },
-  gymRowTag: {
-    fontSize: 10,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: PRIMARY,
-    letterSpacing: 1.4,
-  },
-  gymRowName: {
-    fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
-    letterSpacing: -0.1,
-  },
-  gymRowChevron: {
-    fontSize: 22,
-    color: TEXT_MUTED,
-    lineHeight: 26,
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: DIVIDER,
-    marginHorizontal: 18,
-  },
-  // Mini session cards (sessions with media)
-  miniGrid: {
-    gap: 10,
-  },
-  miniCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: DIVIDER,
-    overflow: 'hidden',
-  },
-  miniThumb: {
-    width: 80,
-    height: 80,
-  },
-  miniInfo: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 3,
-  },
-  miniGym: {
-    fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
-    letterSpacing: -0.1,
-  },
-  miniMeta: {
-    fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
-  },
-  miniName: {
-    fontSize: 12,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT_MUTED,
+    color: 'rgba(255,255,255,0.6)',
   },
 });
 
 // ─── Comment sheet styles ─────────────────────────────────────────────────────
 
-const commentStyles = StyleSheet.create({
-  // Outer Modal container — dark semi-transparent backdrop
+const comment = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  // The sheet panel itself
   sheet: {
     backgroundColor: BG,
     borderTopLeftRadius: 24,
@@ -1342,42 +960,39 @@ const commentStyles = StyleSheet.create({
     color: TEXT_MUTED,
     lineHeight: 34,
   },
-  // Scrollable comment list
   commentList: {
     maxHeight: SCREEN_HEIGHT * 0.44,
   },
-  // Empty state
   emptyComments: {
     paddingVertical: 44,
     alignItems: 'center',
     gap: 8,
   },
-  emptyCommentsTitle: {
+  emptyTitle: {
     fontSize: 20,
     fontFamily: 'BebasNeue_400Regular',
     color: TEXT,
     letterSpacing: 1,
   },
-  emptyCommentsSub: {
+  emptySub: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
     color: TEXT_MUTED,
   },
-  // Individual comment row
-  commentRow: {
+  row: {
     flexDirection: 'row',
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DIVIDER,
   },
-  commentAvatarImg: {
+  avatarImg: {
     width: 38,
     height: 38,
     borderRadius: 11,
     flexShrink: 0,
   },
-  commentAvatar: {
+  avatarFallback: {
     width: 38,
     height: 38,
     borderRadius: 11,
@@ -1386,38 +1001,37 @@ const commentStyles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  commentAvatarText: {
+  avatarText: {
     fontSize: 13,
     fontFamily: 'DMSans_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.3,
   },
-  commentContent: {
+  rowContent: {
     flex: 1,
     gap: 4,
   },
-  commentMeta: {
+  rowMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  commentName: {
+  name: {
     fontSize: 13,
     fontFamily: 'DMSans_700Bold',
     color: TEXT,
   },
-  commentTime: {
+  time: {
     fontSize: 11,
     fontFamily: 'DMSans_600SemiBold',
     color: TEXT_MUTED,
   },
-  commentText: {
+  text: {
     fontSize: 14,
     fontFamily: 'DMSans_400Regular',
     color: TEXT,
     lineHeight: 20,
   },
-  // Input + send
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

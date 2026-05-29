@@ -129,11 +129,14 @@ const TEXT_SUB  = '#3d7a8a';
 const TEXT_MUTED = '#8bb5c4';
 const DIVIDER   = '#c8dde8';
 
-const USER = {
-  name:     'Alex Fox',
-  username: '@alexfox',
-  initials: 'AF',
-};
+function toInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join('');
+}
 
 const TABS: { key: ProfileTab; label: string }[] = [
   { key: 'overview',  label: 'Overview'  },
@@ -192,8 +195,11 @@ export default function ProfileScreen() {
   const [editBio, setEditBio]           = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Committed values — only update after a successful Save Changes
-  const [displayBio, setDisplayBio] = useState('');
+  // Committed header values — only update after a successful Save Changes
+  // (prevents live-typing in Settings from affecting the displayed header)
+  const [displayName,     setDisplayName]     = useState('');
+  const [displayUsername, setDisplayUsername] = useState('');
+  const [displayBio,      setDisplayBio]      = useState('');
 
   // Grade Distribution inline expanded card
   const [gradeExpanded,       setGradeExpanded]       = useState(false);
@@ -246,6 +252,8 @@ export default function ProfileScreen() {
             setEditName(profileRow.full_name ?? '');
             setEditUsername(profileRow.username ?? '');
             setEditBio(profileRow.bio ?? '');
+            setDisplayName(profileRow.full_name ?? '');
+            setDisplayUsername(profileRow.username ?? '');
             setDisplayBio(profileRow.bio ?? '');
           }
 
@@ -462,7 +470,7 @@ export default function ProfileScreen() {
 
   const publishPost = async (uri: string, mediaType: 'image' | 'video') => {
     await saveUserPost({
-      id: Date.now().toString(), name: USER.name, initials: USER.initials,
+      id: Date.now().toString(), name: displayName, initials: toInitials(displayName),
       avatarBg: PRIMARY, timestamp: 'Just now', likes: 0, comments: 0,
       liked: false, postType: 'photo', media: [{ type: mediaType, uri }],
     });
@@ -568,6 +576,8 @@ export default function ProfileScreen() {
       if (error) {
         Alert.alert('Error', 'Could not save changes. Please try again.');
       } else {
+        setDisplayName(editName.trim());
+        setDisplayUsername(editUsername.trim().replace(/^@/, ''));
         setDisplayBio(editBio.trim());
         Alert.alert('Saved', 'Your profile has been updated.');
       }
@@ -649,7 +659,7 @@ export default function ProfileScreen() {
               <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
             ) : (
               <View style={styles.avatar}>
-                <Text style={styles.avatarInitials}>{USER.initials}</Text>
+                <Text style={styles.avatarInitials}>{toInitials(displayName)}</Text>
               </View>
             )}
             <View style={styles.avatarEditBadge}>
@@ -659,8 +669,10 @@ export default function ProfileScreen() {
 
           <View style={styles.nameRow}>
             <View>
-              <Text style={styles.name}>{USER.name}</Text>
-              <Text style={styles.username}>{USER.username}</Text>
+              <Text style={styles.name}>{displayName}</Text>
+              {displayUsername ? (
+                <Text style={styles.username}>@{displayUsername}</Text>
+              ) : null}
               {displayBio ? <Text style={styles.headerBio}>{displayBio}</Text> : null}
             </View>
             <TouchableOpacity style={styles.inviteFriendsBtn} onPress={handleInviteFriends} activeOpacity={0.7}>
