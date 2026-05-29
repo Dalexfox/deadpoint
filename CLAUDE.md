@@ -290,7 +290,7 @@ src/lib/
 1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase ordered by `created_at` descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
-4. **Log** — Log a session: pick gym, pick difficulty (V-scale chip), set problem count, optional photo/video. Saves to Supabase (`sessions` + `climbs` tables). Media uploaded to Supabase Storage. Success screen shown after submit.
+4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Submit.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on Sessions and Settings tabs.
    - **Sessions tab** — swipeable horizontal carousel of past sessions.
@@ -335,8 +335,9 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `followingSet` is a `Set<string>` of following_ids; refreshed on every screen focus via `useFocusEffect`.
 
 ### Gym Detail (`/gym/[id]`)
-- Per-grade counter (V0–V10) with increment/decrement
-- Submit saves to Supabase `sessions` + `climbs` tables (one row per grade)
+- Logs one climb at a time: optional photo/video, single V-grade chip selector (V0–V10), fixed Submit button in footer
+- Form order: Photo/Video → Difficulty → Submit (gym is already shown in the fixed header)
+- Submit saves `total_problems: 1` to `sessions` and one `climbs` row `{ grade, count: 1 }`
 - Requires authenticated user (`supabase.auth.getUser()`)
 - Shows "SESSION LOGGED" success screen for 2.5s, then navigates back to Gyms tab
 - `useFocusEffect` on Profile tab picks up new sessions automatically on next visit

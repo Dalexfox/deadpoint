@@ -15,56 +15,44 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia } from '../../lib/store';
 
-const BG       = '#ffffff';
-const CARD     = '#d8eaf0';
-const SURFACE  = '#d8eaf0';
-const ACCENT   = '#ff507c';
-const PRIMARY  = '#2E7A96';
-const TEXT     = '#0d2b36';
-const TEXT_SUB = '#3d7a8a';
+const BG        = '#ffffff';
+const SURFACE   = '#d8eaf0';
+const ACCENT    = '#ff507c';
+const PRIMARY   = '#2E7A96';
+const TEXT      = '#0d2b36';
+const TEXT_SUB  = '#3d7a8a';
 const TEXT_MUTED = '#8bb5c4';
-const DIVIDER  = '#c8dde8';
+const DIVIDER   = '#c8dde8';
 
 const GYMS: Record<string, { name: string; neighborhood: string; city: string }> = {
-  '1': { name: 'Vital Climbing LES', neighborhood: 'Lower East Side', city: 'NYC' },
-  '2': { name: 'Vital Climbing Brooklyn', neighborhood: 'Brooklyn', city: 'NYC' },
-  '3': { name: 'Vital Climbing UES', neighborhood: 'Upper East Side', city: 'NYC' },
-  '4': { name: 'Vital Climbing UWS', neighborhood: 'Upper West Side', city: 'NYC' },
+  '1': { name: 'Vital Climbing LES',      neighborhood: 'Lower East Side', city: 'NYC' },
+  '2': { name: 'Vital Climbing Brooklyn', neighborhood: 'Brooklyn',        city: 'NYC' },
+  '3': { name: 'Vital Climbing UES',      neighborhood: 'Upper East Side', city: 'NYC' },
+  '4': { name: 'Vital Climbing UWS',      neighborhood: 'Upper West Side', city: 'NYC' },
 };
 
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
-type Counts = Record<string, number>;
 type MediaItem = { type: 'image' | 'video'; uri: string };
 
 export default function GymDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const gym = GYMS[id as string] ?? null;
+  const { id }   = useLocalSearchParams<{ id: string }>();
+  const router   = useRouter();
+  const gym      = GYMS[id as string] ?? null;
 
-  const [counts, setCounts] = useState<Counts>(
-    Object.fromEntries(GRADES.map((g) => [g, 0]))
-  );
-  const [media, setMedia] = useState<MediaItem | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
+  const [media, setMedia]                 = useState<MediaItem | null>(null);
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitted, setSubmitted]         = useState(false);
 
-  // After success screen shows, navigate to the Gyms tab after 2.5 s
+  // After the success screen shows, navigate back to the Gyms tab after 2.5 s
   useEffect(() => {
     if (!submitted) return;
-    const timer = setTimeout(() => {
-      router.replace('/(tabs)/gyms');
-    }, 2500);
+    const timer = setTimeout(() => router.replace('/(tabs)/gyms'), 2500);
     return () => clearTimeout(timer);
   }, [submitted]);
 
-  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-
-  const increment = (grade: string) =>
-    setCounts((prev) => ({ ...prev, [grade]: prev[grade] + 1 }));
-
-  const decrement = (grade: string) =>
-    setCounts((prev) => ({ ...prev, [grade]: Math.max(0, prev[grade] - 1) }));
+  const canSubmit = selectedGrade !== null;
 
   // ─── Media helpers ────────────────────────────────────────────
 
@@ -72,8 +60,8 @@ export default function GymDetailScreen() {
     Alert.alert('Add to your post', '', [
       { text: 'Choose Photo', onPress: () => pickMedia('images') },
       { text: 'Choose Video', onPress: () => pickMedia('videos') },
-      { text: 'Take Photo', onPress: takePhoto },
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Take Photo',   onPress: takePhoto },
+      { text: 'Cancel',       style: 'cancel' },
     ]);
   };
 
@@ -91,10 +79,7 @@ export default function GymDetailScreen() {
   };
 
   const takePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.85,
-    });
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
     if (!result.canceled) {
       setMedia({ type: 'image', uri: result.assets[0].uri });
     }
@@ -103,67 +88,52 @@ export default function GymDetailScreen() {
   // ─── Submit ───────────────────────────────────────────────────
 
   const handleSubmit = async () => {
-    console.log('[GymDetail handleSubmit] Called. total:', total, '| submitting:', submitting, '| media:', media);
-    if (total === 0 || submitting) return;
+    if (!canSubmit || submitting) return;
     setSubmitting(true);
-    console.log('[GymDetail handleSubmit] Starting session submit...');
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      console.log('[handleSubmit] getUser result:', { user, userError });
       if (!user) throw new Error('Not logged in');
 
-      // Upload media first so we can store the URL alongside the session.
-      // If the upload fails, mediaUrl will be null and we save without it.
+      // Upload media if attached; silently continue without it if upload fails
       let mediaUrl: string | null = null;
       if (media) {
-        console.log('[handleSubmit] Uploading media...');
         mediaUrl = await uploadSessionMedia(media.uri, media.type);
-        console.log('[handleSubmit] Media upload result:', mediaUrl ?? 'failed (will save without)');
       }
 
-      console.log('[handleSubmit] Inserting session for gym_id:', id, '| total_problems:', total);
+      // Each gym-detail log = exactly 1 climb
       const { data: session, error: sessionError } = await supabase
         .from('sessions')
         .insert({
           user_id: user.id,
           gym_id: id,
-          total_problems: total,
+          total_problems: 1,
           ...(mediaUrl ? { media_url: mediaUrl } : {}),
         })
         .select('id')
         .single();
-      console.log('[handleSubmit] Session insert result:', { session, sessionError });
 
       if (sessionError) throw sessionError;
 
-      const climbRows = GRADES
-        .filter((g) => counts[g] > 0)
-        .map((g) => ({ session_id: session.id, grade: g, count: counts[g] }));
-      console.log('[handleSubmit] Climbs to insert:', climbRows);
-
-      const { data: climbsData, error: climbsError } = await supabase
+      // One climb row, count always 1
+      const { error: climbsError } = await supabase
         .from('climbs')
-        .insert(climbRows)
-        .select();
-      console.log('[handleSubmit] Climbs insert result:', { climbsData, climbsError });
+        .insert({ session_id: session.id, grade: selectedGrade!, count: 1 });
 
       if (climbsError) throw climbsError;
 
-      console.log('[handleSubmit] Session saved successfully! Showing success screen.');
       setSubmitted(true);
     } catch (err: any) {
-      console.log('[handleSubmit] ERROR:', err);
       Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
     } finally {
       setSubmitting(false);
-      console.log('[handleSubmit] Done.');
     }
   };
 
   if (!gym) return null;
 
-  // Success screen — identical to the Log tab's success state
+  // ─── Success screen ───────────────────────────────────────────
+
   if (submitted) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -176,8 +146,11 @@ export default function GymDetailScreen() {
     );
   }
 
+  // ─── Form ─────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Back nav */}
       <View style={styles.nav}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={styles.backArrow}>‹</Text>
@@ -185,15 +158,14 @@ export default function GymDetailScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Gym header */}
       <View style={styles.gymHeader}>
         <View style={styles.gymPill}>
           <Text style={styles.gymPillMarker}>▲</Text>
           <Text style={styles.gymPillText}>Vital</Text>
         </View>
         <Text style={styles.gymName}>{gym.name}</Text>
-        <Text style={styles.gymLocation}>
-          {gym.neighborhood} · {gym.city}
-        </Text>
+        <Text style={styles.gymLocation}>{gym.neighborhood} · {gym.city}</Text>
       </View>
 
       <ScrollView
@@ -201,86 +173,65 @@ export default function GymDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* Grade rows */}
-        <Text style={styles.sectionLabel}>LOG YOUR CLIMBS</Text>
-        {GRADES.map((grade) => {
-          const count = counts[grade];
-          return (
-            <View key={grade} style={styles.gradeRow}>
-              <View style={styles.gradeLeft}>
-                <Text style={styles.gradeLabel}>{grade}</Text>
-                {count > 0 && (
-                  <View style={styles.gradeBadge}>
-                    <Text style={styles.gradeBadgeText}>{count}</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.counter}>
+        {/* 1 ── Photo / Video */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ADD PHOTO / VIDEO</Text>
+          {media ? (
+            <View style={styles.mediaPreviewWrapper}>
+              {media.type === 'image' ? (
+                <Image source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode="cover" />
+              ) : (
+                <View style={styles.videoPreview}>
+                  <Text style={styles.videoIcon}>▶</Text>
+                  <Text style={styles.videoLabel}>Video selected</Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.mediaRemoveBtn} onPress={() => setMedia(null)} activeOpacity={0.8}>
+                <Text style={styles.mediaRemoveText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.mediaPickerBtn} onPress={handleAddMedia} activeOpacity={0.7}>
+              <Text style={styles.mediaPickerIcon}>📷</Text>
+              <Text style={styles.mediaPickerLabel}>Add a photo or video</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* 2 ── Difficulty */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>DIFFICULTY</Text>
+          <View style={styles.gradeGrid}>
+            {GRADES.map((grade) => {
+              const active = selectedGrade === grade;
+              return (
                 <TouchableOpacity
-                  style={[styles.counterBtn, count === 0 && styles.counterBtnMuted]}
-                  onPress={() => decrement(grade)}
-                  activeOpacity={0.7}
-                  disabled={count === 0}>
-                  <Text style={[styles.counterBtnText, count === 0 && styles.counterBtnTextMuted]}>
-                    −
+                  key={grade}
+                  style={[styles.gradeChip, active && styles.gradeChipActive]}
+                  onPress={() => setSelectedGrade(grade)}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.gradeChipLabel, active && styles.gradeChipLabelActive]}>
+                    {grade}
                   </Text>
                 </TouchableOpacity>
-                <Text style={[styles.countText, count > 0 && styles.countTextActive]}>
-                  {count}
-                </Text>
-                <TouchableOpacity
-                  style={styles.counterBtn}
-                  onPress={() => increment(grade)}
-                  activeOpacity={0.7}>
-                  <Text style={styles.counterBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        })}
-
-        {/* Media — optional photo/video to attach to the session */}
-        <Text style={[styles.sectionLabel, styles.mediaSectionLabel]}>ADD PHOTO / VIDEO</Text>
-        {media ? (
-          <View style={styles.mediaPreviewWrapper}>
-            {media.type === 'image' ? (
-              <Image source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode="cover" />
-            ) : (
-              <View style={styles.videoPreview}>
-                <Text style={styles.videoIcon}>▶</Text>
-                <Text style={styles.videoLabel}>Video selected</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.mediaRemoveBtn}
-              onPress={() => setMedia(null)}
-              activeOpacity={0.8}>
-              <Text style={styles.mediaRemoveText}>✕</Text>
-            </TouchableOpacity>
+              );
+            })}
           </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.mediaPickerBtn}
-            onPress={handleAddMedia}
-            activeOpacity={0.7}>
-            <Text style={styles.mediaPickerIcon}>📷</Text>
-            <Text style={styles.mediaPickerLabel}>Add a photo or video</Text>
-          </TouchableOpacity>
-        )}
+        </View>
+
       </ScrollView>
 
+      {/* Fixed footer with Submit */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.submitBtn, (total === 0 || submitting) && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (!canSubmit || submitting) && styles.submitBtnDisabled]}
           activeOpacity={0.85}
-          disabled={total === 0 || submitting}
+          disabled={!canSubmit || submitting}
           onPress={handleSubmit}>
           {submitting ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.submitLabel}>
-              {total > 0 ? `Submit Session · ${total} Problem${total === 1 ? '' : 's'}` : 'Submit Session'}
-            </Text>
+            <Text style={styles.submitLabel}>Submit Session</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -293,6 +244,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG,
   },
+
+  // ── Nav ───────────────────────────────────────────────────────
   nav: {
     paddingHorizontal: 20,
     paddingTop: 8,
@@ -317,6 +270,8 @@ const styles = StyleSheet.create({
     color: TEXT,
     letterSpacing: 0.1,
   },
+
+  // ── Gym header ────────────────────────────────────────────────
   gymHeader: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -336,10 +291,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     marginBottom: 4,
   },
-  gymPillMarker: {
-    fontSize: 8,
-    color: PRIMARY,
-  },
+  gymPillMarker: { fontSize: 8, color: PRIMARY },
   gymPillText: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
@@ -360,93 +312,24 @@ const styles = StyleSheet.create({
     color: TEXT_SUB,
     letterSpacing: 0.1,
   },
+
+  // ── Scroll ────────────────────────────────────────────────────
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 28,
     paddingBottom: 16,
-    gap: 8,
+    gap: 28,
   },
+  section: { gap: 12 },
   sectionLabel: {
     fontSize: 11,
     fontFamily: 'DMSans_800ExtraBold',
     color: TEXT_MUTED,
     letterSpacing: 1.4,
-    marginBottom: 8,
-  },
-  mediaSectionLabel: {
-    marginTop: 16, // extra breathing room above the media section
-  },
-  gradeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-  },
-  gradeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  gradeLabel: {
-    fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.3,
-    width: 36,
-  },
-  gradeBadge: {
-    backgroundColor: ACCENT,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  gradeBadgeText: {
-    fontSize: 12,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
-  },
-  counter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  counterBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: CARD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  counterBtnMuted: {
-    opacity: 0.3,
-  },
-  counterBtnText: {
-    fontSize: 20,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT,
-    lineHeight: 20,
-  },
-  counterBtnTextMuted: {
-    color: TEXT_MUTED,
-  },
-  countText: {
-    fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
-    width: 32,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  countTextActive: {
-    color: TEXT,
   },
 
-  // ─── Media picker ────────────────────────────────────────────
+  // ── Media ─────────────────────────────────────────────────────
   mediaPickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -456,9 +339,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 22,
   },
-  mediaPickerIcon: {
-    fontSize: 22,
-  },
+  mediaPickerIcon: { fontSize: 22 },
   mediaPickerLabel: {
     fontSize: 15,
     fontFamily: 'DMSans_700Bold',
@@ -484,10 +365,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  videoIcon: {
-    fontSize: 36,
-    color: TEXT,
-  },
+  videoIcon: { fontSize: 36, color: TEXT },
   videoLabel: {
     fontSize: 14,
     fontFamily: 'DMSans_600SemiBold',
@@ -510,7 +388,32 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_700Bold',
   },
 
-  // ─── Footer ──────────────────────────────────────────────────
+  // ── Grade chips ───────────────────────────────────────────────
+  gradeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  gradeChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: SURFACE,
+  },
+  gradeChipActive: {
+    backgroundColor: PRIMARY,
+  },
+  gradeChipLabel: {
+    fontSize: 14,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: TEXT_SUB,
+    letterSpacing: 0.2,
+  },
+  gradeChipLabelActive: {
+    color: '#ffffff',
+  },
+
+  // ── Footer / Submit ───────────────────────────────────────────
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -540,16 +443,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ─── Success screen ──────────────────────────────────────────
+  // ── Success screen ────────────────────────────────────────────
   successScreen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
-  successEmoji: {
-    fontSize: 64,
-  },
+  successEmoji: { fontSize: 64 },
   successTitle: {
     fontSize: 52,
     fontFamily: 'BebasNeue_400Regular',
