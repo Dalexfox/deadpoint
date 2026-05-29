@@ -315,9 +315,8 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
   3. `◎` + comment count → `onComment` (opens comment sheet)
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
-- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) and gym pill (PRIMARY bg, white text, 📍 prefix).
-- **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Three sections: `[problems] PROBLEMS` | `[topGrade] TOP GRADE` | `GradeBars` mini chart + `GRADES`.
-  - `GradeBars` — `View` bars aligned to `flex-end`, bar width 5px, max height 22px, scaled by count. Peak bar (matches `topGrade`) is ACCENT pink; others are `rgba(46,122,150,0.9)` teal.
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) only.
+- **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — `topGrade` in ACCENT pink (`#ff507c`, 22px DMSans_800ExtraBold) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px DMSans_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
 - Search bar was removed from the Feed in the TikTok rewrite. Lives in Explore tab (Phase 2 plan).

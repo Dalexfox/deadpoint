@@ -1,5 +1,5 @@
 import { DefaultTheme, ThemeProvider, Tabs, usePathname } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { ColorValue } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 
@@ -14,8 +14,14 @@ function FeedIcon({ color, focused }: IconProps) {
 function GymsIcon({ color, focused }: IconProps) {
   return <SymbolView name={focused ? 'map.fill' : 'map'} size={24} tintColor={color} />;
 }
-function LogIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'book.fill' : 'book'} size={24} tintColor={color} />;
+function LogIcon() {
+  return (
+    <View style={styles.logButtonOuter}>
+      <View style={styles.logButton}>
+        <SymbolView name="plus" size={22} tintColor="#ffffff" />
+      </View>
+    </View>
+  );
 }
 function ExploreIcon({ color, focused }: IconProps) {
   return <SymbolView name={focused ? 'magnifyingglass.circle.fill' : 'magnifyingglass'} size={24} tintColor={color} />;
@@ -50,16 +56,20 @@ export default function TabsLayout() {
           options={{ title: 'Feed', tabBarIcon: (p) => <FeedIcon {...p} /> }}
         />
         <Tabs.Screen
-          name="gyms"
-          options={{ title: 'Gyms', tabBarIcon: (p) => <GymsIcon {...p} /> }}
-        />
-        <Tabs.Screen
           name="explore"
           options={{ title: 'Explore', tabBarIcon: (p) => <ExploreIcon {...p} /> }}
         />
         <Tabs.Screen
           name="log"
-          options={{ title: 'Log', tabBarIcon: (p) => <LogIcon {...p} /> }}
+          options={{
+            title: '',
+            tabBarIcon: () => <LogIcon />,
+            tabBarItemStyle: { marginTop: 8 },
+          }}
+        />
+        <Tabs.Screen
+          name="gyms"
+          options={{ title: 'Gyms', tabBarIcon: (p) => <GymsIcon {...p} /> }}
         />
         <Tabs.Screen
           name="profile"
@@ -85,5 +95,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'DMSans_700Bold',
     letterSpacing: 0.2,
+  },
+  logButtonOuter: {
+    width: 70,
+    height: 70,
+    borderRadius: 22,
+    backgroundColor: '#0d2b36',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#ff507c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#ff507c',
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
 });
