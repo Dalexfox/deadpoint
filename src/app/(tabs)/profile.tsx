@@ -93,10 +93,12 @@ type SupabaseSession = {
   id:            string;
   gymName:       string;
   gradesSummary: string;  // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
+  topGrade:      string | null;  // highest grade climbed in this session
   totalProblems: number;
   date:          string;  // e.g. "May 27, 2026"
   createdAt:     string;  // ISO string — used to filter sessions by day for chart drill-down
   mediaUrl:      string | null;  // Supabase Storage URL for attached photo / video
+  notes:         string | null;  // optional description/notes from the log form
 };
 
 // Data passed into the full-screen media viewer (Layer 3)
@@ -162,15 +164,12 @@ function CarouselCard({ session }: { session: SupabaseSession }) {
       <Text style={styles.carouselGymName}>{session.gymName}</Text>
       <Text style={styles.carouselDate}>{session.date}</Text>
       <View style={styles.carouselDivider} />
-      <Text style={styles.carouselGrades} numberOfLines={2}>
-        {session.gradesSummary}
-      </Text>
-      <View style={styles.carouselBadgeRow}>
-        <View style={styles.carouselBadge}>
-          <Text style={styles.carouselBadgeValue}>{session.totalProblems}</Text>
-          <Text style={styles.carouselBadgeLabel}>PROBLEMS</Text>
-        </View>
-      </View>
+      {session.topGrade && (
+        <Text style={styles.carouselTopGrade}>{session.topGrade}</Text>
+      )}
+      {session.notes ? (
+        <Text style={styles.carouselNotes} numberOfLines={3}>{session.notes}</Text>
+      ) : null}
     </View>
   );
 }
@@ -270,7 +269,7 @@ export default function ProfileScreen() {
           // ── 1. Sessions ─────────────────────────────────────────
           const { data: rawSessions, error: sessionsError } = await supabase
             .from('sessions')
-            .select('id, gym_id, total_problems, created_at, media_url')
+            .select('id, gym_id, total_problems, created_at, media_url, notes')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
 
@@ -307,10 +306,13 @@ export default function ProfileScreen() {
               sessionClimbs.length > 0
                 ? sessionClimbs.map((c) => `${c.grade} ×${c.count}`).join('  ·  ')
                 : `${s.total_problems} problems`;
+            const topGrade = sessionClimbs.length > 0
+              ? sessionClimbs[sessionClimbs.length - 1].grade  // sorted ascending, so last = highest
+              : null;
             const date = new Date(s.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
             });
-            return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null };
+            return { id: s.id, gymName, gradesSummary, topGrade, totalProblems: s.total_problems, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, notes: s.notes ?? null };
           });
           setSessions(formatted);
 
@@ -1900,36 +1902,17 @@ const styles = StyleSheet.create({
     backgroundColor: DIVIDER,
     marginVertical: 4,
   },
-  carouselGrades: {
-    fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
-    letterSpacing: 0.1,
-    lineHeight: 20,
-  },
-  carouselBadgeRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  carouselBadge: {
-    backgroundColor: PRIMARY,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  carouselBadgeValue: {
-    fontSize: 22,
+  carouselTopGrade: {
+    fontSize: 28,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: ACCENT,
     letterSpacing: -0.5,
-    lineHeight: 24,
   },
-  carouselBadgeLabel: {
-    fontSize: 8,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: 'rgba(255,255,255,0.75)',
-    letterSpacing: 1.2,
+  carouselNotes: {
+    fontSize: 13,
+    fontFamily: 'DMSans_400Regular',
+    color: TEXT_MUTED,
+    lineHeight: 19,
   },
 
   // ─── Dot indicator ────────────────────────────────────────────

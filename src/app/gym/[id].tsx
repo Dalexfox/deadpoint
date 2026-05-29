@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -42,6 +43,7 @@ export default function GymDetailScreen() {
 
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [media, setMedia]                 = useState<MediaItem | null>(null);
+  const [notes, setNotes]                 = useState('');
   const [submitting, setSubmitting]       = useState(false);
   const [submitted, setSubmitted]         = useState(false);
 
@@ -109,6 +111,7 @@ export default function GymDetailScreen() {
           gym_id: id,
           total_problems: 1,
           ...(mediaUrl ? { media_url: mediaUrl } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         })
         .select('id')
         .single();
@@ -217,6 +220,21 @@ export default function GymDetailScreen() {
               );
             })}
           </View>
+        </View>
+
+        {/* 3 ── Notes */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>NOTES</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Describe the climb, beta, or how it felt..."
+            placeholderTextColor={TEXT_MUTED}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
         </View>
 
       </ScrollView>
@@ -411,6 +429,17 @@ const styles = StyleSheet.create({
   },
   gradeChipLabelActive: {
     color: '#ffffff',
+  },
+
+  // ── Notes ─────────────────────────────────────────────────────
+  notesInput: {
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    padding: 14,
+    fontSize: 15,
+    fontFamily: 'DMSans_400Regular',
+    color: TEXT,
+    minHeight: 100,
   },
 
   // ── Footer / Submit ───────────────────────────────────────────
