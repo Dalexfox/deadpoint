@@ -98,9 +98,11 @@ DIVIDER    = '#c8dde8'   // Hairline dividers
 ### Profile Session Carousel Cards
 - `borderRadius: 20`, `backgroundColor: CARD`
 - `borderWidth: 1.5`, `borderColor: '#b0cdd8'` — light blue border
-- Teal `▲ VITAL` pill (PRIMARY background), BebasNeue gym name, date below
-- Hairline divider, grade summary text, PRIMARY problems badge (pill)
 - Width: `SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK` (peeks next card in from right)
+- **Layout:** left text column + image absolutely positioned on the right, vertically centered to full card height (`position: 'absolute', right: 30, top: 20, bottom: 20, justifyContent: 'center'`)
+- **Left column** (top → bottom): top grade in ACCENT pink (DMSans_800ExtraBold, 28px) → notes in TEXT_MUTED if present → hairline divider → gym name (BebasNeue) → date (muted) → teal `▲ VITAL` pill at bottom. `paddingRight: 139` keeps text clear of the image.
+- **Image thumbnail:** 113×150, `borderRadius: 12`, `overflow: 'hidden'`, `resizeMode: 'cover'`. Only shown when session has `media_url`.
+- **No PROBLEMS badge** — removed. Grade shown as single value (e.g. `V5`) in ACCENT pink.
 
 ### Buttons
 - Submit/CTA: `backgroundColor: ACCENT`, `borderRadius: 16`, `paddingVertical: 18`
@@ -293,7 +295,7 @@ src/lib/
 4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Submit.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
-   - **My Climbs tab** — swipeable horizontal carousel of past sessions.
+   - **My Climbs tab** — swipeable horizontal carousel of past sessions. Cards show top grade (ACCENT pink), optional notes, gym name, date, VITAL pill, and a media thumbnail when present.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
    - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
@@ -377,7 +379,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Swipeable horizontal carousel with peek (next card visible at right edge)
 - `snapToInterval={CARD_WIDTH + CARD_GAP}`, `decelerationRate="fast"` — NOT `pagingEnabled`
 - Dot indicator (pills) below carousel, "X / Y" counter
-- Each card: teal `▲ VITAL` pill, BebasNeue gym name, date, grade summary, problems badge
+- Each card: grade (ACCENT pink) → notes (muted, optional) → divider → gym name → date → VITAL pill. Image thumbnail (113×150) absolutely positioned on right, vertically centered to card height.
 - `borderWidth: 1.5, borderColor: '#b0cdd8'` (light blue border)
 
 ### Feed Likes & Comments (Supabase-backed)

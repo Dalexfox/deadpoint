@@ -158,18 +158,32 @@ function StatColumn({ label, value }: { label: string; value: string | number })
 function CarouselCard({ session }: { session: SupabaseSession }) {
   return (
     <View style={styles.carouselCard}>
-      <View style={styles.carouselPill}>
-        <Text style={styles.carouselPillText}>▲  VITAL</Text>
+      {/* Left: text content */}
+      <View style={styles.carouselLeft}>
+        {session.topGrade && (
+          <Text style={styles.carouselTopGrade}>{session.topGrade}</Text>
+        )}
+        {session.notes ? (
+          <Text style={styles.carouselNotes} numberOfLines={3}>{session.notes}</Text>
+        ) : null}
+        <View style={styles.carouselDivider} />
+        <Text style={styles.carouselGymName}>{session.gymName}</Text>
+        <Text style={styles.carouselDate}>{session.date}</Text>
+        <View style={styles.carouselPill}>
+          <Text style={styles.carouselPillText}>▲  VITAL</Text>
+        </View>
       </View>
-      <Text style={styles.carouselGymName}>{session.gymName}</Text>
-      <Text style={styles.carouselDate}>{session.date}</Text>
-      <View style={styles.carouselDivider} />
-      {session.topGrade && (
-        <Text style={styles.carouselTopGrade}>{session.topGrade}</Text>
+
+      {/* Right: image absolutely centered to the full card height */}
+      {session.mediaUrl && (
+        <View style={styles.carouselThumbWrapper}>
+          <Image
+            source={{ uri: session.mediaUrl }}
+            style={styles.carouselThumb}
+            resizeMode="cover"
+          />
+        </View>
       )}
-      {session.notes ? (
-        <Text style={styles.carouselNotes} numberOfLines={3}>{session.notes}</Text>
-      ) : null}
     </View>
   );
 }
@@ -1866,9 +1880,25 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderRadius: 20,
     padding: 20,
-    gap: 6,
     borderWidth: 1.5,
     borderColor: '#b0cdd8',
+  },
+  carouselLeft: {
+    gap: 6,
+    paddingRight: 139,
+  },
+  carouselThumbWrapper: {
+    position: 'absolute',
+    right: 30,
+    top: 20,
+    bottom: 20,
+    justifyContent: 'center',
+  },
+  carouselThumb: {
+    width: 113,
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   carouselPill: {
     alignSelf: 'flex-start',
