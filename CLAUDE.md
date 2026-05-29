@@ -291,9 +291,9 @@ src/lib/
 2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Submit.
-5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / Sessions / Settings) below it. The rest of the page scrolls as one unit.
-   - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on Sessions and Settings tabs.
-   - **Sessions tab** — swipeable horizontal carousel of past sessions.
+5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
+   - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
+   - **My Climbs tab** — swipeable horizontal carousel of past sessions.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
    - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
@@ -427,12 +427,12 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - Profile screen with real stats and session history from Supabase (refreshes on every focus)
 - Profile photo — tappable square avatar, uploads to Supabase Storage, `profiles.avatar_url` updated (propagates to feed)
 - Profile banner — full-width tappable banner with camera button, persisted via AsyncStorage
-- **Profile 3-tab layout** — Overview / Sessions / Settings tabs with fixed tab bar
+- **Profile 3-tab layout** — Overview / My Climbs / Settings tabs with fixed tab bar
 - **Profile stats dashboard** — 3 interactive charts (Weekly Intensity, Grade Distribution, Monthly Volume) in Overview tab
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
-- **Session carousel** — swipeable peek carousel with light blue border cards in Sessions tab
+- **Session carousel** — swipeable peek carousel with light blue border cards in My Climbs tab
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
 - **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked

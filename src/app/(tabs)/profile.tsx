@@ -140,7 +140,7 @@ function toInitials(name: string): string {
 
 const TABS: { key: ProfileTab; label: string }[] = [
   { key: 'overview',  label: 'Overview'  },
-  { key: 'sessions',  label: 'Sessions'  },
+  { key: 'sessions',  label: 'My Climbs'  },
   { key: 'settings',  label: 'Settings'  },
 ];
 
