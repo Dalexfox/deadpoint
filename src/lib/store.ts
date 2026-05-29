@@ -18,6 +18,10 @@ export type Post = {
   avatarBg: string;
   avatarUrl?: string;     // public Supabase Storage URL — shows real photo in feed
   userId?: string;        // Supabase auth user ID — used for profile tap-through
+  username?: string;      // @username string for display
+  gymId?: string;         // raw gym_id for navigation to /gym/[id]
+  topGrade?: string;      // highest grade with count > 0 (for stats bar)
+  climbsData?: { grade: string; count: number }[]; // active climbs for mini grade bars
   timestamp: string;
   likes: number;
   comments: number;

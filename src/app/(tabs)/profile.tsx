@@ -93,10 +93,12 @@ type SupabaseSession = {
   id:            string;
   gymName:       string;
   gradesSummary: string;  // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
+  topGrade:      string | null;  // highest grade climbed in this session
   totalProblems: number;
   date:          string;  // e.g. "May 27, 2026"
   createdAt:     string;  // ISO string — used to filter sessions by day for chart drill-down
   mediaUrl:      string | null;  // Supabase Storage URL for attached photo / video
+  notes:         string | null;  // optional description/notes from the log form
 };
 
 // Data passed into the full-screen media viewer (Layer 3)
@@ -118,6 +120,7 @@ type FollowUser = {
 
 // Active profile tab
 type ProfileTab = 'overview' | 'sessions' | 'settings';
+type ClimbSort  = 'date' | 'grade' | 'gym';
 
 const BG        = '#ffffff';
 const CARD      = '#d8eaf0';
@@ -130,12 +133,17 @@ const TEXT_MUTED = '#8bb5c4';
 const DIVIDER   = '#c8dde8';
 
 function toInitials(name: string): string {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join('');
 }
 
 const TABS: { key: ProfileTab; label: string }[] = [
   { key: 'overview',  label: 'Overview'  },
-  { key: 'sessions',  label: 'Sessions'  },
+  { key: 'sessions',  label: 'My Climbs'  },
   { key: 'settings',  label: 'Settings'  },
 ];
 
@@ -151,21 +159,32 @@ function StatColumn({ label, value }: { label: string; value: string | number })
 function CarouselCard({ session }: { session: SupabaseSession }) {
   return (
     <View style={styles.carouselCard}>
-      <View style={styles.carouselPill}>
-        <Text style={styles.carouselPillText}>▲  VITAL</Text>
-      </View>
-      <Text style={styles.carouselGymName}>{session.gymName}</Text>
-      <Text style={styles.carouselDate}>{session.date}</Text>
-      <View style={styles.carouselDivider} />
-      <Text style={styles.carouselGrades} numberOfLines={2}>
-        {session.gradesSummary}
-      </Text>
-      <View style={styles.carouselBadgeRow}>
-        <View style={styles.carouselBadge}>
-          <Text style={styles.carouselBadgeValue}>{session.totalProblems}</Text>
-          <Text style={styles.carouselBadgeLabel}>PROBLEMS</Text>
+      {/* Left: text content */}
+      <View style={styles.carouselLeft}>
+        {session.topGrade && (
+          <Text style={styles.carouselTopGrade}>{session.topGrade}</Text>
+        )}
+        {session.notes ? (
+          <Text style={styles.carouselNotes} numberOfLines={3}>{session.notes}</Text>
+        ) : null}
+        <View style={styles.carouselDivider} />
+        <Text style={styles.carouselGymName}>{session.gymName}</Text>
+        <Text style={styles.carouselDate}>{session.date}</Text>
+        <View style={styles.carouselPill}>
+          <Text style={styles.carouselPillText}>▲  VITAL</Text>
         </View>
       </View>
+
+      {/* Right: image absolutely centered to the full card height */}
+      {session.mediaUrl && (
+        <View style={styles.carouselThumbWrapper}>
+          <Image
+            source={{ uri: session.mediaUrl }}
+            style={styles.carouselThumb}
+            resizeMode="cover"
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -183,17 +202,35 @@ export default function ProfileScreen() {
   const [selectedGrade, setSelectedGrade]     = useState<string | null>(null);
   const [activeTab, setActiveTab]   = useState<ProfileTab>('overview');
   const [activeSession, setActiveSession] = useState(0);
+  const [climbSort, setClimbSort]   = useState<ClimbSort>('date');
   const carouselRef = useRef<ScrollView>(null);
+
+  const sortedSessions = [...sessions].sort((a, b) => {
+    if (climbSort === 'grade') {
+      return GRADES.indexOf(b.topGrade ?? 'V0') - GRADES.indexOf(a.topGrade ?? 'V0');
+    }
+    if (climbSort === 'gym') {
+      return a.gymName.localeCompare(b.gymName);
+    }
+    // default: date — already newest-first from Supabase, preserve order
+    return 0;
+  });
+
+  const handleSortChange = (sort: ClimbSort) => {
+    setClimbSort(sort);
+    setActiveSession(0);
+    carouselRef.current?.scrollTo({ x: 0, animated: false });
+  };
 
   const [editName, setEditName]         = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio]           = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [displayName, setDisplayName] = useState('');
+  // Committed header values — only update after a successful Save Changes
+  const [displayName,     setDisplayName]     = useState('');
   const [displayUsername, setDisplayUsername] = useState('');
-  // Committed values — only update after a successful Save Changes
-  const [displayBio, setDisplayBio] = useState('');
+  const [displayBio,      setDisplayBio]      = useState('');
 
   // Grade Distribution inline expanded card
   const [gradeExpanded,       setGradeExpanded]       = useState(false);
@@ -264,7 +301,7 @@ export default function ProfileScreen() {
           // ── 1. Sessions ─────────────────────────────────────────
           const { data: rawSessions, error: sessionsError } = await supabase
             .from('sessions')
-            .select('id, gym_id, total_problems, created_at, media_url')
+            .select('id, gym_id, total_problems, created_at, media_url, notes')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
 
@@ -301,10 +338,13 @@ export default function ProfileScreen() {
               sessionClimbs.length > 0
                 ? sessionClimbs.map((c) => `${c.grade} ×${c.count}`).join('  ·  ')
                 : `${s.total_problems} problems`;
+            const topGrade = sessionClimbs.length > 0
+              ? sessionClimbs[sessionClimbs.length - 1].grade  // sorted ascending, so last = highest
+              : null;
             const date = new Date(s.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
             });
-            return { id: s.id, gymName, gradesSummary, totalProblems: s.total_problems, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null };
+            return { id: s.id, gymName, gradesSummary, topGrade, totalProblems: s.total_problems, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, notes: s.notes ?? null };
           });
           setSessions(formatted);
 
@@ -617,6 +657,15 @@ export default function ProfileScreen() {
         })}
       </View>
 
+      {/* ── Stats bar — fixed below tab bar, Overview tab only ───── */}
+      {activeTab === 'overview' && <View style={styles.statsRow}>
+        <StatColumn label="Total Climbs" value={stats.totalClimbs} />
+        <View style={styles.statDivider} />
+        <StatColumn label="Gyms Visited" value={stats.gymsVisited} />
+        <View style={styles.statDivider} />
+        <StatColumn label="Top Grade" value={stats.topGrade} />
+      </View>}
+
       {/* ── Single scroll: profile header + active tab content ──── */}
       <ScrollView
         style={styles.scroll}
@@ -655,7 +704,9 @@ export default function ProfileScreen() {
           <View style={styles.nameRow}>
             <View>
               <Text style={styles.name}>{displayName}</Text>
-              <Text style={styles.username}>@{displayUsername}</Text>
+              {displayUsername ? (
+                <Text style={styles.username}>@{displayUsername}</Text>
+              ) : null}
               {displayBio ? <Text style={styles.headerBio}>{displayBio}</Text> : null}
             </View>
             <TouchableOpacity style={styles.inviteFriendsBtn} onPress={handleInviteFriends} activeOpacity={0.7}>
@@ -679,15 +730,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <StatColumn label="Total Climbs" value={stats.totalClimbs} />
-          <View style={styles.statDivider} />
-          <StatColumn label="Gyms Visited" value={stats.gymsVisited} />
-          <View style={styles.statDivider} />
-          <StatColumn label="Top Grade" value={stats.topGrade} />
-        </View>
-        </View>
+</View>
 
       {/* ── Overview tab — charts ───────────────────────────────── */}
       {activeTab === 'overview' && (
@@ -1104,10 +1147,29 @@ export default function ProfileScreen() {
           ) : (
             <>
               <View style={styles.carouselHeader}>
-                <Text style={styles.sectionTitle}>Your Sessions</Text>
+                <Text style={styles.sectionTitle}>Your Climbs</Text>
                 <Text style={styles.carouselCounter}>
-                  {activeSession + 1} / {sessions.length}
+                  {activeSession + 1} / {sortedSessions.length}
                 </Text>
+              </View>
+
+              {/* Sort pills */}
+              <View style={styles.sortRow}>
+                {([
+                  { key: 'date',  label: 'Date'  },
+                  { key: 'grade', label: 'Grade' },
+                  { key: 'gym',   label: 'Gym'   },
+                ] as { key: ClimbSort; label: string }[]).map(({ key, label }) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.sortPill, climbSort === key && styles.sortPillActive]}
+                    onPress={() => handleSortChange(key)}
+                    activeOpacity={0.7}>
+                    <Text style={[styles.sortPillLabel, climbSort === key && styles.sortPillLabelActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <ScrollView
@@ -1119,14 +1181,14 @@ export default function ProfileScreen() {
                 decelerationRate="fast"
                 onMomentumScrollEnd={handleCarouselScroll}
                 contentContainerStyle={styles.carouselContent}>
-                {sessions.map((session) => (
+                {sortedSessions.map((session) => (
                   <CarouselCard key={session.id} session={session} />
                 ))}
               </ScrollView>
 
-              {sessions.length > 1 && (
+              {sortedSessions.length > 1 && (
                 <View style={styles.dotRow}>
-                  {sessions.slice(0, Math.min(sessions.length, 7)).map((_, i) => (
+                  {sortedSessions.slice(0, Math.min(sortedSessions.length, 7)).map((_, i) => (
                     <View key={i} style={[styles.dot, i === activeSession && styles.dotActive]} />
                   ))}
                 </View>
@@ -1538,11 +1600,10 @@ const styles = StyleSheet.create({
   // ─── Stats ────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    paddingVertical: 20,
-    marginBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: BG,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
   },
   statColumn: {
     flex: 1,
@@ -1840,6 +1901,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 12,
   },
+  sortRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 14,
+  },
+  sortPill: {
+    backgroundColor: SURFACE,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  sortPillActive: {
+    backgroundColor: PRIMARY,
+  },
+  sortPillLabel: {
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.3,
+  },
+  sortPillLabelActive: {
+    color: '#ffffff',
+  },
   carouselCounter: {
     fontSize: 13,
     fontFamily: 'DMSans_600SemiBold',
@@ -1856,9 +1941,25 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderRadius: 20,
     padding: 20,
-    gap: 6,
     borderWidth: 1.5,
     borderColor: '#b0cdd8',
+  },
+  carouselLeft: {
+    gap: 6,
+    paddingRight: 139,
+  },
+  carouselThumbWrapper: {
+    position: 'absolute',
+    right: 30,
+    top: 20,
+    bottom: 20,
+    justifyContent: 'center',
+  },
+  carouselThumb: {
+    width: 113,
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   carouselPill: {
     alignSelf: 'flex-start',
@@ -1892,36 +1993,17 @@ const styles = StyleSheet.create({
     backgroundColor: DIVIDER,
     marginVertical: 4,
   },
-  carouselGrades: {
-    fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
-    letterSpacing: 0.1,
-    lineHeight: 20,
-  },
-  carouselBadgeRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  carouselBadge: {
-    backgroundColor: PRIMARY,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  carouselBadgeValue: {
-    fontSize: 22,
+  carouselTopGrade: {
+    fontSize: 28,
     fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    color: ACCENT,
     letterSpacing: -0.5,
-    lineHeight: 24,
   },
-  carouselBadgeLabel: {
-    fontSize: 8,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: 'rgba(255,255,255,0.75)',
-    letterSpacing: 1.2,
+  carouselNotes: {
+    fontSize: 13,
+    fontFamily: 'DMSans_400Regular',
+    color: TEXT_MUTED,
+    lineHeight: 19,
   },
 
   // ─── Dot indicator ────────────────────────────────────────────
