@@ -6,6 +6,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   Dimensions,
   FlatList,
@@ -110,23 +111,32 @@ function topGradeFromClimbs(climbs: { grade: string; count: number }[]): string 
 
 // ─── Supabase fetch ───────────────────────────────────────────────────────────
 
-async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> {
+async function fetchSessionPosts(
+  currentUserId: string | null,
+): Promise<{ posts: Post[]; followingSet: Set<string> }> {
   const { data: sessions, error } = await supabase
     .from('sessions')
     .select('id, user_id, gym_id, total_problems, media_url, created_at, climbs(grade,count)')
     .order('created_at', { ascending: false })
     .limit(50);
 
-  if (error || !sessions || sessions.length === 0) return [];
+  if (error || !sessions || sessions.length === 0) return { posts: [], followingSet: new Set() };
 
   const sessionIds = sessions.map(s => s.id);
   const userIds    = [...new Set(sessions.map(s => s.user_id))];
 
-  const [profilesRes, likesRes, commentsRes] = await Promise.all([
+  const [profilesRes, likesRes, commentsRes, followsRes] = await Promise.all([
     supabase.from('profiles').select('id,full_name,username,avatar_url').in('id', userIds),
     supabase.from('likes').select('session_id,user_id').in('session_id', sessionIds),
     supabase.from('comments').select('session_id').in('session_id', sessionIds),
+    currentUserId
+      ? supabase.from('follows').select('following_id').eq('follower_id', currentUserId)
+      : Promise.resolve({ data: [] }),
   ]);
+
+  const followingSet = new Set<string>(
+    (followsRes.data ?? []).map((f: { following_id: string }) => f.following_id),
+  );
 
   const profileMap = new Map((profilesRes.data ?? []).map(p => [p.id, p]));
 
@@ -142,7 +152,7 @@ async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> 
     commentCountMap[c.session_id] = (commentCountMap[c.session_id] ?? 0) + 1;
   });
 
-  return sessions.map(session => {
+  const posts = sessions.map(session => {
     const profile = profileMap.get(session.user_id);
     const name    = profile?.full_name || profile?.username || 'Climber';
     const grades  = (session.climbs ?? []) as { grade: string; count: number }[];
@@ -175,6 +185,8 @@ async function fetchSessionPosts(currentUserId: string | null): Promise<Post[]> 
 
     return post;
   });
+
+  return { posts, followingSet };
 }
 
 // ─── Full-screen card ─────────────────────────────────────────────────────────
@@ -183,26 +195,54 @@ function FullScreenCard({
   post,
   height,
   isActive,
+  isOwnPost,
+  isFollowing,
   onLike,
   onComment,
+  onFollowToggle,
   onPressUser,
   onShare,
   onGym,
 }: {
-  post:        Post;
-  height:      number;
-  isActive:    boolean;
-  onLike:      (id: string) => void;
-  onComment:   (id: string) => void;
-  onPressUser: (userId: string) => void;
-  onShare:     (post: Post) => void;
-  onGym:       (gymId: string) => void;
+  post:            Post;
+  height:          number;
+  isActive:        boolean;
+  isOwnPost:       boolean;
+  isFollowing:     boolean;
+  onLike:          (id: string) => void;
+  onComment:       (id: string) => void;
+  onFollowToggle:  (userId: string) => void;
+  onPressUser:     (userId: string) => void;
+  onShare:         (post: Post) => void;
+  onGym:           (gymId: string) => void;
 }) {
   const hasMedia  = !!(post.media && post.media.length > 0);
   const mediaItem = hasMedia ? post.media![0] : null;
   const isVideo   = mediaItem?.type === 'video';
 
   const displayName = post.username ? `@${post.username}` : post.name;
+
+  // Animated follow-confirmation overlay
+  const followAnim = useRef(new Animated.Value(0)).current;
+
+  function triggerFollowAnim() {
+    followAnim.setValue(1);
+    Animated.timing(followAnim, {
+      toValue: 0,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function handleAvatarPress() {
+    if (!post.userId) return;
+    if (isOwnPost || isFollowing) {
+      onPressUser(post.userId);
+    } else {
+      onFollowToggle(post.userId);
+      triggerFollowAnim();
+    }
+  }
 
   return (
     <View style={{ width: SCREEN_WIDTH, height, backgroundColor: '#000' }}>
@@ -272,11 +312,11 @@ function FullScreenCard({
       {/* ── Right action rail ───────────────────────────────────────────────── */}
       <View style={[card.rail, { bottom: STATS_BAR_H + 20 }]}>
 
-        {/* Avatar → profile */}
+        {/* Avatar → follow/unfollow (or own profile) */}
         <TouchableOpacity
           style={card.railItem}
           activeOpacity={0.8}
-          onPress={() => post.userId && onPressUser(post.userId)}>
+          onPress={handleAvatarPress}>
           <View style={card.avatarRing}>
             {post.avatarUrl ? (
               <Image source={{ uri: post.avatarUrl }} style={card.railAvatar} />
@@ -285,8 +325,16 @@ function FullScreenCard({
                 <Text style={card.railAvatarText}>{post.initials}</Text>
               </View>
             )}
+            {/* Follow-confirmation emoji overlay */}
+            <Animated.View
+              pointerEvents="none"
+              style={[card.followOverlay, { opacity: followAnim }]}>
+              <Text style={card.followOverlayEmoji}>😊</Text>
+            </Animated.View>
           </View>
-          <Text style={card.railLabel}>follow</Text>
+          {!isOwnPost && !isFollowing && (
+            <Text style={card.railLabel}>follow</Text>
+          )}
         </TouchableOpacity>
 
         {/* Like */}
@@ -329,9 +377,12 @@ function FullScreenCard({
       </View>
 
       {/* ── Bottom-left info (username) ──────────────────────────────────────── */}
-      <View style={[card.bottomInfo, { bottom: STATS_BAR_H + 16 }]}>
+      <TouchableOpacity
+        style={[card.bottomInfo, { bottom: STATS_BAR_H + 16 }]}
+        activeOpacity={0.75}
+        onPress={() => post.userId && onPressUser(post.userId)}>
         <Text style={card.username}>{displayName}</Text>
-      </View>
+      </TouchableOpacity>
 
       {/* ── Stats bar ────────────────────────────────────────────────────────── */}
       <View style={[card.statsBar, { height: STATS_BAR_H }]}>
@@ -362,6 +413,7 @@ export default function FeedScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [activeIndex,   setActiveIndex]   = useState(0);
   const [cardHeight,    setCardHeight]    = useState(0);
+  const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
 
   // Comment sheet
   const [commentSheetVisible,   setCommentSheetVisible]   = useState(false);
@@ -394,9 +446,10 @@ export default function FeedScreen() {
         if (!active) return;
         setCurrentUserId(userId);
 
-        const sessionPosts = await fetchSessionPosts(userId);
+        const { posts: sessionPosts, followingSet: fs } = await fetchSessionPosts(userId);
         if (!active) return;
         setPosts(sessionPosts);
+        setFollowingSet(fs);
         setLoading(false);
       })();
 
@@ -412,6 +465,28 @@ export default function FeedScreen() {
       router.push(`/user/${userId}`);
     }
   }, [currentUserId, router]);
+
+  // Optimistic follow/unfollow toggle
+  const handleFollowToggle = useCallback(async (userId: string) => {
+    if (!currentUserId) return;
+    const wasFollowing = followingSet.has(userId);
+
+    setFollowingSet(prev => {
+      const next = new Set(prev);
+      if (wasFollowing) next.delete(userId); else next.add(userId);
+      return next;
+    });
+
+    if (wasFollowing) {
+      await supabase.from('follows')
+        .delete()
+        .eq('follower_id', currentUserId)
+        .eq('following_id', userId);
+    } else {
+      await supabase.from('follows')
+        .insert({ follower_id: currentUserId, following_id: userId });
+    }
+  }, [currentUserId, followingSet]);
 
   // Native share sheet
   const handleShare = useCallback(async (post: Post) => {
@@ -559,8 +634,11 @@ export default function FeedScreen() {
                 post={item}
                 height={cardHeight}
                 isActive={index === activeIndex}
+                isOwnPost={item.userId === currentUserId}
+                isFollowing={!!item.userId && followingSet.has(item.userId)}
                 onLike={handleLike}
                 onComment={openCommentSheet}
+                onFollowToggle={handleFollowToggle}
                 onPressUser={handlePressUser}
                 onShare={handleShare}
                 onGym={gymId => router.push(`/gym/${gymId}`)}
@@ -782,6 +860,19 @@ const card = StyleSheet.create({
     fontFamily: 'DMSans_600SemiBold',
     color: '#ffffff',
     letterSpacing: 0.3,
+  },
+  railLabelFollowing: {
+    color: ACCENT,
+  },
+  followOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 25,
+  },
+  followOverlayEmoji: {
+    fontSize: 22,
   },
 
   // Bottom-left info

@@ -316,19 +316,24 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
 - **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
-  1. Avatar circle (50px, white ring border, `overflow: hidden`) + "follow" label → `onPressUser`
+  1. Avatar circle (50px, white ring border, `overflow: hidden`) — follow/profile behaviour (see Feed Card Tap-Through below)
   2. Heart `♥/♡` + like count → `onLike` (filled ACCENT when liked)
   3. `◎` + comment count → `onComment` (opens comment sheet)
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
-- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) only.
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) — tappable, navigates to that user's profile.
 - **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — `topGrade` in ACCENT pink (`#ff507c`, 22px DMSans_800ExtraBold) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px DMSans_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
 - Search bar was removed from the Feed in the TikTok rewrite. Lives in Explore tab (Phase 2 plan).
 
 ### Feed Card Tap-Through
-- Right rail avatar + "follow" tap → `onPressUser`: own profile → `/(tabs)/profile`, other → `/user/[id]`.
+- **Right rail avatar tap logic:**
+  - Own post → navigates to `/(tabs)/profile` (no label shown under avatar)
+  - Other user, not yet following → follows them (optimistic, writes to `follows` table) + 😊 emoji fades in/out over 1 second on the avatar; "follow" label shown below avatar
+  - Other user, already following → navigates to `/user/[id]`; no label shown under avatar
+- **Bottom-left `@username`** — always tappable; own post → `/(tabs)/profile`, other → `/user/[id]`.
+- Follow state is fetched on feed load in parallel with likes/comments (queries `follows` where `follower_id = currentUserId`); stored as `followingSet: Set<string>` in screen state.
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Explore Tab (`/explore`)
@@ -392,7 +397,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - **Comment sheet** — conditionally rendered `{commentSheetVisible && <Modal>}` (slide animation, transparent backdrop). Layout: flex:1 `TouchableOpacity` fills space above the sheet to dismiss on backdrop tap; `KeyboardAvoidingView` wraps the sheet panel at the bottom.
 - Comment rows show real avatar photo (`borderRadius: 11` square) when `avatar_url` is set, initials fallback otherwise.
 - **Tap commenter name** — closes the sheet, then navigates: own comment → `/(tabs)/profile`; other user → `/user/[userId]`.
-- **Tap avatar / name on feed card** — navigates to profile without opening the comment sheet (see Feed Card Tap-Through above).
+- **Tap avatar on feed card** — see Feed Card Tap-Through above (follow/navigate logic). Does not open comment sheet.
 - **Post a comment** — inserts to `comments` table, appends to local list, bumps the feed card count in real time. Send button in ACCENT pink, disabled + muted when input is empty.
 
 ### User Profile Page (`/user/[id]`)
@@ -446,7 +451,7 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
 - **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or teal→dark gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (ACCENT pink) + gym name only
 - **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
-- **Feed card tap-through** — right rail avatar navigates to that user's profile (own → Profile tab, other → `/user/[id]`)
+- **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d2b36` background + white tints on `/`; all other tabs use the normal light style
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
