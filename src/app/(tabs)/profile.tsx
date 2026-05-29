@@ -1113,7 +1113,7 @@ export default function ProfileScreen() {
           ) : (
             <>
               <View style={styles.carouselHeader}>
-                <Text style={styles.sectionTitle}>Your Sessions</Text>
+                <Text style={styles.sectionTitle}>Your Climbs</Text>
                 <Text style={styles.carouselCounter}>
                   {activeSession + 1} / {sessions.length}
                 </Text>
