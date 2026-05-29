@@ -390,6 +390,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Dot indicator (pills) below carousel, "X / Y" counter
 - Each card: grade (ACCENT pink) → notes (muted, optional) → divider → gym name → date → VITAL pill. Image thumbnail (113×150) absolutely positioned on right, vertically centered to card height.
 - `borderWidth: 1.5, borderColor: '#b0cdd8'` (light blue border)
+- **Sort pills** — row of three pills above the carousel: Date (default, newest first) · Grade (highest first) · Gym (alphabetical). Active pill: PRIMARY bg + white label. Inactive: SURFACE bg + TEXT_MUTED label. Changing sort resets carousel to card 1. Sorting is client-side on the already-fetched `sessions` array (`sortedSessions` derived value) — no extra Supabase queries. ⚠️ Rudimentary sorting for now — will improve in a future pass.
 
 ### Feed Likes & Comments (Supabase-backed)
 - **Like toggle** — optimistic: UI updates immediately, then inserts/deletes from `likes` table in background. Heart filled ACCENT when liked, outline when not.

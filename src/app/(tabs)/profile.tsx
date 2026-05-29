@@ -120,6 +120,7 @@ type FollowUser = {
 
 // Active profile tab
 type ProfileTab = 'overview' | 'sessions' | 'settings';
+type ClimbSort  = 'date' | 'grade' | 'gym';
 
 const BG        = '#ffffff';
 const CARD      = '#d8eaf0';
@@ -201,7 +202,25 @@ export default function ProfileScreen() {
   const [selectedGrade, setSelectedGrade]     = useState<string | null>(null);
   const [activeTab, setActiveTab]   = useState<ProfileTab>('overview');
   const [activeSession, setActiveSession] = useState(0);
+  const [climbSort, setClimbSort]   = useState<ClimbSort>('date');
   const carouselRef = useRef<ScrollView>(null);
+
+  const sortedSessions = [...sessions].sort((a, b) => {
+    if (climbSort === 'grade') {
+      return GRADES.indexOf(b.topGrade ?? 'V0') - GRADES.indexOf(a.topGrade ?? 'V0');
+    }
+    if (climbSort === 'gym') {
+      return a.gymName.localeCompare(b.gymName);
+    }
+    // default: date — already newest-first from Supabase, preserve order
+    return 0;
+  });
+
+  const handleSortChange = (sort: ClimbSort) => {
+    setClimbSort(sort);
+    setActiveSession(0);
+    carouselRef.current?.scrollTo({ x: 0, animated: false });
+  };
 
   const [editName, setEditName]         = useState('');
   const [editUsername, setEditUsername] = useState('');
@@ -1131,8 +1150,27 @@ export default function ProfileScreen() {
               <View style={styles.carouselHeader}>
                 <Text style={styles.sectionTitle}>Your Climbs</Text>
                 <Text style={styles.carouselCounter}>
-                  {activeSession + 1} / {sessions.length}
+                  {activeSession + 1} / {sortedSessions.length}
                 </Text>
+              </View>
+
+              {/* Sort pills */}
+              <View style={styles.sortRow}>
+                {([
+                  { key: 'date',  label: 'Date'  },
+                  { key: 'grade', label: 'Grade' },
+                  { key: 'gym',   label: 'Gym'   },
+                ] as { key: ClimbSort; label: string }[]).map(({ key, label }) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.sortPill, climbSort === key && styles.sortPillActive]}
+                    onPress={() => handleSortChange(key)}
+                    activeOpacity={0.7}>
+                    <Text style={[styles.sortPillLabel, climbSort === key && styles.sortPillLabelActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <ScrollView
@@ -1144,14 +1182,14 @@ export default function ProfileScreen() {
                 decelerationRate="fast"
                 onMomentumScrollEnd={handleCarouselScroll}
                 contentContainerStyle={styles.carouselContent}>
-                {sessions.map((session) => (
+                {sortedSessions.map((session) => (
                   <CarouselCard key={session.id} session={session} />
                 ))}
               </ScrollView>
 
-              {sessions.length > 1 && (
+              {sortedSessions.length > 1 && (
                 <View style={styles.dotRow}>
-                  {sessions.slice(0, Math.min(sessions.length, 7)).map((_, i) => (
+                  {sortedSessions.slice(0, Math.min(sortedSessions.length, 7)).map((_, i) => (
                     <View key={i} style={[styles.dot, i === activeSession && styles.dotActive]} />
                   ))}
                 </View>
@@ -1863,6 +1901,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginHorizontal: 20,
     marginBottom: 12,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 14,
+  },
+  sortPill: {
+    backgroundColor: SURFACE,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  sortPillActive: {
+    backgroundColor: PRIMARY,
+  },
+  sortPillLabel: {
+    fontSize: 12,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.3,
+  },
+  sortPillLabelActive: {
+    color: '#ffffff',
   },
   carouselCounter: {
     fontSize: 13,
