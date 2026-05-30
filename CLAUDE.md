@@ -137,6 +137,7 @@ Overlays (all `position: 'absolute'`):
 - **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart (Weekly Intensity) and LineChart (Monthly Volume) on Profile. Grade Distribution uses a fully custom View-based bar chart (no chart-kit) to avoid label clipping.
 - **Gradients:** `expo-linear-gradient` (feed card photo overlay)
 - **Video:** `expo-av` is installed (`package.json`) but **requires a development build** — it does NOT work in Expo Go (throws `ExponentAV` native module error). For video playback in Expo Go, use `Linking.openURL(url)` to hand off to the system player. When a dev build is available, swap in `expo-av Video`.
+- **Icons:** `@expo/vector-icons` (Ionicons) — installed, works in Expo Go. Used for all tab bar icons and inline icons throughout the app. **Do NOT use `expo-symbols` (SymbolView)** — it requires a dev build and crashes Expo Go.
 - **Platform:** iOS first (iPhone)
 
 ## Supabase Setup
@@ -273,14 +274,17 @@ src/app/
     login.tsx          — Email + password login
     signup.tsx         — Full name, username, email, password sign up
   (tabs)/
-    _layout.tsx        — Tab bar (Feed, Gyms, Explore, Log, Profile)
+    _layout.tsx        — Tab bar (Feed, Gyms, Explore, Log, Profile) — uses Ionicons
     index.tsx          — Feed screen
     gyms.tsx           — Gyms list
     explore.tsx        — Explore / find climbers
     log.tsx            — Log a session
     profile.tsx        — User profile
   gym/
-    [id].tsx           — Gym detail + per-grade climb counter (saves to Supabase)
+    [id]/
+      _layout.tsx      — Stack layout for gym screens
+      index.tsx        — Gym detail (two tabs: Log a Climb info + Current Climbs browser)
+      log.tsx          — Climb logging form (navigated to from gym detail CTA)
   user/
     [id].tsx           — View-only profile page for other users
 ```
@@ -337,7 +341,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Explore Tab (`/explore`)
-- "EXPLORE" BebasNeue header, SURFACE search bar with `magnifyingglass` SF Symbol icon
+- "EXPLORE" BebasNeue header, SURFACE search bar with Ionicons `search-outline` icon
 - **Search** — TextInput debounced 350ms; queries `profiles` with `.ilike('username', '%q%')`; filters out the current user. Results show when query is non-empty.
 - **Suggested Climbers** — shown when search is empty. Finds users who have sessions at the same gyms as the current user (queries `sessions` by `gym_id`), excludes self and already-followed users, batch-fetches their profiles.
 - **User rows** — circular avatar (real photo or PRIMARY initials fallback), `full_name` (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), Follow/Following toggle button.
@@ -346,12 +350,29 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `followingSet` is a `Set<string>` of following_ids; refreshed on every screen focus via `useFocusEffect`.
 
 ### Gym Detail (`/gym/[id]`)
-- Logs one climb at a time: optional photo/video, single V-grade chip selector (V0–V10), optional notes, fixed Submit button in footer
-- Form order: Photo/Video → Difficulty → Notes → Submit (gym is already shown in the fixed header)
+The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
+
+**Route structure:** `src/app/gym/[id]/` (Stack layout)
+- `index.tsx` — two-tab gym detail screen (info + Current Climbs)
+- `log.tsx` — the climb logging form (navigated to from the Log a Climb tab CTA)
+
+**Log a Climb tab** (existing gym info):
+- Hero banner, quick stats (sessions · climbers · community), Log a Climb CTA button → navigates to `gym/[id]/log`
+- Sections: About, Location (tap → Apple Maps), Amenities, Climbing Clubs, Upcoming Events
+- Stats (`totalSessions`, `totalClimbers`) fetched live from Supabase on focus
+
+**Current Climbs tab** (community climbs browser):
+- **Grade step-slider** — always shows all V0–V10. Selected grade displayed in ACCENT pink. Tapping a dot filters the section below to that grade.
+- **Grade section** — shows the selected grade's aggregated data, or "No climbs logged at this grade yet." if none exist. Does NOT auto-snap to a grade with data on load; defaults to V0.
+- **Problem card** — 100×110px thumbnail; cover photo = `media_url` from most-liked session at that grade; like count overlay (ACCENT pink, bottom-left); send count footer. Tapping opens the video grid modal.
+- **Video grid modal** — conditionally rendered bottom sheet (`{modalGroup !== null && <Modal>}`); header shows grade pill + gym name + send count; 3-column portrait thumbnail grid sorted by most-liked; each cell shows climber initials chip (top-left, from `profiles.full_name`) and like count (bottom-left, ACCENT pink). TODO comment marks where to wire cell tap to feed navigation.
+- **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus. Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
+
+**Log form** (`gym/[id]/log.tsx`):
+- Optional photo/video, single V-grade step-track slider (V0–V10), optional notes, fixed Submit footer
 - Submit saves `total_problems: 1` to `sessions` and one `climbs` row `{ grade, count: 1 }`; notes saved to `sessions.notes`
 - Requires authenticated user (`supabase.auth.getUser()`)
-- Shows "SESSION LOGGED" success screen for 2.5s, then navigates back to Gyms tab
-- `useFocusEffect` on Profile tab picks up new sessions automatically on next visit
+- Shows "SESSION LOGGED" success screen for 2.5s, then navigates back
 
 ### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
@@ -457,6 +478,9 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
+- **Gym detail two-tab layout** — "Log a Climb" (gym info + CTA) and "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal)
+- **Current Climbs grade slider** — always shows V0–V10; filters section to selected grade; "No climbs logged" empty state per grade; defaults to V0 (no auto-snap)
+- **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
@@ -491,6 +515,7 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Media uploads:** ALWAYS use `expo-file-system/legacy` readAsStringAsync → `base64-arraybuffer` decode() → ArrayBuffer → supabase.storage.upload(). NEVER use fetch+blob or FormData.
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
 - **Gym names:** there is no `gyms` table — use a local `GYM_NAMES` constant in each file
+- **Icons:** ALWAYS use `@expo/vector-icons` Ionicons — NEVER use `expo-symbols` / `SymbolView` (requires dev build, crashes Expo Go)
 - **Video playback:** `expo-av` IS used in the Feed (`index.tsx`) for TikTok-style video autoplay (`shouldPlay={isActive}`). It is loaded via a **dynamic `require()` inside `try/catch`** (not a static import) so Expo Go doesn't crash — if the native module is absent, `VideoPlayer` is `null` and video cards fall back to a static thumbnail. A TODO comment marks where to restore the static import once a dev build is set up. The Profile media viewer still uses `Linking.openURL(url)` as its own fallback.
 - **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
 - **Modals that overlay scrollable content:** ALWAYS conditionally render them (`{visible && <Modal visible>}`) so they fully unmount when closed and cannot intercept touches on the screen behind them.
