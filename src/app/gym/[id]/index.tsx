@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -175,15 +175,10 @@ export default function GymDetailScreen() {
   // ── Current Climbs tab ───────────────────────────────────────
   const [gradeGroups,   setGradeGroups]   = useState<GradeGroup[]>([]);
   const [climbsLoading, setClimbsLoading] = useState(false);
-  // Grade slider state — index into GRADES array
-  const [sliderIndex,   setSliderIndex]   = useState(0);
+  // Index into the gradeGroups array (only grades that have data)
+  const [selectedGroupIdx, setSelectedGroupIdx] = useState(0);
   // Bottom-sheet modal for the video grid
   const [modalGroup,    setModalGroup]    = useState<GradeGroup | null>(null);
-
-  // ScrollView ref for the Current Climbs tab (used to scroll-to-section)
-  const climbsScrollRef = useRef<ScrollView>(null);
-  // y-offset of each grade section within the climbs ScrollView content
-  const sectionOffsets  = useRef<Record<string, number>>({});
 
   // ── Data loading ─────────────────────────────────────────────
   useFocusEffect(
@@ -283,11 +278,7 @@ export default function GymDetailScreen() {
             }));
 
           setGradeGroups(groups);
-
-          // Snap slider to first grade that has data
-          if (groups.length > 0) {
-            setSliderIndex(GRADES.indexOf(groups[0].grade));
-          }
+          setSelectedGroupIdx(0); // always start on the first grade that has data
         } catch (err) {
           console.error('CurrentClimbs load error:', err);
         } finally {
@@ -308,15 +299,9 @@ export default function GymDetailScreen() {
       `https://maps.apple.com/?q=${encodeURIComponent(gym.name)}&ll=${gym.coords.lat},${gym.coords.lng}`
     );
 
-  /** Tap a grade on the slider → update slider + scroll Current Climbs to that grade section */
+  /** Tap a grade dot on the slider → filter sections to that group */
   const handleSliderGrade = (idx: number) => {
-    setSliderIndex(idx);
-    const grade = GRADES[idx];
-    const y = sectionOffsets.current[grade];
-    if (y !== undefined) {
-      // Small offset so the grade heading is visible below the sticky slider header
-      climbsScrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
-    }
+    setSelectedGroupIdx(idx);
   };
 
   // ── Render ───────────────────────────────────────────────────
@@ -480,45 +465,52 @@ export default function GymDetailScreen() {
       {activeTab === 'climbs' && (
         <View style={{ flex: 1 }}>
 
-          {/* ── Grade step-slider (sticky above the scroll) ─── */}
-          <View style={styles.sliderCard}>
-            {/* Selected grade displayed in ACCENT pink */}
-            <Text style={styles.sliderValue}>{GRADES[sliderIndex]}</Text>
-            {/* Step track */}
-            <View style={styles.stepTrack}>
-              <View style={styles.stepTrackLine} />
-              <View
-                style={[
-                  styles.stepTrackLineFilled,
-                  { width: `${(sliderIndex / (GRADES.length - 1)) * 100}%` },
-                ]}
-              />
-              {GRADES.map((grade, i) => {
-                const active = i === sliderIndex;
-                return (
-                  <TouchableOpacity
-                    key={grade}
-                    style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
-                    onPress={() => handleSliderGrade(i)}
-                    activeOpacity={0.7}>
-                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {/* Grade labels row */}
-            <View style={styles.stepLabels}>
-              {GRADES.map((grade, i) => (
-                <Text
-                  key={grade}
-                  style={[styles.stepLabelText, i === sliderIndex && styles.stepLabelActive]}>
-                  {grade}
-                </Text>
-              ))}
-            </View>
-          </View>
+          {/* ── Grade step-slider — only shows grades that have data ── */}
+          {!climbsLoading && gradeGroups.length > 0 && (() => {
+            const lastIdx = gradeGroups.length - 1;
+            const activeGroup = gradeGroups[selectedGroupIdx] ?? gradeGroups[0];
+            return (
+              <View style={styles.sliderCard}>
+                {/* Selected grade in ACCENT pink */}
+                <Text style={styles.sliderValue}>{activeGroup.grade}</Text>
+                {/* Step track */}
+                <View style={styles.stepTrack}>
+                  <View style={styles.stepTrackLine} />
+                  <View
+                    style={[
+                      styles.stepTrackLineFilled,
+                      { width: lastIdx === 0 ? '100%' : `${(selectedGroupIdx / lastIdx) * 100}%` },
+                    ]}
+                  />
+                  {gradeGroups.map((group, i) => {
+                    const pct = lastIdx === 0 ? 50 : (i / lastIdx) * 100;
+                    const active = i === selectedGroupIdx;
+                    return (
+                      <TouchableOpacity
+                        key={group.grade}
+                        style={[styles.stepHitArea, { left: `${pct}%` }]}
+                        onPress={() => handleSliderGrade(i)}
+                        activeOpacity={0.7}>
+                        <View style={[styles.stepDot, active && styles.stepDotActive]} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {/* Grade labels */}
+                <View style={styles.stepLabels}>
+                  {gradeGroups.map((group, i) => (
+                    <Text
+                      key={group.grade}
+                      style={[styles.stepLabelText, i === selectedGroupIdx && styles.stepLabelActive]}>
+                      {group.grade}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
 
-          {/* ── Grade sections scroll ────────────────────────── */}
+          {/* ── Single grade section (filtered by slider) ────── */}
           {climbsLoading ? (
             <View style={styles.loadingCenter}>
               <ActivityIndicator color={PRIMARY} size="large" />
@@ -535,16 +527,12 @@ export default function GymDetailScreen() {
             </View>
           ) : (
             <ScrollView
-              ref={climbsScrollRef}
               contentContainerStyle={styles.climbsScroll}
               showsVerticalScrollIndicator={false}>
 
-              {gradeGroups.map((group) => (
-                <View
-                  key={group.grade}
-                  onLayout={(e) => {
-                    sectionOffsets.current[group.grade] = e.nativeEvent.layout.y;
-                  }}>
+              {/* Only show the grade group selected by the slider */}
+              {[gradeGroups[selectedGroupIdx] ?? gradeGroups[0]].map((group) => (
+                <View key={group.grade}>
 
                   {/* Section header: grade pill + counts */}
                   <View style={styles.gradeSectionHeader}>
