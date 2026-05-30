@@ -5,11 +5,22 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
+const memoryStorage: Record<string, string> = {};
+const isServer = typeof window === 'undefined';
+
+const storage = isServer
+  ? {
+      getItem: (key: string) => memoryStorage[key] ?? null,
+      setItem: (key: string, value: string) => { memoryStorage[key] = value; },
+      removeItem: (key: string) => { delete memoryStorage[key]; },
+    }
+  : AsyncStorage;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,        // Persist sessions across app restarts
-    autoRefreshToken: true,       // Automatically refresh expired tokens
-    persistSession: true,         // Keep user logged in
-    detectSessionInUrl: false,    // Not needed in React Native
+    storage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
   },
 });

@@ -228,7 +228,6 @@ export default function ProfileScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Committed header values — only update after a successful Save Changes
-  // (prevents live-typing in Settings from affecting the displayed header)
   const [displayName,     setDisplayName]     = useState('');
   const [displayUsername, setDisplayUsername] = useState('');
   const [displayBio,      setDisplayBio]      = useState('');

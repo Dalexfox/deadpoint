@@ -407,7 +407,6 @@ function FullScreenCard({
 
 export default function FeedScreen() {
   const router = useRouter();
-
   const [posts,         setPosts]         = useState<Post[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);

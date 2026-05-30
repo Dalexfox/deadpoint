@@ -42,14 +42,15 @@ const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10
 
 export default function LogScreen() {
   const [selectedGym, setSelectedGym]     = useState<string | null>(null);
-  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
+  const [gradeIndex, setGradeIndex] = useState(0);
+  const selectedGrade = GRADES[gradeIndex];
   const [media, setMedia]                 = useState<MediaItem | null>(null);
   const [notes, setNotes]                 = useState('');
   const [submitted, setSubmitted]         = useState(false);
   const [submitting, setSubmitting]       = useState(false);
+  const [gymDropdownOpen, setGymDropdownOpen] = useState(false);
 
-  // Both gym and grade must be chosen before the user can submit
-  const canSubmit = selectedGym !== null && selectedGrade !== null;
+  const canSubmit = selectedGym !== null;
 
   // ─── Media helpers ────────────────────────────────────────────
 
@@ -119,13 +120,13 @@ export default function LogScreen() {
       // One climb row, count always 1
       const { error: climbError } = await supabase
         .from('climbs')
-        .insert({ session_id: session.id, grade: selectedGrade!, count: 1 });
+        .insert({ session_id: session.id, grade: selectedGrade, count: 1 });
 
       if (climbError) throw climbError;
 
       // Reset and show success screen
       setSelectedGym(null);
-      setSelectedGrade(null);
+      setGradeIndex(0);
       setMedia(null);
       setNotes('');
       setSubmitted(true);
@@ -193,45 +194,65 @@ export default function LogScreen() {
         {/* 2 ── Difficulty */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>DIFFICULTY</Text>
-          <View style={styles.gradeGrid}>
-            {GRADES.map((grade) => {
-              const active = selectedGrade === grade;
-              return (
-                <TouchableOpacity
+          <View style={styles.sliderCard}>
+            <Text style={styles.sliderValue}>{selectedGrade}</Text>
+            <View style={styles.stepTrack}>
+              <View style={styles.stepTrackLine} />
+              <View style={[styles.stepTrackLineFilled, { width: `${(gradeIndex / (GRADES.length - 1)) * 100}%` }]} />
+              {GRADES.map((grade, i) => {
+                const active = i === gradeIndex;
+                return (
+                  <TouchableOpacity
+                    key={grade}
+                    style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
+                    onPress={() => setGradeIndex(i)}
+                    activeOpacity={0.7}>
+                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.stepLabels}>
+              {GRADES.map((grade, i) => (
+                <Text
                   key={grade}
-                  style={[styles.gradeChip, active && styles.gradeChipActive]}
-                  onPress={() => setSelectedGrade(grade)}
-                  activeOpacity={0.7}>
-                  <Text style={[styles.gradeLabel, active && styles.gradeLabelActive]}>
-                    {grade}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                  style={[styles.stepLabelText, i === gradeIndex && styles.stepLabelTextActive]}>
+                  {grade}
+                </Text>
+              ))}
+            </View>
           </View>
         </View>
 
         {/* 3 ── Gym */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>GYM</Text>
-          <View style={styles.gymList}>
-            {GYMS.map((gym) => {
-              const active = selectedGym === gym;
-              return (
-                <TouchableOpacity
-                  key={gym}
-                  style={[styles.gymRow, active && styles.gymRowActive]}
-                  onPress={() => setSelectedGym(gym)}
-                  activeOpacity={0.7}>
-                  <View style={[styles.radio, active && styles.radioActive]}>
-                    {active && <View style={styles.radioDot} />}
-                  </View>
-                  <Text style={[styles.gymName, active && styles.gymNameActive]}>{gym}</Text>
-                  {active && <Text style={styles.gymCheck}>▲</Text>}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TouchableOpacity
+            style={styles.dropdownTrigger}
+            onPress={() => setGymDropdownOpen(!gymDropdownOpen)}
+            activeOpacity={0.7}>
+            <Text style={[styles.dropdownTriggerText, !selectedGym && styles.dropdownPlaceholder]}>
+              {selectedGym ?? 'Select a gym'}
+            </Text>
+            <Text style={styles.dropdownChevron}>{gymDropdownOpen ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+          {gymDropdownOpen && (
+            <View style={styles.dropdownList}>
+              {GYMS.map((gym, i) => {
+                const active = selectedGym === gym;
+                return (
+                  <TouchableOpacity
+                    key={gym}
+                    style={[styles.dropdownItem, i < GYMS.length - 1 && styles.dropdownItemBorder]}
+                    onPress={() => { setSelectedGym(gym); setGymDropdownOpen(false); }}
+                    activeOpacity={0.7}>
+                    <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>{gym}</Text>
+                    {active && <Text style={styles.dropdownItemCheck}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* 4 ── Notes */}
@@ -364,71 +385,135 @@ const styles = StyleSheet.create({
     fontFamily: 'DMSans_700Bold',
   },
 
-  // ── Grade chips ───────────────────────────────────────────────
-  gradeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  gradeChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
+  // ── Grade step slider ─────────────────────────────────────────
+  sliderCard: {
     backgroundColor: SURFACE,
-  },
-  gradeChipActive: {
-    backgroundColor: PRIMARY,
-  },
-  gradeLabel: {
-    fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_SUB,
-    letterSpacing: 0.2,
-  },
-  gradeLabelActive: {
-    color: '#ffffff',
-  },
-
-  // ── Gym selector ──────────────────────────────────────────────
-  gymList: { gap: 8 },
-  gymRow: {
-    flexDirection: 'row',
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    padding: 16,
   },
-  gymRowActive: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: PRIMARY,
+  sliderValue: {
+    fontSize: 32,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: PRIMARY,
+    letterSpacing: 0.5,
+    marginBottom: 16,
   },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: TEXT_MUTED,
+  stepTrack: {
+    width: '100%',
+    height: 32,
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  stepTrackLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#c2d9e3',
+    borderRadius: 2,
+  },
+  stepTrackLineFilled: {
+    position: 'absolute',
+    left: 0,
+    height: 3,
+    backgroundColor: PRIMARY,
+    borderRadius: 2,
+  },
+  stepHitArea: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    marginLeft: -16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioActive: { borderColor: PRIMARY },
-  radioDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: PRIMARY,
+  stepDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#c2d9e3',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
-  gymName: {
-    flex: 1,
+  stepDotActive: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
+    borderWidth: 3,
+    borderColor: '#ffffff',
+  },
+  stepLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  stepLabelText: {
+    fontSize: 10,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    textAlign: 'center',
+  },
+  stepLabelTextActive: {
+    color: PRIMARY,
+    fontFamily: 'DMSans_800ExtraBold',
+  },
+
+  // ── Gym dropdown ──────────────────────────────────────────────
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    padding: 16,
+  },
+  dropdownTriggerText: {
     fontSize: 16,
     fontFamily: 'DMSans_700Bold',
     color: TEXT,
     letterSpacing: -0.2,
   },
-  gymNameActive: { color: TEXT },
-  gymCheck: { fontSize: 9, color: PRIMARY },
+  dropdownPlaceholder: {
+    color: TEXT_MUTED,
+  },
+  dropdownChevron: {
+    fontSize: 10,
+    color: TEXT_MUTED,
+  },
+  dropdownList: {
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    marginTop: 6,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  dropdownItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#b8d4e0',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT,
+    letterSpacing: -0.2,
+  },
+  dropdownItemTextActive: {
+    color: PRIMARY,
+    fontFamily: 'DMSans_700Bold',
+  },
+  dropdownItemCheck: {
+    fontSize: 16,
+    color: PRIMARY,
+    fontFamily: 'DMSans_800ExtraBold',
+  },
 
   // ── Notes ─────────────────────────────────────────────────────
   notesInput: {
