@@ -246,6 +246,7 @@ export default function ProfileScreen() {
     topGrade:    string;
   }>({ totalClimbs: 0, gymsVisited: 0, topGrade: '—' });
 
+  const [currentUserId,      setCurrentUserId]      = useState<string | null>(null);
   const [followerCount,      setFollowerCount]      = useState(0);
   const [followingCount,     setFollowingCount]     = useState(0);
   const [followersVisible,   setFollowersVisible]   = useState(false);
@@ -272,6 +273,7 @@ export default function ProfileScreen() {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
+          setCurrentUserId(user.id);
 
           // ── 0. Profile fields (for Settings edit form) ──────────
           const { data: profileRow } = await supabase
@@ -1345,7 +1347,18 @@ export default function ProfileScreen() {
                   <Text style={styles.sheetEmpty}>No followers yet</Text>
                 ) : (
                   followersList.map((u) => (
-                    <View key={u.id} style={styles.sheetUserRow}>
+                    <TouchableOpacity
+                      key={u.id}
+                      style={styles.sheetUserRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setFollowersVisible(false);
+                        if (u.id === currentUserId) {
+                          router.push('/(tabs)/profile');
+                        } else {
+                          router.push(`/user/${u.id}`);
+                        }
+                      }}>
                       {u.avatarUrl ? (
                         <Image source={{ uri: u.avatarUrl }} style={styles.sheetAvatar} />
                       ) : (
@@ -1359,7 +1372,7 @@ export default function ProfileScreen() {
                         <Text style={styles.sheetUserName}>{u.fullName}</Text>
                         {u.username ? <Text style={styles.sheetUserUsername}>@{u.username}</Text> : null}
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
               </ScrollView>
@@ -1388,7 +1401,18 @@ export default function ProfileScreen() {
                   <Text style={styles.sheetEmpty}>No one followed yet</Text>
                 ) : (
                   followingList.map((u) => (
-                    <View key={u.id} style={styles.sheetUserRow}>
+                    <TouchableOpacity
+                      key={u.id}
+                      style={styles.sheetUserRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setFollowingVisible(false);
+                        if (u.id === currentUserId) {
+                          router.push('/(tabs)/profile');
+                        } else {
+                          router.push(`/user/${u.id}`);
+                        }
+                      }}>
                       {u.avatarUrl ? (
                         <Image source={{ uri: u.avatarUrl }} style={styles.sheetAvatar} />
                       ) : (
@@ -1408,7 +1432,7 @@ export default function ProfileScreen() {
                         activeOpacity={0.7}>
                         <Text style={styles.sheetUnfollowLabel}>Unfollow</Text>
                       </TouchableOpacity>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
               </ScrollView>

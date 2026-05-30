@@ -306,8 +306,8 @@ src/lib/
    - Stats bar fetched live from Supabase on every focus; rendered conditionally (`activeTab === 'overview'`).
    - **Invite Friends** button (PRIMARY teal outline) on the identity row — triggers `Share.share()` with an invite message.
    - **Follower / following counts** row below the identity block — tapping "followers" or "following" opens a bottom-sheet Modal listing those users.
-   - **Followers sheet** — avatar + name/username list; no action buttons (read-only).
-   - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately.
+   - **Followers sheet** — avatar + name/username list; no action buttons. Each row is tappable: closes the sheet and navigates to that user's profile (`/(tabs)/profile` for self, `/user/[id]` for others).
+   - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately. Each row is also tappable (same nav logic as followers sheet); Unfollow button tap does not bubble to the row.
 
 ### Feed Card Layout (TikTok-style full-screen)
 Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with all overlays `position: 'absolute'`:
