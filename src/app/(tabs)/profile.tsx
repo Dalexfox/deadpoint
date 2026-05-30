@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { BarChart, LineChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// expo-symbols removed — requires dev build, not available in Expo Go
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -632,10 +632,10 @@ export default function ProfileScreen() {
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.7}>
-            <Text style={{ fontSize: 22, color: ACCENT, lineHeight: 26 }}>⊕</Text>
+            <Ionicons name="add-circle-outline" size={24} color={ACCENT} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} hitSlop={12}>
-            <Text style={{ fontSize: 20, color: TEXT_SUB, lineHeight: 24 }}>⚙</Text>
+            <Ionicons name="settings-outline" size={22} color={TEXT_SUB} />
           </TouchableOpacity>
         </View>
       </View>
@@ -684,7 +684,7 @@ export default function ProfileScreen() {
             <View style={styles.bannerPlaceholder} />
           )}
           <TouchableOpacity style={styles.bannerCameraBtn} onPress={handleBannerPress} activeOpacity={0.8}>
-            <Text style={{ fontSize: 13, color: '#ffffff', lineHeight: 16 }}>📷</Text>
+            <Ionicons name="camera" size={15} color="#ffffff" />
           </TouchableOpacity>
         </View>
 

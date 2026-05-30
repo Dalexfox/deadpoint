@@ -1,9 +1,10 @@
 import { DefaultTheme, ThemeProvider, Tabs, usePathname } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { ColorValue } from 'react-native';
 
-// expo-symbols requires a dev build (native module not in Expo Go).
-// Replaced with Unicode text icons that render consistently on iOS.
+// Ionicons (from @expo/vector-icons) works in Expo Go and closely mirrors
+// the SF Symbol set that expo-symbols provides (dev build only).
 
 const PRIMARY  = '#2E7A96';
 const INACTIVE = '#8bb5c4';
@@ -11,25 +12,25 @@ const INACTIVE = '#8bb5c4';
 type IconProps = { color: ColorValue; focused: boolean };
 
 function FeedIcon({ color, focused }: IconProps) {
-  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '⊞' : '⊟'}</Text>;
+  return <Ionicons name={focused ? 'layers' : 'layers-outline'} size={24} color={color} />;
 }
 function GymsIcon({ color, focused }: IconProps) {
-  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '◉' : '◎'}</Text>;
+  return <Ionicons name={focused ? 'map' : 'map-outline'} size={24} color={color} />;
 }
 function LogIcon() {
   return (
     <View style={styles.logButtonOuter}>
       <View style={styles.logButton}>
-        <Text style={{ fontSize: 26, color: '#ffffff', lineHeight: 30, fontWeight: '300' }}>+</Text>
+        <Ionicons name="add" size={26} color="#ffffff" />
       </View>
     </View>
   );
 }
 function ExploreIcon({ color, focused }: IconProps) {
-  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '⊗' : '⊙'}</Text>;
+  return <Ionicons name={focused ? 'search-circle' : 'search-outline'} size={24} color={color} />;
 }
 function ProfileIcon({ color, focused }: IconProps) {
-  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '●' : '○'}</Text>;
+  return <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />;
 }
 
 export default function TabsLayout() {

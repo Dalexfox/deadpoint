@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// expo-symbols removed — requires dev build, not available in Expo Go
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
@@ -306,7 +306,7 @@ export default function ExploreScreen() {
 
       {/* Search bar */}
       <View style={styles.searchBar}>
-        <Text style={{ fontSize: 15, color: TEXT_MUTED }}>⌕</Text>
+        <Ionicons name="search-outline" size={17} color={TEXT_MUTED} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search climbers..."
