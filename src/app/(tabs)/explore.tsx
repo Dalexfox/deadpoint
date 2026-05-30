@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SymbolView } from 'expo-symbols';
+// expo-symbols removed — requires dev build, not available in Expo Go
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
@@ -246,7 +246,7 @@ export default function ExploreScreen() {
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url')
-        .ilike('username', `%${q}%`)
+        .or(`username.ilike.%${q}%,full_name.ilike.%${q}%`)
         .limit(20);
 
       setSearchResults(
@@ -306,7 +306,7 @@ export default function ExploreScreen() {
 
       {/* Search bar */}
       <View style={styles.searchBar}>
-        <SymbolView name="magnifyingglass" size={17} tintColor={TEXT_MUTED} />
+        <Text style={{ fontSize: 15, color: TEXT_MUTED }}>⌕</Text>
         <TextInput
           style={styles.searchInput}
           placeholder="Search climbers..."

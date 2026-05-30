@@ -1,7 +1,9 @@
 import { DefaultTheme, ThemeProvider, Tabs, usePathname } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { ColorValue } from 'react-native';
-import { SymbolView } from 'expo-symbols';
+
+// expo-symbols requires a dev build (native module not in Expo Go).
+// Replaced with Unicode text icons that render consistently on iOS.
 
 const PRIMARY  = '#2E7A96';
 const INACTIVE = '#8bb5c4';
@@ -9,25 +11,25 @@ const INACTIVE = '#8bb5c4';
 type IconProps = { color: ColorValue; focused: boolean };
 
 function FeedIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'square.stack.fill' : 'square.stack'} size={24} tintColor={color} />;
+  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '⊞' : '⊟'}</Text>;
 }
 function GymsIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'map.fill' : 'map'} size={24} tintColor={color} />;
+  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '◉' : '◎'}</Text>;
 }
 function LogIcon() {
   return (
     <View style={styles.logButtonOuter}>
       <View style={styles.logButton}>
-        <SymbolView name="plus" size={22} tintColor="#ffffff" />
+        <Text style={{ fontSize: 26, color: '#ffffff', lineHeight: 30, fontWeight: '300' }}>+</Text>
       </View>
     </View>
   );
 }
 function ExploreIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'magnifyingglass.circle.fill' : 'magnifyingglass'} size={24} tintColor={color} />;
+  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '⊗' : '⊙'}</Text>;
 }
 function ProfileIcon({ color, focused }: IconProps) {
-  return <SymbolView name={focused ? 'person.fill' : 'person'} size={24} tintColor={color} />;
+  return <Text style={{ fontSize: 22, color: color as string, lineHeight: 26 }}>{focused ? '●' : '○'}</Text>;
 }
 
 export default function TabsLayout() {
