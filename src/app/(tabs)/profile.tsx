@@ -157,14 +157,13 @@ function StatColumn({ label, value }: { label: string; value: string | number })
 }
 
 /** Split array into consecutive pairs — used for the 2-row column grid layout. */
-function toPairs<T>(arr: T[]): T[][] {
-  const pairs: T[][] = [];
-  for (let i = 0; i < arr.length; i += 2) pairs.push(arr.slice(i, i + 2));
-  return pairs;
+/** Chunk an array into rows of `size` — used for the 3-column grid. */
+function toRows<T>(arr: T[], size = 3): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) rows.push(arr.slice(i, i + size));
+  return rows;
 }
 
-// Compact grid card (120px wide) — adapts the carousel card for the 2-row grid
-const CLIMB_CARD_W   = 120;
 const CLIMB_CARD_GAP = 8;
 
 function ClimbGridCard({ session }: { session: SupabaseSession }) {
@@ -1296,24 +1295,25 @@ export default function ProfileScreen() {
                       </Text>
                     </View>
 
-                    {/* 2-row horizontal grid — same pattern as Current Climbs */}
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.myClimbsGridRow}>
-                      {/*
-                        grid-auto-flow: column pattern:
-                        toPairs splits sessions into groups of 2 → each pair = one column (top + bottom).
-                        Columns flow left→right inside the horizontal ScrollView.
-                      */}
-                      {toPairs(group.sessions).map((pair, colIdx) => (
-                        <View key={colIdx} style={styles.myClimbsGridCol}>
-                          {pair.map((session) => (
+                    {/*
+                      3-column row grid (grid-auto-flow: row):
+                      toRows chunks sessions into groups of 3 — each group is one
+                      horizontal row. Rows stack vertically inside the outer ScrollView.
+                      Last row pads with invisible filler Views so cards stay equal width.
+                    */}
+                    <View style={styles.myClimbsGrid}>
+                      {toRows(group.sessions).map((row, rowIdx) => (
+                        <View key={rowIdx} style={styles.myClimbsGridRow}>
+                          {row.map((session) => (
                             <ClimbGridCard key={session.id} session={session} />
+                          ))}
+                          {/* Pad incomplete last row so cards don't stretch */}
+                          {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
+                            <View key={`pad-${i}`} style={styles.myClimbsGridPad} />
                           ))}
                         </View>
                       ))}
-                    </ScrollView>
+                    </View>
                   </View>
                 ))}
 
@@ -2152,32 +2152,33 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
   },
 
-  // 2-row column grid (same pattern as Current Climbs)
-  myClimbsGridRow: {
-    flexDirection: 'row',           // columns flow left→right
+  // 3-column row grid
+  myClimbsGrid: {
     paddingHorizontal: 16,
     gap: CLIMB_CARD_GAP,
   },
-  myClimbsGridCol: {
-    flexDirection: 'column',        // up to 2 cards stack top→bottom
+  myClimbsGridRow: {
+    flexDirection: 'row',   // 3 cards side-by-side
     gap: CLIMB_CARD_GAP,
   },
 
-  // Compact climb grid card
+  // Compact climb grid card — flex: 1 so 3 fill the row evenly
   gridCard: {
-    width: CLIMB_CARD_W,
+    flex: 1,
     backgroundColor: CARD,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#b0cdd8',
     overflow: 'hidden',
   },
+  // Invisible filler to keep last-row cards the same width as full rows
+  myClimbsGridPad: { flex: 1 },
   gridCardThumb: {
-    width: CLIMB_CARD_W,
+    width: '100%',
     height: 80,
   },
   gridCardThumbEmpty: {
-    width: CLIMB_CARD_W,
+    width: '100%',
     height: 80,
     backgroundColor: SURFACE,
     alignItems: 'center',
