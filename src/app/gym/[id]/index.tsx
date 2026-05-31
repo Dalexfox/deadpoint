@@ -560,7 +560,14 @@ export default function GymDetailScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.probRow}>
 
-                    {/* Split sessions into pairs of 2 for the column layout */}
+                    {/*
+                      2-row column grid — mimics CSS grid-template-rows: repeat(2, auto) + grid-auto-flow: column.
+                      toPairs() splits the items array into chunks of 2; each chunk becomes one vertical column.
+                      Result: items fill top→bottom before a new column starts, 3 columns visible before scroll.
+
+                      Currently one aggregated card per grade → toPairs([group]) gives [[group]] = 1 column, 1 card.
+                      TODO (named problems): replace [group] with the problems array, e.g. toPairs(group.problems)
+                    */}
                     {toPairs([group]).map((pair, colIdx) => (
                       <View key={colIdx} style={styles.probColumn}>
                         {pair.map((g) => (
@@ -887,7 +894,9 @@ const styles = StyleSheet.create({
   gradeSectionLikes: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: ACCENT, marginLeft: 'auto' as any },
 
   // Problem card grid
-  probRow: { paddingHorizontal: 16, gap: PROB_CARD_GAP },
+  // flexDirection: 'row' is required — without it columns stack vertically even in a horizontal ScrollView
+  probRow: { paddingHorizontal: 16, gap: PROB_CARD_GAP, flexDirection: 'row' },
+  // Each column holds up to 2 cards (top → bottom), mimicking grid-auto-flow: column
   probColumn: { gap: PROB_CARD_GAP, flexDirection: 'column' },
   probCard: {
     width: PROB_CARD_W, height: PROB_CARD_H,
