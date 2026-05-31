@@ -31,9 +31,6 @@ const SCREEN_W = Dimensions.get('window').width;
 // V-scale grades — all 11 steps
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
-// Card dimensions for the problem card grid
-const PROB_CARD_W  = 100;
-const PROB_CARD_H  = 110;
 const PROB_CARD_GAP = 8;
 
 // ── Types ────────────────────────────────────────────────────
@@ -147,16 +144,11 @@ function toInitials(name: string): string {
   return name.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('');
 }
 
-/**
- * Split a flat array into consecutive pairs for 2-row column layout.
- * [[a, b], [c, d], [e]] — each sub-array is one column (top row + bottom row).
- */
-function toPairs<T>(arr: T[]): T[][] {
-  const pairs: T[][] = [];
-  for (let i = 0; i < arr.length; i += 2) {
-    pairs.push(arr.slice(i, i + 2));
-  }
-  return pairs;
+/** Chunk an array into rows of `size` for the 3-column row-first grid. */
+function toRows<T>(arr: T[], size = 3): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) rows.push(arr.slice(i, i + size));
+  return rows;
 }
 
 // ── Main component ───────────────────────────────────────────
@@ -553,26 +545,19 @@ export default function GymDetailScreen() {
                     </Text>
                   </View>
 
-                  {/* Horizontally scrollable 2-row grid of problem cards.
-                      Currently one aggregated card per grade (future: one card per named problem). */}
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.probRow}>
-
-                    {/*
-                      2-row column grid — mimics CSS grid-template-rows: repeat(2, auto) + grid-auto-flow: column.
-                      toPairs() splits the items array into chunks of 2; each chunk becomes one vertical column.
-                      Result: items fill top→bottom before a new column starts, 3 columns visible before scroll.
-
-                      Currently one aggregated card per grade → toPairs([group]) gives [[group]] = 1 column, 1 card.
-                      TODO (named problems): replace [group] with the problems array, e.g. toPairs(group.problems)
-                    */}
-                    {toPairs([group]).map((pair, colIdx) => (
-                      <View key={colIdx} style={styles.probColumn}>
-                        {pair.map((g) => (
+                  {/*
+                    3-column row grid (grid-auto-flow: row):
+                    toRows chunks problems into groups of 3 — each group is one row.
+                    Rows stack vertically inside the outer ScrollView.
+                    Currently one aggregated card per grade.
+                    TODO (named problems): replace [group] with the problems array.
+                  */}
+                  <View style={styles.probGrid}>
+                    {toRows([group]).map((row, rowIdx) => (
+                      <View key={rowIdx} style={styles.probRow}>
+                        {row.map((g) => (
                           <TouchableOpacity
-                            key={g.grade + colIdx}
+                            key={g.grade}
                             style={styles.probCard}
                             onPress={() => setModalGroup(g)}
                             activeOpacity={0.85}>
@@ -603,9 +588,13 @@ export default function GymDetailScreen() {
                             </View>
                           </TouchableOpacity>
                         ))}
+                        {/* Pad incomplete rows so cards stay equal width */}
+                        {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
+                          <View key={`pad-${i}`} style={styles.probCardPad} />
+                        ))}
                       </View>
                     ))}
-                  </ScrollView>
+                  </View>
                 </View>
               )))}
 
@@ -893,17 +882,17 @@ const styles = StyleSheet.create({
   gradeSectionMeta: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB },
   gradeSectionLikes: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: ACCENT, marginLeft: 'auto' as any },
 
-  // Problem card grid
-  // flexDirection: 'row' is required — without it columns stack vertically even in a horizontal ScrollView
-  probRow: { paddingHorizontal: 16, gap: PROB_CARD_GAP, flexDirection: 'row' },
-  // Each column holds up to 2 cards (top → bottom), mimicking grid-auto-flow: column
-  probColumn: { gap: PROB_CARD_GAP, flexDirection: 'column' },
+  // Problem card grid — 3-column row-first layout
+  probGrid: { paddingHorizontal: 16, gap: PROB_CARD_GAP },
+  probRow: { flexDirection: 'row', gap: PROB_CARD_GAP },
   probCard: {
-    width: PROB_CARD_W, height: PROB_CARD_H,
+    flex: 1,                        // 3 cards divide the row width evenly
+    aspectRatio: 0.85,              // keeps cards a consistent height
     borderRadius: 14, overflow: 'hidden',
     backgroundColor: SURFACE,
     borderWidth: 1.5, borderColor: CARD_BDR,
   },
+  probCardPad: { flex: 1 },        // invisible filler for incomplete last rows
   probCardImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   probCardNoPhoto: { alignItems: 'center', justifyContent: 'center' },
   probCardNoPhotoIcon: { fontSize: 28 },
