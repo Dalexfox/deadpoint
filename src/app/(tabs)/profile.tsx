@@ -119,8 +119,16 @@ type FollowUser = {
 };
 
 // Active profile tab
-type ProfileTab = 'overview' | 'sessions' | 'settings';
-type ClimbSort  = 'date' | 'grade' | 'gym';
+type ProfileTab   = 'overview' | 'sessions' | 'settings';
+type MyClimbsSort = 'date' | 'gym';
+
+// Gym names — local constant, no gyms table in DB
+const GYM_NAMES: Record<string, string> = {
+  '1': 'Vital Climbing LES',
+  '2': 'Vital Climbing Brooklyn',
+  '3': 'Vital Climbing UES',
+  '4': 'Vital Climbing UWS',
+};
 
 const BG        = '#ffffff';
 const CARD      = '#d8eaf0';
@@ -152,6 +160,44 @@ function StatColumn({ label, value }: { label: string; value: string | number })
     <View style={styles.statColumn}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+/** Split array into consecutive pairs — used for the 2-row column grid layout. */
+function toPairs<T>(arr: T[]): T[][] {
+  const pairs: T[][] = [];
+  for (let i = 0; i < arr.length; i += 2) pairs.push(arr.slice(i, i + 2));
+  return pairs;
+}
+
+// Compact grid card (120px wide) — adapts the carousel card for the 2-row grid
+const CLIMB_CARD_W   = 120;
+const CLIMB_CARD_GAP = 8;
+
+function ClimbGridCard({ session }: { session: SupabaseSession }) {
+  return (
+    <View style={styles.gridCard}>
+      {/* Photo thumbnail — full width top section */}
+      {session.mediaUrl ? (
+        <Image source={{ uri: session.mediaUrl }} style={styles.gridCardThumb} resizeMode="cover" />
+      ) : (
+        <View style={styles.gridCardThumbEmpty}>
+          <Text style={styles.gridCardEmptyIcon}>🧗</Text>
+        </View>
+      )}
+
+      {/* Text content below thumbnail */}
+      <View style={styles.gridCardBody}>
+        {session.topGrade ? (
+          <Text style={styles.gridCardGrade}>{session.topGrade}</Text>
+        ) : null}
+        <Text style={styles.gridCardGym} numberOfLines={1}>{session.gymName}</Text>
+        <Text style={styles.gridCardDate}>{session.date}</Text>
+        <View style={styles.gridCardPill}>
+          <Text style={styles.gridCardPillText}>▲ VITAL</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -200,27 +246,36 @@ export default function ProfileScreen() {
   const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null);
   const [climbEntries, setClimbEntries]       = useState<ClimbEntry[]>([]);
   const [selectedGrade, setSelectedGrade]     = useState<string | null>(null);
-  const [activeTab, setActiveTab]   = useState<ProfileTab>('overview');
-  const [activeSession, setActiveSession] = useState(0);
-  const [climbSort, setClimbSort]   = useState<ClimbSort>('date');
-  const carouselRef = useRef<ScrollView>(null);
+  const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
 
-  const sortedSessions = [...sessions].sort((a, b) => {
-    if (climbSort === 'grade') {
-      return GRADES.indexOf(b.topGrade ?? 'V0') - GRADES.indexOf(a.topGrade ?? 'V0');
-    }
-    if (climbSort === 'gym') {
-      return a.gymName.localeCompare(b.gymName);
-    }
-    // default: date — already newest-first from Supabase, preserve order
-    return 0;
-  });
+  // ── My Climbs tab state ──────────────────────────────────────
+  const [myClimbsSlider,   setMyClimbsSlider]   = useState(0);           // index into GRADES
+  const [myClimbsSort,     setMyClimbsSort]     = useState<MyClimbsSort>('date');
+  const [myClimbsDropdown, setMyClimbsDropdown] = useState(false);
+  const myClimbsScrollRef    = useRef<ScrollView>(null);
+  const myClimbsSectionOffsets = useRef<Record<string, number>>({});
 
-  const handleSortChange = (sort: ClimbSort) => {
-    setClimbSort(sort);
-    setActiveSession(0);
-    carouselRef.current?.scrollTo({ x: 0, animated: false });
-  };
+  // Grade-grouped sessions for My Climbs — re-derived when sessions or sort changes
+  const myClimbsGroups = (() => {
+    const byGrade: Record<string, SupabaseSession[]> = {};
+    sessions.forEach((s) => {
+      const g = s.topGrade ?? 'V0';
+      if (!byGrade[g]) byGrade[g] = [];
+      byGrade[g].push(s);
+    });
+    // Sort within each grade group
+    Object.keys(byGrade).forEach((grade) => {
+      byGrade[grade].sort((a, b) => {
+        if (myClimbsSort === 'gym') return a.gymName.localeCompare(b.gymName);
+        // date: newest first (already Supabase order, preserve)
+        return 0;
+      });
+    });
+    return GRADES.filter((g) => byGrade[g]?.length).map((g) => ({
+      grade: g,
+      sessions: byGrade[g],
+    }));
+  })();
 
   const [editName, setEditName]         = useState('');
   const [editUsername, setEditUsername] = useState('');
@@ -255,9 +310,14 @@ export default function ProfileScreen() {
   const [followingList,      setFollowingList]      = useState<FollowUser[]>([]);
   const [followListLoading,  setFollowListLoading]  = useState(false);
 
-  const handleCarouselScroll = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
-    setActiveSession(Math.min(Math.max(index, 0), sessions.length - 1));
+  /** Grade slider tap → scroll My Climbs ScrollView to that grade's section */
+  const handleMyClimbsSlider = (idx: number) => {
+    setMyClimbsSlider(idx);
+    const grade = GRADES[idx];
+    const y = myClimbsSectionOffsets.current[grade];
+    if (y !== undefined) {
+      myClimbsScrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+    }
   };
 
   useEffect(() => {
@@ -1136,7 +1196,7 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* ── Sessions tab — carousel ──────────────────────────────── */}
+      {/* ── My Climbs tab — grade-grouped grid ──────────────────── */}
       {activeTab === 'sessions' && (
         <View style={styles.tabContentView}>
 
@@ -1148,53 +1208,125 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.carouselHeader}>
-                <Text style={styles.sectionTitle}>Your Climbs</Text>
-                <Text style={styles.carouselCounter}>
-                  {activeSession + 1} / {sortedSessions.length}
-                </Text>
-              </View>
+              {/* ── Header row: slider left, sort menu right ──── */}
+              <View style={styles.myClimbsHeader}>
 
-              {/* Sort pills */}
-              <View style={styles.sortRow}>
-                {([
-                  { key: 'date',  label: 'Date'  },
-                  { key: 'grade', label: 'Grade' },
-                  { key: 'gym',   label: 'Gym'   },
-                ] as { key: ClimbSort; label: string }[]).map(({ key, label }) => (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.sortPill, climbSort === key && styles.sortPillActive]}
-                    onPress={() => handleSortChange(key)}
-                    activeOpacity={0.7}>
-                    <Text style={[styles.sortPillLabel, climbSort === key && styles.sortPillLabelActive]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <ScrollView
-                ref={carouselRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                snapToInterval={CARD_WIDTH + CARD_GAP}
-                snapToAlignment="start"
-                decelerationRate="fast"
-                onMomentumScrollEnd={handleCarouselScroll}
-                contentContainerStyle={styles.carouselContent}>
-                {sortedSessions.map((session) => (
-                  <CarouselCard key={session.id} session={session} />
-                ))}
-              </ScrollView>
-
-              {sortedSessions.length > 1 && (
-                <View style={styles.dotRow}>
-                  {sortedSessions.slice(0, Math.min(sortedSessions.length, 7)).map((_, i) => (
-                    <View key={i} style={[styles.dot, i === activeSession && styles.dotActive]} />
-                  ))}
+                {/* Grade step-slider */}
+                <View style={styles.myClimbsSliderWrap}>
+                  <Text style={styles.myClimbsSliderValue}>{GRADES[myClimbsSlider]}</Text>
+                  <View style={styles.stepTrack}>
+                    <View style={styles.stepTrackLine} />
+                    <View style={[styles.stepTrackLineFilled, { width: `${(myClimbsSlider / (GRADES.length - 1)) * 100}%` }]} />
+                    {GRADES.map((grade, i) => {
+                      const hasData = myClimbsGroups.some((g) => g.grade === grade);
+                      return (
+                        <TouchableOpacity
+                          key={grade}
+                          style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
+                          onPress={() => handleMyClimbsSlider(i)}
+                          activeOpacity={0.7}>
+                          <View style={[
+                            styles.stepDot,
+                            i === myClimbsSlider && styles.stepDotActive,
+                            !hasData && styles.stepDotEmpty,
+                          ]} />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.stepLabels}>
+                    {GRADES.map((grade, i) => (
+                      <Text key={grade} style={[styles.stepLabelText, i === myClimbsSlider && styles.stepLabelActive]}>
+                        {grade}
+                      </Text>
+                    ))}
+                  </View>
                 </View>
+
+                {/* Sort hamburger button */}
+                <TouchableOpacity
+                  style={styles.myClimbsMenuBtn}
+                  onPress={() => setMyClimbsDropdown((v) => !v)}
+                  activeOpacity={0.7}>
+                  <Ionicons name="menu" size={22} color={TEXT} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Sort dropdown — closes on option select or outside tap */}
+              {myClimbsDropdown && (
+                <>
+                  {/* Invisible full-screen backdrop to close on outside tap */}
+                  <TouchableOpacity
+                    style={styles.dropdownBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setMyClimbsDropdown(false)}
+                  />
+                  <View style={styles.dropdown}>
+                    {([
+                      { key: 'date', label: 'Date' },
+                      { key: 'gym',  label: 'Gym'  },
+                    ] as { key: MyClimbsSort; label: string }[]).map(({ key, label }) => (
+                      <TouchableOpacity
+                        key={key}
+                        style={styles.dropdownItem}
+                        onPress={() => { setMyClimbsSort(key); setMyClimbsDropdown(false); }}
+                        activeOpacity={0.7}>
+                        <Text style={[styles.dropdownLabel, myClimbsSort === key && styles.dropdownLabelActive]}>
+                          {label}
+                        </Text>
+                        {myClimbsSort === key && (
+                          <Ionicons name="checkmark" size={15} color={PRIMARY} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
               )}
+
+              {/* ── Grade sections scroll ─────────────────────── */}
+              <ScrollView
+                ref={myClimbsScrollRef}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.myClimbsSections}>
+
+                {myClimbsGroups.map((group) => (
+                  <View
+                    key={group.grade}
+                    onLayout={(e) => { myClimbsSectionOffsets.current[group.grade] = e.nativeEvent.layout.y; }}>
+
+                    {/* Section header */}
+                    <View style={styles.myClimbsSectionHeader}>
+                      <View style={styles.myClimbsGradePill}>
+                        <Text style={styles.myClimbsGradePillText}>{group.grade}</Text>
+                      </View>
+                      <Text style={styles.myClimbsSectionMeta}>
+                        {group.sessions.length} climb{group.sessions.length !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+
+                    {/* 2-row horizontal grid — same pattern as Current Climbs */}
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.myClimbsGridRow}>
+                      {/*
+                        grid-auto-flow: column pattern:
+                        toPairs splits sessions into groups of 2 → each pair = one column (top + bottom).
+                        Columns flow left→right inside the horizontal ScrollView.
+                      */}
+                      {toPairs(group.sessions).map((pair, colIdx) => (
+                        <View key={colIdx} style={styles.myClimbsGridCol}>
+                          {pair.map((session) => (
+                            <ClimbGridCard key={session.id} session={session} />
+                          ))}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ))}
+
+                <View style={{ height: 32 }} />
+              </ScrollView>
             </>
           )}
         </View>
@@ -1911,7 +2043,194 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // ─── Sessions carousel ────────────────────────────────────────
+  // ─── My Climbs grid ──────────────────────────────────────────
+
+  // Header row: slider on left, hamburger on right
+  myClimbsHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 12,
+  },
+  myClimbsSliderWrap: {
+    flex: 1,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  myClimbsSliderValue: {
+    fontSize: 24,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: ACCENT,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  // Shared step-track styles (same visual as Current Climbs / Log screen)
+  stepTrack: { width: '100%', height: 28, justifyContent: 'center', marginBottom: 6 },
+  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: PRIMARY, borderRadius: 2 },
+  stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
+  stepDotActive: { width: 18, height: 18, borderRadius: 9, backgroundColor: PRIMARY, borderWidth: 3, borderColor: '#ffffff' },
+  stepDotEmpty: { opacity: 0.4 },   // grades with no logged climbs are dimmed
+  stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  stepLabelText: { fontSize: 9, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
+  stepLabelActive: { color: ACCENT, fontFamily: 'DMSans_800ExtraBold' },
+
+  // Hamburger menu button
+  myClimbsMenuBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+
+  // Sort dropdown
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 9,
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 70,   // below the header row
+    right: 16,
+    backgroundColor: BG,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    zIndex: 10,
+    minWidth: 130,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  dropdownLabel: {
+    fontSize: 14,
+    fontFamily: 'DMSans_700Bold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.1,
+  },
+  dropdownLabelActive: { color: PRIMARY },
+
+  // Grade sections scroll container
+  myClimbsSections: { paddingTop: 4, paddingBottom: 16 },
+
+  myClimbsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  myClimbsGradePill: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  myClimbsGradePillText: {
+    fontSize: 14,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+  myClimbsSectionMeta: {
+    fontSize: 13,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+  },
+
+  // 2-row column grid (same pattern as Current Climbs)
+  myClimbsGridRow: {
+    flexDirection: 'row',           // columns flow left→right
+    paddingHorizontal: 16,
+    gap: CLIMB_CARD_GAP,
+  },
+  myClimbsGridCol: {
+    flexDirection: 'column',        // up to 2 cards stack top→bottom
+    gap: CLIMB_CARD_GAP,
+  },
+
+  // Compact climb grid card
+  gridCard: {
+    width: CLIMB_CARD_W,
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#b0cdd8',
+    overflow: 'hidden',
+  },
+  gridCardThumb: {
+    width: CLIMB_CARD_W,
+    height: 80,
+  },
+  gridCardThumbEmpty: {
+    width: CLIMB_CARD_W,
+    height: 80,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridCardEmptyIcon: { fontSize: 22 },
+  gridCardBody: {
+    padding: 8,
+    gap: 2,
+  },
+  gridCardGrade: {
+    fontSize: 16,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: ACCENT,
+    letterSpacing: -0.3,
+  },
+  gridCardGym: {
+    fontSize: 12,
+    fontFamily: 'BebasNeue_400Regular',
+    color: TEXT,
+    letterSpacing: 0.3,
+    lineHeight: 15,
+  },
+  gridCardDate: {
+    fontSize: 10,
+    fontFamily: 'DMSans_600SemiBold',
+    color: TEXT_MUTED,
+    letterSpacing: 0.1,
+  },
+  gridCardPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: PRIMARY,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  gridCardPillText: {
+    fontSize: 8,
+    fontFamily: 'DMSans_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.8,
+  },
+
+  // ─── Sessions carousel (kept for reference / possible future use) ─
   sectionTitle: {
     fontSize: 26,
     fontFamily: 'BebasNeue_400Regular',
