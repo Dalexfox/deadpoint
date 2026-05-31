@@ -303,7 +303,7 @@ src/lib/
 4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym, add optional notes. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Notes saved to `sessions.notes`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Notes → Submit.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
-   - **My Climbs tab** — swipeable horizontal carousel of past sessions. Cards show top grade (ACCENT pink), optional notes, gym name, date, VITAL pill, and a media thumbnail when present.
+   - **My Climbs tab** — grade-grouped 3-column grid with a grade step-slider and sort dropdown. See My Climbs section below for full detail.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
    - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
@@ -362,9 +362,9 @@ The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
 - Stats (`totalSessions`, `totalClimbers`) fetched live from Supabase on focus
 
 **Current Climbs tab** (community climbs browser):
-- **Grade step-slider** — always shows all V0–V10. Selected grade displayed in ACCENT pink. Tapping a dot filters the section below to that grade.
-- **Grade section** — shows the selected grade's aggregated data, or "No climbs logged at this grade yet." if none exist. Does NOT auto-snap to a grade with data on load; defaults to V0.
-- **Problem card** — 100×110px thumbnail; cover photo = `media_url` from most-liked session at that grade; like count overlay (ACCENT pink, bottom-left); send count footer. Tapping opens the video grid modal.
+- **Grade step-slider** — always shows all V0–V10. Selected grade displayed in ACCENT pink. Tapping a dot filters the section below to that grade. Defaults to V0 on load (no auto-snap to first grade with data).
+- **Grade section** — shows the selected grade's aggregated data, or "No climbs logged at this grade yet." if none exist.
+- **Problem card grid** — 3-column row-first grid (`toRows()` chunks into groups of 3, each group is one row; incomplete last rows padded with invisible filler Views). Cards use `flex: 1` + `aspectRatio: 0.85`. Cover photo = `media_url` from most-liked session; like count overlay (ACCENT pink, bottom-left); send count footer. Tapping a card opens the video grid modal.
 - **Video grid modal** — conditionally rendered bottom sheet (`{modalGroup !== null && <Modal>}`); header shows grade pill + gym name + send count; 3-column portrait thumbnail grid sorted by most-liked; each cell shows climber initials chip (top-left, from `profiles.full_name`) and like count (bottom-left, ACCENT pink). TODO comment marks where to wire cell tap to feed navigation.
 - **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus. Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
 
@@ -405,13 +405,14 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Background `BG` white, `hairlineWidth` bottom border in `DIVIDER`
 - Tab bar is fixed (outside the ScrollView); profile header + tab content scroll as one page
 
-### Profile Session Carousel
-- Swipeable horizontal carousel with peek (next card visible at right edge)
-- `snapToInterval={CARD_WIDTH + CARD_GAP}`, `decelerationRate="fast"` — NOT `pagingEnabled`
-- Dot indicator (pills) below carousel, "X / Y" counter
-- Each card: grade (ACCENT pink) → notes (muted, optional) → divider → gym name → date → VITAL pill. Image thumbnail (113×150) absolutely positioned on right, vertically centered to card height.
-- `borderWidth: 1.5, borderColor: '#b0cdd8'` (light blue border)
-- **Sort pills** — row of three pills above the carousel: Date (default, newest first) · Grade (highest first) · Gym (alphabetical). Active pill: PRIMARY bg + white label. Inactive: SURFACE bg + TEXT_MUTED label. Changing sort resets carousel to card 1. Sorting is client-side on the already-fetched `sessions` array (`sortedSessions` derived value) — no extra Supabase queries. ⚠️ Rudimentary sorting for now — will improve in a future pass.
+### My Climbs Tab (grade-grouped grid)
+- **Layout** — grade step-slider (left, fills available width) + hamburger ☰ sort button (top-right, 44px teal surface tile). Below: a vertical ScrollView of grade sections.
+- **Grade step-slider** — same V0–V10 step-track visual as Current Climbs and the Log screen. Selected grade in ACCENT pink. Dots for grades with no logged climbs are dimmed (40% opacity). Tapping a dot scrolls the section list to that grade's section via `myClimbsScrollRef.current?.scrollTo()`.
+- **Sort dropdown** — tapping ☰ opens a floating dropdown (absolutely positioned, z-index 10, shadow card). Two options: **Date** (newest first, default) · **Gym** (alphabetical by `gymName`). Active option has an Ionicons checkmark in PRIMARY. Closing: tap an option or the invisible full-screen backdrop behind the dropdown.
+- **Grade sections** — one per grade the user has logged, ordered V0→V10. Each has a pink ACCENT grade pill + climb count in TEXT_MUTED. Sessions within each section are sorted by the active sort option.
+- **3-column row grid** — `toRows()` helper chunks sessions into groups of 3; each group renders as a `flexDirection: 'row'` View. Rows stack vertically. Incomplete last rows padded with invisible `flex: 1` filler Views so cards stay equal width.
+- **ClimbGridCard** (120px nominal, `flex: 1` in practice) — photo thumbnail (full width, 80px tall) at top or 🧗 placeholder; grade in ACCENT pink; gym name in BebasNeue; date in TEXT_MUTED; ▲ VITAL pill. `borderRadius: 14`, `borderColor: '#b0cdd8'`.
+- **State** — `myClimbsSlider` (index into GRADES), `myClimbsSort: MyClimbsSort`, `myClimbsDropdown: boolean`, `myClimbsScrollRef`, `myClimbsSectionOffsets` ref. Grade groups computed inline (`myClimbsGroups`) from `sessions` — no extra Supabase queries.
 
 ### Feed Likes & Comments (Supabase-backed)
 - **Like toggle** — optimistic: UI updates immediately, then inserts/deletes from `likes` table in background. Heart filled ACCENT when liked, outline when not.
@@ -464,7 +465,7 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
-- **My Climbs tab** (formerly "Sessions") — swipeable peek carousel; cards show top grade (ACCENT pink, 28px), optional notes, hairline divider, gym name (BebasNeue), date, VITAL pill; media thumbnail (113×150) absolutely positioned on right, vertically centered to full card height
+- **My Climbs tab** — redesigned as a grade-grouped 3-column grid. Grade step-slider (V0–V10) scrolls to grade sections; hamburger sort dropdown (Date / Gym) sorts within sections. ClimbGridCard: photo thumbnail top, grade in ACCENT pink, gym name, date, VITAL pill. Same `toRows()` 3-column row-first grid pattern as Current Climbs.
 - **Notes / description field** — multiline text input on Log screen and Gym Detail; saves to `sessions.notes`; displayed on My Climbs cards when present
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
