@@ -122,14 +122,6 @@ type FollowUser = {
 type ProfileTab   = 'overview' | 'sessions' | 'settings';
 type MyClimbsSort = 'date' | 'gym';
 
-// Gym names — local constant, no gyms table in DB
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital Climbing LES',
-  '2': 'Vital Climbing Brooklyn',
-  '3': 'Vital Climbing UES',
-  '4': 'Vital Climbing UWS',
-};
-
 const BG        = '#ffffff';
 const CARD      = '#d8eaf0';
 const SURFACE   = '#d8eaf0';
