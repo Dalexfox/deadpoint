@@ -1300,7 +1300,22 @@ export default function ProfileScreen() {
                         {toRows(group.entries).map((row, rowIdx) => (
                           <View key={rowIdx} style={styles.myClimbsGridRow}>
                             {row.map((entry, idx) => (
-                              <ClimbGridCard key={`${entry.sessionId}-${entry.grade}-${idx}`} entry={entry} />
+                              <TouchableOpacity
+                                key={`${entry.sessionId}-${entry.grade}-${idx}`}
+                                style={{ flex: 1 }}
+                                activeOpacity={0.75}
+                                onPress={() => {
+                                  setMediaViewerData({
+                                    mediaUrl: entry.mediaUrl,
+                                    gymName:  entry.gymName,
+                                    date:     entry.date,
+                                    grade:    entry.grade,
+                                    count:    1,
+                                  });
+                                  setMediaViewerVisible(true);
+                                }}>
+                                <ClimbGridCard entry={entry} />
+                              </TouchableOpacity>
                             ))}
                             {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
                               <View key={`pad-${i}`} style={styles.myClimbsGridPad} />
