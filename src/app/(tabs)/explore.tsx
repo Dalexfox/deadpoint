@@ -15,12 +15,14 @@ import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
 const BG         = '#ffffff';
-const SURFACE    = '#d8eaf0';
-const PRIMARY    = '#2E7A96';
-const TEXT       = '#0d2b36';
-const TEXT_SUB   = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER    = '#c8dde8';
+const CARD       = '#f4f1eb';
+const SURFACE    = '#ece8df';
+const SAND       = '#c8a84a';
+const SAND_LT    = '#e8c87a';
+const INK        = '#1a1408';
+const INK2       = '#3d3320';
+const INK3       = '#8a7a50';
+const DIVIDER    = 'rgba(26,20,8,0.08)';
 
 type UserRow = {
   id: string;
@@ -53,14 +55,14 @@ function UserAvatar({ user, size }: { user: UserRow; size: number }) {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: PRIMARY,
+        backgroundColor: SAND,
         alignItems: 'center',
         justifyContent: 'center',
       }}>
       <Text
         style={{
           fontSize: size * 0.35,
-          fontFamily: 'DMSans_800ExtraBold',
+          fontFamily: 'Syne_800ExtraBold',
           color: '#ffffff',
           letterSpacing: 0.3,
         }}>
@@ -88,7 +90,7 @@ function FollowButton({
       disabled={isLoading}
       activeOpacity={0.7}>
       {isLoading ? (
-        <ActivityIndicator size="small" color={isFollowing ? TEXT_MUTED : '#ffffff'} />
+        <ActivityIndicator size="small" color={isFollowing ? INK3 : '#ffffff'} />
       ) : (
         <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>
           {isFollowing ? 'Following' : 'Follow'}
@@ -306,11 +308,11 @@ export default function ExploreScreen() {
 
       {/* Search bar */}
       <View style={styles.searchBar}>
-        <Ionicons name="search-outline" size={17} color={TEXT_MUTED} />
+        <Ionicons name="search-outline" size={17} color={INK3} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search climbers..."
-          placeholderTextColor={TEXT_MUTED}
+          placeholderTextColor={INK3}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -332,7 +334,7 @@ export default function ExploreScreen() {
         keyboardShouldPersistTaps="handled">
         {isSearching ? (
           searchLoading ? (
-            <ActivityIndicator color={PRIMARY} style={styles.loader} />
+            <ActivityIndicator color={SAND} style={styles.loader} />
           ) : searchResults.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No climbers found</Text>
@@ -353,7 +355,7 @@ export default function ExploreScreen() {
           <>
             <Text style={styles.sectionHeader}>SUGGESTED CLIMBERS</Text>
             {suggestionsLoading ? (
-              <ActivityIndicator color={PRIMARY} style={styles.loader} />
+              <ActivityIndicator color={SAND} style={styles.loader} />
             ) : suggestions.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>No suggestions yet</Text>
@@ -391,8 +393,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 42,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 1,
     lineHeight: 46,
   },
@@ -410,13 +412,13 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
     padding: 0,
   },
   clearBtn: {
     fontSize: 22,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 24,
   },
   scrollContent: {
@@ -425,8 +427,8 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK3,
     letterSpacing: 1.4,
     marginBottom: 16,
   },
@@ -440,14 +442,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 26,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 1,
   },
   emptyText: {
     fontSize: 15,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     textAlign: 'center',
   },
   userRow: {
@@ -464,17 +466,17 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 15,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.1,
   },
   userHandle: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
   followBtn: {
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -489,10 +491,10 @@ const styles = StyleSheet.create({
   },
   followBtnText: {
     fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
   },
   followingBtnText: {
-    color: TEXT_MUTED,
+    color: INK3,
   },
 });

@@ -14,7 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
-const ACCENT = '#ff507c';
+const SAND = '#c8a84a';
+const INK  = '#1a1408';
+const INK3 = '#8a7a50';
+const CARD = '#f4f1eb';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -37,7 +40,6 @@ export default function LoginScreen() {
     if (error) {
       setError(error.message);
     }
-    // On success, _layout.tsx auth listener redirects to (tabs) automatically
   };
 
   return (
@@ -70,7 +72,7 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
-                placeholderTextColor="#bbbbbb"
+                placeholderTextColor={INK3}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
@@ -84,7 +86,7 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
-                placeholderTextColor="#bbbbbb"
+                placeholderTextColor={INK3}
                 secureTextEntry
                 autoComplete="password"
               />
@@ -138,8 +140,8 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontSize: 18,
-    fontFamily: 'BebasNeue_400Regular',
-    color: ACCENT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
     letterSpacing: 4,
   },
 
@@ -150,15 +152,15 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 58,
-    fontFamily: 'BebasNeue_400Regular',
-    color: '#0d2b36',
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -2,
     lineHeight: 58,
   },
   subheading: {
     fontSize: 15,
-    fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.1,
     lineHeight: 22,
   },
@@ -172,47 +174,42 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#aaaaaa',
-    letterSpacing: 1.4,
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: CARD,
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 16,
     fontSize: 16,
-    fontFamily: 'DMSans_500Medium',
-    color: '#0d2b36',
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
   },
   errorText: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: ACCENT,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: '#e8383c',
     marginTop: 4,
   },
   submitBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+    backgroundColor: SAND,
+    borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
   },
   submitBtnDisabled: {
     opacity: 0.6,
-    shadowOpacity: 0,
   },
   submitLabel: {
-    fontSize: 17,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
 
   // ─── Footer ──────────────────────────────────────────────────
@@ -223,12 +220,12 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   footerLink: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
   },
 });

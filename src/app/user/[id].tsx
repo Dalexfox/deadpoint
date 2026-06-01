@@ -15,13 +15,14 @@ import { supabase } from '../../lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG         = '#ffffff';
-const CARD       = '#d8eaf0';
-const SURFACE    = '#d8eaf0';
-const PRIMARY    = '#2E7A96';
-const TEXT       = '#0d2b36';
-const TEXT_SUB   = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER    = '#c8dde8';
+const CARD       = '#f4f1eb';
+const SURFACE    = '#ece8df';
+const SAND       = '#c8a84a';
+const SAND_LT    = '#e8c87a';
+const INK        = '#1a1408';
+const INK2       = '#3d3320';
+const INK3       = '#8a7a50';
+const DIVIDER    = 'rgba(26,20,8,0.08)';
 
 const GRADE_ORDER = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
 
@@ -238,7 +239,7 @@ export default function UserProfileScreen() {
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PRIMARY} />
+          <ActivityIndicator size="large" color={SAND} />
         </View>
       ) : (
         <ScrollView
@@ -335,7 +336,7 @@ export default function UserProfileScreen() {
               </View>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
                 {followListLoading ? (
-                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                  <ActivityIndicator color={SAND} style={{ paddingVertical: 32 }} />
                 ) : followersList.length === 0 ? (
                   <Text style={styles.sheetEmpty}>No followers yet</Text>
                 ) : (
@@ -378,7 +379,7 @@ export default function UserProfileScreen() {
               </View>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
                 {followListLoading ? (
-                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                  <ActivityIndicator color={SAND} style={{ paddingVertical: 32 }} />
                 ) : followingList.length === 0 ? (
                   <Text style={styles.sheetEmpty}>No one followed yet</Text>
                 ) : (
@@ -435,15 +436,15 @@ const styles = StyleSheet.create({
   },
   backChevron: {
     fontSize: 34,
-    color: TEXT,
-    fontFamily: 'DMSans_300Light',
+    color: INK,
+    fontFamily: 'SpaceGrotesk_300Light',
     lineHeight: 38,
     marginTop: -4,
   },
   headerTitle: {
     fontSize: 26,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 1.5,
   },
 
@@ -474,33 +475,33 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   avatarFallback: {
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
     fontSize: 34,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.5,
   },
   fullName: {
     fontSize: 26,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.3,
     textAlign: 'center',
   },
   username: {
     fontSize: 15,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     textAlign: 'center',
   },
   bio: {
     fontSize: 14,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 2,
@@ -524,14 +525,14 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 26,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 1.4,
     textAlign: 'center',
   },
@@ -544,7 +545,7 @@ const styles = StyleSheet.create({
 
   // ── Follow button ─────────────────────────────────────────────────────────────
   followBtn: {
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 20,
     paddingHorizontal: 28,
     paddingVertical: 10,
@@ -557,12 +558,12 @@ const styles = StyleSheet.create({
   },
   followBtnLabel: {
     fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
     letterSpacing: 0.2,
   },
   followBtnLabelActive: {
-    color: TEXT,
+    color: INK,
   },
   followCountRow: {
     flexDirection: 'row',
@@ -571,23 +572,23 @@ const styles = StyleSheet.create({
   },
   followCountText: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   followCountNum: {
     fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
   },
   followCountLabel: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   followCountDot: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 
   // ── Follow sheet ──────────────────────────────────────────────────────────────
@@ -621,13 +622,13 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.3,
   },
   sheetCloseBtn: {
     fontSize: 26,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 30,
     paddingHorizontal: 4,
   },
@@ -637,8 +638,8 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     textAlign: 'center',
     paddingVertical: 32,
   },
@@ -656,13 +657,13 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   sheetAvatarFallback: {
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sheetAvatarInitials: {
     fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
   },
   sheetUserInfo: {
@@ -671,13 +672,13 @@ const styles = StyleSheet.create({
   },
   sheetUserName: {
     fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.1,
   },
   sheetUserUsername: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
 });

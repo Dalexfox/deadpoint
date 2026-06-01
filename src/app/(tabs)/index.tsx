@@ -50,12 +50,14 @@ try {
 }
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
-const ACCENT     = '#ff507c';
-const PRIMARY    = '#2E7A96';
-const TEXT       = '#0d2b36';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER    = '#c8dde8';
-const SURFACE    = '#d8eaf0';
+const ACCENT     = '#e8383c';
+const SAND       = '#c8a84a';
+const SAND_LT    = '#e8c87a';
+const INK        = '#1a1408';
+const INK2       = '#3d3320';
+const INK3       = '#8a7a50';
+const DIVIDER    = 'rgba(26,20,8,0.08)';
+const SURFACE    = '#ece8df';
 const BG         = '#ffffff';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -164,7 +166,7 @@ async function fetchSessionPosts(
       username:    profile?.username ?? undefined,
       name,
       initials:    toInitials(name),
-      avatarBg:    PRIMARY,
+      avatarBg:    INK,
       avatarUrl:   profile?.avatar_url ?? undefined,
       timestamp:   timeAgo(session.created_at),
       likes:       likeCountMap[session.id] ?? 0,
@@ -275,9 +277,9 @@ function FullScreenCard({
           />
         )
       ) : (
-        // No media — teal-to-dark gradient background
+        // No media — dark gradient background
         <LinearGradient
-          colors={['#2E7A96', '#0d2b36']}
+          colors={['#2a2010', '#1a1408']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
@@ -691,7 +693,7 @@ export default function FeedScreen() {
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={{ paddingBottom: 8 }}>
                   {commentsLoading ? (
-                    <ActivityIndicator color={PRIMARY} style={{ marginVertical: 36 }} />
+                    <ActivityIndicator color={SAND} style={{ marginVertical: 36 }} />
                   ) : commentsList.length === 0 ? (
                     <View style={comment.emptyComments}>
                       <Text style={comment.emptyTitle}>No comments yet</Text>
@@ -786,20 +788,20 @@ const card = StyleSheet.create({
   },
   tabActiveText: {
     fontSize: 17,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
     letterSpacing: -0.2,
   },
   tabIndicator: {
     alignSelf: 'stretch',
     height: 2.5,
-    backgroundColor: ACCENT,
+    backgroundColor: SAND_LT,
     borderRadius: 2,
     marginTop: 4,
   },
   tabInactive: {
     fontSize: 16,
-    fontFamily: 'DMSans_500Medium',
+    fontFamily: 'SpaceGrotesk_500Medium',
     color: 'rgba(255,255,255,0.55)',
     letterSpacing: -0.1,
   },
@@ -830,14 +832,14 @@ const card = StyleSheet.create({
     borderRadius: 23,
   },
   railAvatarFallback: {
-    backgroundColor: PRIMARY,
+    backgroundColor: '#2a2010',
     alignItems: 'center',
     justifyContent: 'center',
   },
   railAvatarText: {
     fontSize: 15,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
     letterSpacing: 0.3,
   },
   railIcon: {
@@ -850,18 +852,18 @@ const card = StyleSheet.create({
   },
   railCount: {
     fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
     letterSpacing: 0.2,
   },
   railLabel: {
     fontSize: 11,
-    fontFamily: 'DMSans_600SemiBold',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
     color: '#ffffff',
     letterSpacing: 0.3,
   },
   railLabelFollowing: {
-    color: ACCENT,
+    color: SAND_LT,
   },
   followOverlay: {
     ...StyleSheet.absoluteFill,
@@ -883,25 +885,27 @@ const card = StyleSheet.create({
     zIndex: 10,
   },
   username: {
-    fontSize: 16,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 18,
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
   gymPill: {
     alignSelf: 'flex-start',
-    backgroundColor: PRIMARY,
+    backgroundColor: 'rgba(200,168,74,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(200,168,74,0.28)',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
   gymPillText: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: '#ffffff',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND_LT,
     letterSpacing: 0.1,
   },
 
@@ -916,21 +920,21 @@ const card = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  // Left section — grade in ACCENT pink
+  // Left section — grade in SAND_LT
   statGradeSection: {
     alignItems: 'center',
     gap: 3,
     paddingRight: 4,
   },
   statGradeValue: {
-    fontSize: 22,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ff507c',
-    letterSpacing: -0.4,
+    fontSize: 28,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
+    letterSpacing: -0.5,
   },
   statGradeLabel: {
     fontSize: 8,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: 'rgba(255,255,255,0.55)',
     letterSpacing: 1.4,
   },
@@ -947,7 +951,7 @@ const card = StyleSheet.create({
   },
   statGymText: {
     fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
     color: '#ffffff',
     letterSpacing: 0.1,
   },
@@ -968,13 +972,13 @@ const screen = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 28,
-    fontFamily: 'BebasNeue_400Regular',
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: 1,
+    letterSpacing: -1,
   },
   emptyText: {
     fontSize: 15,
-    fontFamily: 'DMSans_600SemiBold',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
     color: 'rgba(255,255,255,0.6)',
   },
 });
@@ -998,7 +1002,7 @@ const comment = StyleSheet.create({
   sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: DIVIDER,
+    backgroundColor: 'rgba(26,20,8,0.15)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -1011,13 +1015,13 @@ const comment = StyleSheet.create({
   },
   sheetTitle: {
     fontSize: 22,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
   },
   sheetClose: {
     fontSize: 30,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 34,
   },
   commentList: {
@@ -1030,21 +1034,21 @@ const comment = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 20,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
   },
   emptySub: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   row: {
     flexDirection: 'row',
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
+    borderBottomColor: 'rgba(26,20,8,0.08)',
   },
   avatarImg: {
     width: 38,
@@ -1056,15 +1060,15 @@ const comment = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#2a2010',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   avatarText: {
     fontSize: 13,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
     letterSpacing: 0.3,
   },
   rowContent: {
@@ -1078,18 +1082,18 @@ const comment = StyleSheet.create({
   },
   name: {
     fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
   },
   time: {
     fontSize: 11,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   text: {
     fontSize: 14,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK,
     lineHeight: 20,
   },
   inputRow: {
@@ -1099,7 +1103,7 @@ const comment = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: DIVIDER,
+    borderTopColor: 'rgba(26,20,8,0.08)',
   },
   input: {
     flex: 1,
@@ -1108,30 +1112,25 @@ const comment = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 11,
     fontSize: 15,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
   },
   sendBtn: {
-    backgroundColor: ACCENT,
+    backgroundColor: SAND,
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 11,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 64,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
   sendBtnDisabled: {
-    backgroundColor: TEXT_MUTED,
-    shadowOpacity: 0,
+    backgroundColor: INK3,
     opacity: 0.55,
   },
   sendBtnText: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
   },
 });

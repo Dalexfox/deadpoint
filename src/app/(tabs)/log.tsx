@@ -16,12 +16,14 @@ import { uploadSessionMedia, type MediaItem } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
 const BG        = '#ffffff';
-const SURFACE   = '#d8eaf0';
-const ACCENT    = '#ff507c';
-const PRIMARY   = '#2E7A96';
-const TEXT      = '#0d2b36';
-const TEXT_SUB  = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
+const CARD      = '#f4f1eb';
+const SURFACE   = '#ece8df';
+const ACCENT    = '#e8383c';
+const SAND      = '#c8a84a';
+const INK       = '#1a1408';
+const INK2      = '#3d3320';
+const INK3      = '#8a7a50';
+const DIVIDER   = 'rgba(26,20,8,0.08)';
 
 const GYMS = [
   'Vital Climbing LES',
@@ -263,7 +265,7 @@ export default function LogScreen() {
             value={notes}
             onChangeText={setNotes}
             placeholder="Describe the climb, beta, or how it felt..."
-            placeholderTextColor={TEXT_MUTED}
+            placeholderTextColor={INK3}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
@@ -299,15 +301,15 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 42,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1.5,
     lineHeight: 46,
   },
   subheading: {
     fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     marginTop: 6,
     letterSpacing: 0.1,
   },
@@ -320,10 +322,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.4,
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
   },
 
   // ── Media ─────────────────────────────────────────────────────
@@ -332,15 +335,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
+    backgroundColor: CARD,
+    borderRadius: 14,
     paddingVertical: 22,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
   },
   mediaPickerIcon: { fontSize: 22 },
   mediaPickerLabel: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK2,
     letterSpacing: -0.1,
   },
   mediaPreviewWrapper: {
@@ -356,17 +361,17 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 200,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
+    backgroundColor: CARD,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  videoIcon: { fontSize: 36, color: TEXT },
+  videoIcon: { fontSize: 36, color: INK },
   videoLabel: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
   mediaRemoveBtn: {
     position: 'absolute',
@@ -382,23 +387,25 @@ const styles = StyleSheet.create({
   mediaRemoveText: {
     fontSize: 13,
     color: '#ffffff',
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
 
   // ── Grade step slider ─────────────────────────────────────────
   sliderCard: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
     alignItems: 'center',
   },
   sliderValue: {
-    fontSize: 32,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: PRIMARY,
-    letterSpacing: 0.5,
+    fontSize: 64,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -3,
     marginBottom: 16,
   },
   stepTrack: {
@@ -411,15 +418,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 3,
-    backgroundColor: '#c2d9e3',
+    height: 1.5,
+    backgroundColor: DIVIDER,
     borderRadius: 2,
   },
   stepTrackLineFilled: {
     position: 'absolute',
     left: 0,
-    height: 3,
-    backgroundColor: PRIMARY,
+    height: 1.5,
+    backgroundColor: INK,
     borderRadius: 2,
   },
   stepHitArea: {
@@ -434,15 +441,15 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#c2d9e3',
-    borderWidth: 2,
-    borderColor: '#ffffff',
+    backgroundColor: SURFACE,
+    borderWidth: 0.5,
+    borderColor: 'rgba(26,20,8,0.1)',
   },
   stepDotActive: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
     borderWidth: 3,
     borderColor: '#ffffff',
   },
@@ -453,13 +460,13 @@ const styles = StyleSheet.create({
   },
   stepLabelText: {
     fontSize: 10,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     textAlign: 'center',
   },
   stepLabelTextActive: {
-    color: PRIMARY,
-    fontFamily: 'DMSans_800ExtraBold',
+    color: SAND,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
 
   // ── Gym dropdown ──────────────────────────────────────────────
@@ -467,26 +474,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     padding: 16,
   },
   dropdownTriggerText: {
     fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.2,
   },
   dropdownPlaceholder: {
-    color: TEXT_MUTED,
+    color: INK3,
   },
   dropdownChevron: {
     fontSize: 10,
-    color: TEXT_MUTED,
+    color: INK3,
   },
   dropdownList: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     marginTop: 6,
   },
   dropdownItem: {
@@ -497,56 +508,52 @@ const styles = StyleSheet.create({
   },
   dropdownItemBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#b8d4e0',
+    borderBottomColor: DIVIDER,
   },
   dropdownItemText: {
     fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK,
     letterSpacing: -0.2,
   },
   dropdownItemTextActive: {
-    color: PRIMARY,
-    fontFamily: 'DMSans_700Bold',
+    color: SAND,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   dropdownItemCheck: {
     fontSize: 16,
-    color: PRIMARY,
-    fontFamily: 'DMSans_800ExtraBold',
+    color: SAND,
+    fontFamily: 'Syne_800ExtraBold',
   },
 
   // ── Notes ─────────────────────────────────────────────────────
   notesInput: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     padding: 14,
     fontSize: 15,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK,
     minHeight: 100,
   },
 
   // ── Submit ────────────────────────────────────────────────────
   submitBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+    backgroundColor: SAND,
+    borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 4,
   },
   submitBtnDisabled: {
     opacity: 0.35,
-    shadowOpacity: 0,
   },
   submitLabel: {
-    fontSize: 17,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
 
   // ── Success ───────────────────────────────────────────────────
@@ -559,14 +566,14 @@ const styles = StyleSheet.create({
   successEmoji: { fontSize: 64 },
   successTitle: {
     fontSize: 52,
-    fontFamily: 'BebasNeue_400Regular',
-    color: ACCENT,
-    letterSpacing: 2,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -2,
   },
   successSub: {
     fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     letterSpacing: 0.1,
   },
 });

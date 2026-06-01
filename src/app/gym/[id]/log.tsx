@@ -17,13 +17,15 @@ import { supabase } from '../../../lib/supabase';
 import { uploadSessionMedia } from '../../../lib/store';
 
 const BG        = '#ffffff';
-const SURFACE   = '#d8eaf0';
-const ACCENT    = '#ff507c';
-const PRIMARY   = '#2E7A96';
-const TEXT_CLR  = '#0d2b36';
-const TEXT_SUB  = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER   = '#c8dde8';
+const CARD      = '#f4f1eb';
+const SURFACE   = '#ece8df';
+const ACCENT    = '#e8383c';
+const SAND      = '#c8a84a';
+const SAND_LT   = '#e8c87a';
+const INK       = '#1a1408';
+const INK2      = '#3d3320';
+const INK3      = '#8a7a50';
+const DIVIDER   = 'rgba(26,20,8,0.08)';
 
 const GYM_NAMES: Record<string, string> = {
   '1': 'Vital Climbing LES',
@@ -217,7 +219,7 @@ export default function GymLogScreen() {
             value={notes}
             onChangeText={setNotes}
             placeholder="Describe the climb, beta, or how it felt..."
-            placeholderTextColor={TEXT_MUTED}
+            placeholderTextColor={INK3}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
@@ -248,55 +250,55 @@ const styles = StyleSheet.create({
 
   nav: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
-  backArrow: { fontSize: 28, fontFamily: 'DMSans_300Light', color: TEXT_CLR, lineHeight: 28, marginTop: -2 },
-  backLabel: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: 0.1 },
+  backArrow: { fontSize: 28, fontFamily: 'SpaceGrotesk_300Light', color: INK, lineHeight: 28, marginTop: -2 },
+  backLabel: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: 0.1 },
 
   header: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
-  heading: { fontSize: 42, fontFamily: 'BebasNeue_400Regular', color: TEXT_CLR, letterSpacing: 1, lineHeight: 46 },
-  subheading: { fontSize: 16, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB, marginTop: 6, letterSpacing: 0.1 },
+  heading: { fontSize: 42, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: 1, lineHeight: 46 },
+  subheading: { fontSize: 16, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, marginTop: 6, letterSpacing: 0.1 },
 
   scrollWrap: { flex: 1 },
   scroll: { paddingHorizontal: 20, paddingBottom: 16, gap: 28 },
   section: { gap: 12 },
-  sectionLabel: { fontSize: 11, fontFamily: 'DMSans_800ExtraBold', color: TEXT_MUTED, letterSpacing: 1.4 },
+  sectionLabel: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: INK3, letterSpacing: 1.4 },
 
   // Media
   mediaPickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: SURFACE, borderRadius: 16, paddingVertical: 22 },
   mediaPickerIcon: { fontSize: 22 },
-  mediaPickerLabel: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: TEXT_SUB, letterSpacing: -0.1 },
+  mediaPickerLabel: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK2, letterSpacing: -0.1 },
   mediaPreviewWrapper: { position: 'relative', borderRadius: 16, overflow: 'hidden' },
   mediaPreview: { width: '100%', height: 200, borderRadius: 16 },
   videoPreview: { width: '100%', height: 200, backgroundColor: SURFACE, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  videoIcon: { fontSize: 36, color: TEXT_CLR },
-  videoLabel: { fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB },
+  videoIcon: { fontSize: 36, color: INK },
+  videoLabel: { fontSize: 14, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
   mediaRemoveBtn: { position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  mediaRemoveText: { fontSize: 13, color: '#ffffff', fontFamily: 'DMSans_700Bold' },
+  mediaRemoveText: { fontSize: 13, color: '#ffffff', fontFamily: 'SpaceGrotesk_700Bold' },
 
   // Grade step slider
   sliderCard: { backgroundColor: SURFACE, borderRadius: 14, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, alignItems: 'center' },
-  sliderValue: { fontSize: 32, fontFamily: 'DMSans_800ExtraBold', color: PRIMARY, letterSpacing: 0.5, marginBottom: 16 },
+  sliderValue: { fontSize: 32, fontFamily: 'Syne_800ExtraBold', color: SAND, letterSpacing: 0.5, marginBottom: 16 },
   stepTrack: { width: '100%', height: 32, justifyContent: 'center', marginBottom: 8 },
   stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
-  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: PRIMARY, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: SAND, borderRadius: 2 },
   stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
   stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
-  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: PRIMARY, borderWidth: 3, borderColor: '#ffffff' },
+  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: SAND, borderWidth: 3, borderColor: '#ffffff' },
   stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
-  stepLabelText: { fontSize: 10, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
-  stepLabelTextActive: { color: PRIMARY, fontFamily: 'DMSans_800ExtraBold' },
+  stepLabelText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
+  stepLabelTextActive: { color: SAND, fontFamily: 'Syne_800ExtraBold' },
 
   // Notes
-  notesInput: { backgroundColor: SURFACE, borderRadius: 14, padding: 14, fontSize: 15, fontFamily: 'DMSans_400Regular', color: TEXT_CLR, minHeight: 100 },
+  notesInput: { backgroundColor: SURFACE, borderRadius: 14, padding: 14, fontSize: 15, fontFamily: 'SpaceGrotesk_400Regular', color: INK, minHeight: 100 },
 
   // Footer
   footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: DIVIDER },
   submitBtn: { backgroundColor: ACCENT, borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowColor: ACCENT, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 4 },
   submitBtnDisabled: { opacity: 0.35, shadowOpacity: 0 },
-  submitLabel: { fontSize: 17, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
+  submitLabel: { fontSize: 17, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
 
   // Success
   successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   successEmoji: { fontSize: 64 },
-  successTitle: { fontSize: 52, fontFamily: 'BebasNeue_400Regular', color: ACCENT, letterSpacing: 2 },
-  successSub: { fontSize: 16, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB, letterSpacing: 0.1 },
+  successTitle: { fontSize: 52, fontFamily: 'Syne_800ExtraBold', color: ACCENT, letterSpacing: 2 },
+  successSub: { fontSize: 16, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, letterSpacing: 0.1 },
 });

@@ -5,13 +5,14 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
 const BG        = '#ffffff';
-const CARD      = '#d8eaf0';
-const SURFACE   = '#d8eaf0';
-const PRIMARY   = '#2E7A96';
-const TEXT_CLR   = '#0d2b36';
-const TEXT_SUB  = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER   = '#c8dde8';
+const CARD      = '#f4f1eb';
+const SURFACE   = '#ece8df';
+const SAND      = '#c8a84a';
+const SAND_LT   = '#e8c87a';
+const INK       = '#1a1408';
+const INK2      = '#3d3320';
+const INK3      = '#8a7a50';
+const DIVIDER   = 'rgba(26,20,8,0.08)';
 
 const SCREEN_W = Dimensions.get('window').width;
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 12) / 2;
@@ -144,15 +145,15 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 42,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT_CLR,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 1,
     lineHeight: 46,
   },
   subheading: {
     fontSize: 16,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     marginTop: 6,
     letterSpacing: 0.1,
   },
@@ -168,8 +169,8 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK3,
     letterSpacing: 1.4,
     paddingHorizontal: 4,
   },
@@ -195,7 +196,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 15,
     borderTopRightRadius: 15,
     overflow: 'hidden',
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
   },
   thumbImage: {
     width: '100%',
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
   },
   thumbInitial: {
     fontSize: 28,
-    fontFamily: 'BebasNeue_400Regular',
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 1,
   },
@@ -220,14 +221,14 @@ const styles = StyleSheet.create({
   },
   thumbName: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_CLR,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.2,
   },
   thumbLocation: {
     fontSize: 11,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     letterSpacing: 0.1,
   },
 
@@ -240,7 +241,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 });

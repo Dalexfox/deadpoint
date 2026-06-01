@@ -17,14 +17,15 @@ import { supabase } from '../../../lib/supabase';
 
 // ── Design tokens ────────────────────────────────────────────
 const BG         = '#ffffff';
-const SURFACE    = '#d8eaf0';
-const ACCENT     = '#ff507c';
-const PRIMARY    = '#2E7A96';
-const TEXT_CLR   = '#0d2b36';
-const TEXT_SUB   = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER    = '#c8dde8';
-const CARD_BDR   = '#b0cdd8';
+const CARD       = '#f4f1eb';
+const SURFACE    = '#ece8df';
+const ACCENT     = '#e8383c';
+const SAND       = '#c8a84a';
+const SAND_LT    = '#e8c87a';
+const INK        = '#1a1408';
+const INK2       = '#3d3320';
+const INK3       = '#8a7a50';
+const DIVIDER    = 'rgba(26,20,8,0.08)';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -500,7 +501,7 @@ export default function GymDetailScreen() {
           {/* ── Single grade section (filtered by slider) ────── */}
           {climbsLoading ? (
             <View style={styles.loadingCenter}>
-              <ActivityIndicator color={PRIMARY} size="large" />
+              <ActivityIndicator color={SAND} size="large" />
             </View>
           ) : gradeGroups.length === 0 ? (
             <View style={styles.loadingCenter}>
@@ -712,8 +713,8 @@ const styles = StyleSheet.create({
   // ── Nav ─────────────────────────────────────────────────────
   nav: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
-  backArrow: { fontSize: 28, fontFamily: 'DMSans_300Light', color: TEXT_CLR, lineHeight: 28, marginTop: -2 },
-  backLabel: { fontSize: 16, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: 0.1 },
+  backArrow: { fontSize: 28, fontFamily: 'SpaceGrotesk_300Light', color: INK, lineHeight: 28, marginTop: -2 },
+  backLabel: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: 0.1 },
 
   // ── Tab bar ──────────────────────────────────────────────────
   tabBar: {
@@ -730,28 +731,28 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 13,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK3,
     letterSpacing: 0.2,
   },
-  tabLabelActive: { color: PRIMARY },
+  tabLabelActive: { color: SAND },
   tabIndicator: {
     position: 'absolute',
     bottom: 0,
     left: 16,
     right: 16,
     height: 2,
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 2,
   },
 
   // ── Log tab scroll ───────────────────────────────────────────
   scroll: { paddingTop: 12, paddingBottom: 8 },
   section: { marginTop: 28, paddingHorizontal: 20, gap: 12 },
-  sectionTitle: { fontSize: 11, fontFamily: 'DMSans_800ExtraBold', color: TEXT_MUTED, letterSpacing: 1.4 },
+  sectionTitle: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: INK3, letterSpacing: 1.4 },
 
   // Hero
-  hero: { marginHorizontal: 16, height: 180, borderRadius: 20, backgroundColor: PRIMARY, overflow: 'hidden' },
+  hero: { marginHorizontal: 16, height: 180, borderRadius: 20, backgroundColor: SAND, overflow: 'hidden' },
   heroOverlay: { flex: 1, justifyContent: 'flex-end', padding: 20, backgroundColor: 'rgba(13,43,54,0.35)' },
   gymPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -759,9 +760,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8,
   },
   gymPillMarker: { fontSize: 8, color: '#ffffff' },
-  gymPillText: { fontSize: 11, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff', letterSpacing: 0.5, textTransform: 'uppercase' },
-  heroName: { fontSize: 34, fontFamily: 'BebasNeue_400Regular', color: '#ffffff', letterSpacing: 1, lineHeight: 38 },
-  heroLocation: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.1, marginTop: 2 },
+  gymPillText: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.5, textTransform: 'uppercase' },
+  heroName: { fontSize: 34, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 1, lineHeight: 38 },
+  heroLocation: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.1, marginTop: 2 },
 
   // Stats row
   statsRow: {
@@ -770,8 +771,8 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE, borderRadius: 16, paddingVertical: 16,
   },
   statBlock: { flex: 1, alignItems: 'center', gap: 2 },
-  statValue: { fontSize: 22, fontFamily: 'DMSans_800ExtraBold', color: TEXT_CLR },
-  statLabel: { fontSize: 10, fontFamily: 'DMSans_700Bold', color: TEXT_MUTED, letterSpacing: 1 },
+  statValue: { fontSize: 22, fontFamily: 'Syne_800ExtraBold', color: INK },
+  statLabel: { fontSize: 10, fontFamily: 'SpaceGrotesk_700Bold', color: INK3, letterSpacing: 1 },
   statDivider: { width: 1, height: 28, backgroundColor: DIVIDER },
 
   // Log CTA
@@ -781,23 +782,23 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT, borderRadius: 16, paddingVertical: 16,
     shadowColor: ACCENT, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 14, elevation: 4,
   },
-  logBtnLabel: { fontSize: 17, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
-  logBtnArrow: { fontSize: 18, fontFamily: 'DMSans_700Bold', color: '#ffffff' },
+  logBtnLabel: { fontSize: 17, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
+  logBtnArrow: { fontSize: 18, fontFamily: 'SpaceGrotesk_700Bold', color: '#ffffff' },
 
   // About
-  aboutText: { fontSize: 15, fontFamily: 'DMSans_400Regular', color: TEXT_CLR, lineHeight: 22, letterSpacing: -0.1 },
+  aboutText: { fontSize: 15, fontFamily: 'SpaceGrotesk_400Regular', color: INK, lineHeight: 22, letterSpacing: -0.1 },
   hoursRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: SURFACE, borderRadius: 12, padding: 12 },
   hoursIcon: { fontSize: 14 },
-  hoursText: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB, flex: 1 },
+  hoursText: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, flex: 1 },
 
   // Location
   mapCard: { borderRadius: 16, backgroundColor: SURFACE, overflow: 'hidden', borderWidth: 1.5, borderColor: DIVIDER },
-  mapPlaceholder: { height: 120, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  mapPlaceholder: { height: 120, backgroundColor: SAND, alignItems: 'center', justifyContent: 'center', gap: 6 },
   mapPin: { fontSize: 28 },
-  mapLabel: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: 'rgba(255,255,255,0.85)' },
+  mapLabel: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: 'rgba(255,255,255,0.85)' },
   addressRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 8 },
-  addressText: { flex: 1, fontSize: 14, fontFamily: 'DMSans_600SemiBold', color: TEXT_CLR, letterSpacing: -0.1 },
-  addressChevron: { fontSize: 20, color: TEXT_MUTED },
+  addressText: { flex: 1, fontSize: 14, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK, letterSpacing: -0.1 },
+  addressChevron: { fontSize: 20, color: INK3 },
 
   // Amenities
   amenitiesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -806,26 +807,26 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
   },
   amenityIcon: { fontSize: 16 },
-  amenityLabel: { fontSize: 13, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: -0.1 },
+  amenityLabel: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: -0.1 },
 
   // Clubs
   clubCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: SURFACE, borderRadius: 14, padding: 14 },
-  clubAvatar: { width: 40, height: 40, borderRadius: 10, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center' },
-  clubAvatarText: { fontSize: 18, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff' },
+  clubAvatar: { width: 40, height: 40, borderRadius: 10, backgroundColor: SAND, alignItems: 'center', justifyContent: 'center' },
+  clubAvatarText: { fontSize: 18, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
   clubInfo: { flex: 1, gap: 1 },
-  clubName: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: -0.2 },
-  clubMembers: { fontSize: 12, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB },
+  clubName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: -0.2 },
+  clubMembers: { fontSize: 12, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
   clubJoinBtn: { backgroundColor: BG, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 7, borderWidth: 1.5, borderColor: DIVIDER },
-  clubJoinLabel: { fontSize: 13, fontFamily: 'DMSans_700Bold', color: TEXT_CLR },
+  clubJoinLabel: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
 
   // Events
   eventCard: { flexDirection: 'row', gap: 14, backgroundColor: SURFACE, borderRadius: 14, padding: 14 },
-  eventDateBadge: { width: 52, height: 52, borderRadius: 12, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center' },
-  eventDateText: { fontSize: 11, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff', textAlign: 'center', letterSpacing: 0.2 },
+  eventDateBadge: { width: 52, height: 52, borderRadius: 12, backgroundColor: SAND, alignItems: 'center', justifyContent: 'center' },
+  eventDateText: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', textAlign: 'center', letterSpacing: 0.2 },
   eventBody: { flex: 1, gap: 2 },
-  eventTitle: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: -0.2 },
-  eventTime: { fontSize: 12, fontFamily: 'DMSans_600SemiBold', color: PRIMARY, letterSpacing: 0.1 },
-  eventDesc: { fontSize: 13, fontFamily: 'DMSans_400Regular', color: TEXT_SUB, lineHeight: 18, marginTop: 2 },
+  eventTitle: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: -0.2 },
+  eventTime: { fontSize: 12, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND, letterSpacing: 0.1 },
+  eventDesc: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK2, lineHeight: 18, marginTop: 2 },
 
   // ── Current Climbs: grade step-slider ────────────────────────
   sliderCard: {
@@ -836,36 +837,36 @@ const styles = StyleSheet.create({
   },
   sliderValue: {
     fontSize: 28,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontFamily: 'Syne_800ExtraBold',
     color: ACCENT,      // selected grade in ACCENT pink per spec
     letterSpacing: 0.5,
     marginBottom: 12,
   },
   stepTrack: { width: '100%', height: 32, justifyContent: 'center', marginBottom: 6 },
   stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
-  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: PRIMARY, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: SAND, borderRadius: 2 },
   stepHitArea: {
     position: 'absolute', width: 32, height: 32,
     marginLeft: -16, alignItems: 'center', justifyContent: 'center',
   },
   stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
-  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: PRIMARY, borderWidth: 3, borderColor: '#ffffff' },
+  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: SAND, borderWidth: 3, borderColor: '#ffffff' },
   stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
-  stepLabelText: { fontSize: 10, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
-  stepLabelActive: { color: ACCENT, fontFamily: 'DMSans_800ExtraBold' },
+  stepLabelText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
+  stepLabelActive: { color: ACCENT, fontFamily: 'Syne_800ExtraBold' },
 
   // ── Current Climbs: loading / empty ─────────────────────────
   loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32 },
-  emptyText: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
+  emptyText: { fontSize: 15, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
   // Per-grade empty state (shown when selected grade has no logged climbs)
   gradeEmptyState: { alignItems: 'center', justifyContent: 'center', paddingTop: 48, paddingHorizontal: 32, gap: 10 },
-  gradeEmptyGrade: { fontSize: 52, fontFamily: 'BebasNeue_400Regular', color: SURFACE, letterSpacing: 1 },
-  gradeEmptyText: { fontSize: 15, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
+  gradeEmptyGrade: { fontSize: 52, fontFamily: 'Syne_800ExtraBold', color: SURFACE, letterSpacing: 1 },
+  gradeEmptyText: { fontSize: 15, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
   emptyLogBtn: {
     backgroundColor: ACCENT, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24,
     shadowColor: ACCENT, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12,
   },
-  emptyLogBtnLabel: { fontSize: 15, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff' },
+  emptyLogBtnLabel: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
 
   // ── Current Climbs: grade sections ──────────────────────────
   climbsScroll: { paddingTop: 8, paddingBottom: 16 },
@@ -878,9 +879,9 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 4,
   },
-  gradePillText: { fontSize: 14, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
-  gradeSectionMeta: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: TEXT_SUB },
-  gradeSectionLikes: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: ACCENT, marginLeft: 'auto' as any },
+  gradePillText: { fontSize: 14, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
+  gradeSectionMeta: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
+  gradeSectionLikes: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: ACCENT, marginLeft: 'auto' as any },
 
   // Problem card grid — 3-column row-first layout
   probGrid: { paddingHorizontal: 16, gap: PROB_CARD_GAP },
@@ -890,7 +891,7 @@ const styles = StyleSheet.create({
     aspectRatio: 0.85,              // keeps cards a consistent height
     borderRadius: 14, overflow: 'hidden',
     backgroundColor: SURFACE,
-    borderWidth: 1.5, borderColor: CARD_BDR,
+    borderWidth: 1.5, borderColor: DIVIDER,
   },
   probCardPad: { flex: 1 },        // invisible filler for incomplete last rows
   probCardImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
@@ -901,13 +902,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 8,
     paddingHorizontal: 6, paddingVertical: 2,
   },
-  probCardLikeText: { fontSize: 11, fontFamily: 'DMSans_700Bold', color: ACCENT },
+  probCardLikeText: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: ACCENT },
   probCardFooter: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(0,0,0,0.50)',
     paddingHorizontal: 6, paddingVertical: 5,
   },
-  probCardSends: { fontSize: 11, fontFamily: 'DMSans_700Bold', color: '#ffffff' },
+  probCardSends: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: '#ffffff' },
 
   // ── Video grid modal ─────────────────────────────────────────
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
@@ -930,10 +931,10 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 3,
   },
-  modalGradePillText: { fontSize: 13, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff' },
-  modalGymName: { fontSize: 15, fontFamily: 'DMSans_700Bold', color: TEXT_CLR, letterSpacing: -0.2 },
-  modalSendCount: { fontSize: 13, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, marginTop: 2 },
-  modalCloseBtn: { fontSize: 26, color: TEXT_MUTED, lineHeight: 28, fontFamily: 'DMSans_300Light' },
+  modalGradePillText: { fontSize: 13, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
+  modalGymName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: -0.2 },
+  modalSendCount: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, marginTop: 2 },
+  modalCloseBtn: { fontSize: 26, color: INK3, lineHeight: 28, fontFamily: 'SpaceGrotesk_300Light' },
 
   // 3-column video grid
   videoGrid: { paddingHorizontal: 12, paddingTop: 12, gap: 4 },
@@ -946,20 +947,20 @@ const styles = StyleSheet.create({
   },
   videoCellImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   videoCellNoPhoto: { alignItems: 'center', justifyContent: 'center' },
-  videoCellNoPhotoGrade: { fontSize: 22, fontFamily: 'DMSans_800ExtraBold', color: TEXT_MUTED },
+  videoCellNoPhotoGrade: { fontSize: 22, fontFamily: 'Syne_800ExtraBold', color: INK3 },
   // Climber initials chip — top left
   videoCellInitials: {
     position: 'absolute', top: 6, left: 6,
     backgroundColor: 'rgba(0,0,0,0.50)', borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
   },
-  videoCellInitialsText: { fontSize: 11, fontFamily: 'DMSans_800ExtraBold', color: '#ffffff' },
+  videoCellInitialsText: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
   // Like count — bottom left
   videoCellLike: {
     position: 'absolute', bottom: 6, left: 6,
     backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
   },
-  videoCellLikeText: { fontSize: 11, fontFamily: 'DMSans_700Bold', color: ACCENT },
+  videoCellLikeText: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: ACCENT },
   videoCellPad: { flex: 1 },
 });

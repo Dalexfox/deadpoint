@@ -42,24 +42,24 @@ const CARD_GAP   = 12;
 const CARD_PEEK  = 28;  // how many px of the next card are visible
 const CARD_WIDTH = SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK; // 20 = left margin
 
-// Shared chart config — teal bars / lines on the card background
+// Shared chart config — warm cream background
 const BASE_CHART_CONFIG = {
-  backgroundColor:         '#d8eaf0',
-  backgroundGradientFrom:  '#d8eaf0',
-  backgroundGradientTo:    '#d8eaf0',
+  backgroundColor:         '#f4f1eb',
+  backgroundGradientFrom:  '#f4f1eb',
+  backgroundGradientTo:    '#f4f1eb',
   decimalPlaces:           0,
-  labelColor:              () => '#8bb5c4',      // TEXT_MUTED
-  propsForBackgroundLines: { stroke: '#c8dde8' }, // DIVIDER
+  labelColor:              () => '#8a7a50',       // INK3
+  propsForBackgroundLines: { stroke: 'rgba(26,20,8,0.08)' }, // DIVIDER
 };
 
 const PRIMARY_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
-  color: (opacity = 1) => `rgba(46, 122, 150, ${opacity})`, // PRIMARY teal
+  color: (opacity = 1) => `rgba(26, 20, 8, ${opacity})`, // INK
 };
 
 const ACCENT_CHART_CONFIG = {
   ...BASE_CHART_CONFIG,
-  color: (opacity = 1) => `rgba(255, 80, 124, ${opacity})`, // ACCENT pink
+  color: (opacity = 1) => `rgba(200, 168, 74, ${opacity})`, // SAND
 };
 
 // Maps sessions.gym_id → human-readable gym name
@@ -123,14 +123,15 @@ type ProfileTab   = 'overview' | 'sessions' | 'settings';
 type MyClimbsSort = 'date' | 'gym';
 
 const BG        = '#ffffff';
-const CARD      = '#d8eaf0';
-const SURFACE   = '#d8eaf0';
-const ACCENT    = '#ff507c';
-const PRIMARY   = '#2E7A96';
-const TEXT      = '#0d2b36';
-const TEXT_SUB  = '#3d7a8a';
-const TEXT_MUTED = '#8bb5c4';
-const DIVIDER   = '#c8dde8';
+const CARD      = '#f4f1eb';
+const SURFACE   = '#ece8df';
+const ACCENT    = '#e8383c';
+const SAND      = '#c8a84a';
+const SAND_LT   = '#e8c87a';
+const INK       = '#1a1408';
+const INK2      = '#3d3320';
+const INK3      = '#8a7a50';
+const DIVIDER   = 'rgba(26,20,8,0.08)';
 
 function toInitials(name: string): string {
   return name
@@ -558,7 +559,7 @@ export default function ProfileScreen() {
   const publishPost = async (uri: string, mediaType: 'image' | 'video') => {
     await saveUserPost({
       id: Date.now().toString(), name: displayName, initials: toInitials(displayName),
-      avatarBg: PRIMARY, timestamp: 'Just now', likes: 0, comments: 0,
+      avatarBg: INK, timestamp: 'Just now', likes: 0, comments: 0,
       liked: false, postType: 'photo', media: [{ type: mediaType, uri }],
     });
     Alert.alert('Posted!', 'Your photo is now live on the feed.');
@@ -683,10 +684,10 @@ export default function ProfileScreen() {
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.7}>
-            <Ionicons name="add-circle-outline" size={24} color={ACCENT} />
+            <Ionicons name="add-circle-outline" size={24} color={SAND} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} hitSlop={12}>
-            <Ionicons name="settings-outline" size={22} color={TEXT_SUB} />
+            <Ionicons name="settings-outline" size={22} color={INK3} />
           </TouchableOpacity>
         </View>
       </View>
@@ -791,7 +792,7 @@ export default function ProfileScreen() {
 
           {chartsLoading ? (
             <View style={styles.chartsLoadingContainer}>
-              <ActivityIndicator size="small" color={PRIMARY} />
+              <ActivityIndicator size="small" color={SAND} />
             </View>
           ) : chartData ? (
             <>
@@ -807,8 +808,8 @@ export default function ProfileScreen() {
                       colors: chartData.weeklyIntensity.map((_, i) =>
                         (_opacity: number) =>
                           selectedWeekDay === null || selectedWeekDay === i
-                            ? '#2E7A96'
-                            : 'rgba(46, 122, 150, 0.3)'
+                            ? '#1a1408'
+                            : '#ece8df'
                       ),
                     }],
                   }}
@@ -943,7 +944,7 @@ export default function ProfileScreen() {
                                       styles.gradeBar,
                                       {
                                         height: barH,
-                                        backgroundColor: isPeak ? ACCENT : PRIMARY,
+                                        backgroundColor: isPeak ? ACCENT : SAND,
                                         opacity: selectedGrade !== null && !isSelected ? 0.35 : 1,
                                       },
                                     ]} />
@@ -1022,7 +1023,7 @@ export default function ProfileScreen() {
                                   setMediaViewerVisible(true);
                                 }}
                                 activeOpacity={0.75}>
-                                <View style={[styles.dayDetailAccentBar, { backgroundColor: ACCENT }]} />
+                                <View style={[styles.dayDetailAccentBar, { backgroundColor: SAND }]} />
                                 <View style={styles.dayDetailBody}>
                                   <Text style={styles.dayDetailGym}>{e.gymName}</Text>
                                   <Text style={styles.dayDetailGrades}>{e.date}</Text>
@@ -1066,7 +1067,7 @@ export default function ProfileScreen() {
                                       styles.modalBar,
                                       {
                                         height: barH,
-                                        backgroundColor: isPeak ? ACCENT : PRIMARY,
+                                        backgroundColor: isPeak ? ACCENT : SAND,
                                         opacity: modalSelectedGrade !== null && !isSel ? 0.3 : 1,
                                       },
                                     ]} />
@@ -1266,7 +1267,7 @@ export default function ProfileScreen() {
                           {label}
                         </Text>
                         {myClimbsSort === key && (
-                          <Ionicons name="checkmark" size={15} color={PRIMARY} />
+                          <Ionicons name="checkmark" size={15} color={SAND} />
                         )}
                       </TouchableOpacity>
                     ))}
@@ -1466,7 +1467,7 @@ export default function ProfileScreen() {
               </View>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
                 {followListLoading ? (
-                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                  <ActivityIndicator color={SAND} style={{ paddingVertical: 32 }} />
                 ) : followersList.length === 0 ? (
                   <Text style={styles.sheetEmpty}>No followers yet</Text>
                 ) : (
@@ -1520,7 +1521,7 @@ export default function ProfileScreen() {
               </View>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetList}>
                 {followListLoading ? (
-                  <ActivityIndicator color={PRIMARY} style={{ paddingVertical: 32 }} />
+                  <ActivityIndicator color={SAND} style={{ paddingVertical: 32 }} />
                 ) : followingList.length === 0 ? (
                   <Text style={styles.sheetEmpty}>No one followed yet</Text>
                 ) : (
@@ -1586,9 +1587,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 36,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1.5,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1615,7 +1616,7 @@ const styles = StyleSheet.create({
   bannerPlaceholder: {
     width: '100%',
     height: 140,
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
   },
   bannerCameraBtn: {
     position: 'absolute',
@@ -1644,7 +1645,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 16,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#2a2010',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
@@ -1659,8 +1660,8 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     fontSize: 34,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
     letterSpacing: -0.5,
   },
   avatarEditBadge: {
@@ -1688,35 +1689,35 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 28,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1,
     marginBottom: 2,
   },
   username: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     letterSpacing: 0.1,
   },
   headerBio: {
     fontSize: 14,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
     letterSpacing: 0.1,
     marginTop: 4,
   },
   inviteFriendsBtn: {
     borderWidth: 1.5,
-    borderColor: PRIMARY,
+    borderColor: SAND,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   inviteFriendsLabel: {
     fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: PRIMARY,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: SAND,
     letterSpacing: 0.2,
   },
   followCountRow: {
@@ -1726,23 +1727,23 @@ const styles = StyleSheet.create({
   },
   followCountText: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   followCountNum: {
     fontSize: 13,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
   },
   followCountLabel: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   followCountDot: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 
   // ─── Stats ────────────────────────────────────────────────────
@@ -1759,15 +1760,15 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 26,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.5,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -1793,13 +1794,13 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 12,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK3,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   tabLabelActive: {
-    color: PRIMARY,
+    color: INK,
   },
   tabIndicator: {
     position: 'absolute',
@@ -1807,7 +1808,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 2,
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 1,
   },
 
@@ -1838,15 +1839,15 @@ const styles = StyleSheet.create({
   },
   chartTitle: {
     fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.3,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
     marginBottom: 2,
   },
   chartSubtitle: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.2,
     marginBottom: 12,
   },
@@ -1878,14 +1879,14 @@ const styles = StyleSheet.create({
   },
   gradeBarLabel: {
     fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.2,
     marginTop: 4,
   },
   gradeBarLabelActive: {
-    color: TEXT,
-    fontFamily: 'DMSans_800ExtraBold',
+    color: INK,
+    fontFamily: 'Syne_800ExtraBold',
   },
 
   // ─── Day chip row (Weekly Intensity drill-down) ───────────────
@@ -1904,15 +1905,15 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   dayChipActive: {
-    backgroundColor: TEXT,
+    backgroundColor: INK,
   },
   dayChipEmpty: {
     opacity: 0.35,
   },
   dayChipLabel: {
     fontSize: 10,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: 0.3,
   },
   dayChipLabelActive: {
@@ -1920,8 +1921,8 @@ const styles = StyleSheet.create({
   },
   dayChipCount: {
     fontSize: 13,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.3,
   },
   dayChipCountActive: {
@@ -1948,18 +1949,18 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   gradeChipActive: {
-    backgroundColor: TEXT,
+    backgroundColor: INK,
   },
   gradeChipActivePeak: {
-    backgroundColor: TEXT,
+    backgroundColor: INK,
   },
   gradeChipEmpty: {
     opacity: 0.3,
   },
   gradeChipLabel: {
     fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 0.2,
   },
   gradeChipLabelActive: {
@@ -1967,8 +1968,8 @@ const styles = StyleSheet.create({
   },
   gradeChipCount: {
     fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
   },
   gradeChipCountActive: {
     color: 'rgba(255,255,255,0.85)',
@@ -1981,20 +1982,20 @@ const styles = StyleSheet.create({
   },
   dayDetailHeading: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   dayDetailEmpty: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   dayDetailCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: BG,
     borderRadius: 12,
     padding: 12,
     gap: 10,
@@ -2002,7 +2003,7 @@ const styles = StyleSheet.create({
   dayDetailAccentBar: {
     width: 4,
     height: 36,
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 2,
   },
   dayDetailBody: {
@@ -2011,26 +2012,26 @@ const styles = StyleSheet.create({
   },
   dayDetailGym: {
     fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.2,
   },
   dayDetailGrades: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
   dayDetailProblems: {
     fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.5,
     textAlign: 'center',
   },
   dayDetailProblemsLabel: {
     fontSize: 9,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
@@ -2056,22 +2057,22 @@ const styles = StyleSheet.create({
   },
   myClimbsSliderValue: {
     fontSize: 24,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
-    letterSpacing: 0.5,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -1,
     marginBottom: 10,
   },
   // Shared step-track styles (same visual as Current Climbs / Log screen)
   stepTrack: { width: '100%', height: 28, justifyContent: 'center', marginBottom: 6 },
-  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
-  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: PRIMARY, borderRadius: 2 },
+  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 1.5, backgroundColor: DIVIDER, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 1.5, backgroundColor: INK, borderRadius: 2 },
   stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
-  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
-  stepDotActive: { width: 18, height: 18, borderRadius: 9, backgroundColor: PRIMARY, borderWidth: 3, borderColor: '#ffffff' },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: SURFACE, borderWidth: 0.5, borderColor: 'rgba(26,20,8,0.1)' },
+  stepDotActive: { width: 18, height: 18, borderRadius: 9, backgroundColor: INK, borderWidth: 3, borderColor: '#ffffff' },
   stepDotEmpty: { opacity: 0.4 },   // grades with no logged climbs are dimmed
   stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
-  stepLabelText: { fontSize: 9, fontFamily: 'DMSans_600SemiBold', color: TEXT_MUTED, textAlign: 'center' },
-  stepLabelActive: { color: ACCENT, fontFamily: 'DMSans_800ExtraBold' },
+  stepLabelText: { fontSize: 9, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
+  stepLabelActive: { color: SAND, fontFamily: 'Syne_800ExtraBold' },
 
   // Hamburger menu button
   myClimbsMenuBtn: {
@@ -2117,11 +2118,11 @@ const styles = StyleSheet.create({
   },
   dropdownLabel: {
     fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.1,
   },
-  dropdownLabelActive: { color: PRIMARY },
+  dropdownLabelActive: { color: SAND },
 
   // Grade sections scroll container
   myClimbsSections: { paddingTop: 4, paddingBottom: 16 },
@@ -2135,21 +2136,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   myClimbsGradePill: {
-    backgroundColor: ACCENT,
+    backgroundColor: SAND,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
   myClimbsGradePillText: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 0.2,
   },
   myClimbsSectionMeta: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 
   // 3-column row grid
@@ -2167,8 +2168,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: CARD,
     borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#b0cdd8',
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     overflow: 'hidden',
   },
   // Invisible filler to keep last-row cards the same width as full rows
@@ -2191,26 +2192,26 @@ const styles = StyleSheet.create({
   },
   gridCardGrade: {
     fontSize: 16,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
     letterSpacing: -0.3,
   },
   gridCardGym: {
     fontSize: 12,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: 0.3,
     lineHeight: 15,
   },
   gridCardDate: {
     fontSize: 10,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.1,
   },
   gridCardPill: {
     alignSelf: 'flex-start',
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -2218,17 +2219,17 @@ const styles = StyleSheet.create({
   },
   gridCardPillText: {
     fontSize: 8,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
     letterSpacing: 0.8,
   },
 
   // ─── Sessions carousel (kept for reference / possible future use) ─
   sectionTitle: {
     fontSize: 26,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1,
   },
   carouselHeader: {
     flexDirection: 'row',
@@ -2250,12 +2251,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   sortPillActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
   },
   sortPillLabel: {
     fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.3,
   },
   sortPillLabelActive: {
@@ -2263,8 +2264,8 @@ const styles = StyleSheet.create({
   },
   carouselCounter: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.3,
   },
   carouselContent: {
@@ -2277,8 +2278,8 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderRadius: 20,
     padding: 20,
-    borderWidth: 1.5,
-    borderColor: '#b0cdd8',
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
   },
   carouselLeft: {
     gap: 6,
@@ -2299,7 +2300,7 @@ const styles = StyleSheet.create({
   },
   carouselPill: {
     alignSelf: 'flex-start',
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -2307,21 +2308,21 @@ const styles = StyleSheet.create({
   },
   carouselPillText: {
     fontSize: 9,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#ffffff',
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
     letterSpacing: 1,
   },
   carouselGymName: {
     fontSize: 26,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 0.5,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
     lineHeight: 30,
   },
   carouselDate: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.2,
   },
   carouselDivider: {
@@ -2331,14 +2332,14 @@ const styles = StyleSheet.create({
   },
   carouselTopGrade: {
     fontSize: 28,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
     letterSpacing: -0.5,
   },
   carouselNotes: {
     fontSize: 13,
-    fontFamily: 'DMSans_400Regular',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
     lineHeight: 19,
   },
 
@@ -2355,12 +2356,12 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: DIVIDER,
+    backgroundColor: SURFACE,
   },
   dotActive: {
     width: 18,
     borderRadius: 3,
-    backgroundColor: PRIMARY,
+    backgroundColor: INK,
   },
 
   // ─── Session list card (legacy — kept for type safety) ────────
@@ -2379,27 +2380,27 @@ const styles = StyleSheet.create({
   accentBar: {
     width: 4,
     height: 36,
-    backgroundColor: PRIMARY,
+    backgroundColor: SAND,
     borderRadius: 2,
     marginRight: 12,
   },
   cardBody: { flex: 1 },
   cardGym: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.2,
     marginBottom: 3,
   },
   cardDetail: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
   cardDate: {
     fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.2,
     marginLeft: 8,
   },
@@ -2416,24 +2417,24 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 36, marginBottom: 4 },
   emptyTitle: {
     fontSize: 22,
-    fontFamily: 'BebasNeue_400Regular',
-    color: TEXT,
-    letterSpacing: 1.5,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
   },
   emptySub: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     textAlign: 'center',
     paddingHorizontal: 20,
   },
 
   // ─── Settings ─────────────────────────────────────────────────
   settingsSectionLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.4,
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
     textTransform: 'uppercase',
     marginHorizontal: 20,
     marginBottom: 12,
@@ -2444,70 +2445,72 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputLabel: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT_MUTED,
-    letterSpacing: 1.2,
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
     textTransform: 'uppercase',
     marginTop: 6,
     marginBottom: 2,
   },
   textInput: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
   },
   usernameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     paddingHorizontal: 16,
   },
   usernameAt: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK2,
     marginRight: 2,
   },
   usernameInput: {
     flex: 1,
     paddingVertical: 14,
     fontSize: 15,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
   },
   bioInput: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD,
     borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 14,
     fontSize: 15,
-    fontFamily: 'DMSans_500Medium',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
     minHeight: 90,
   },
   saveBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+    backgroundColor: SAND,
+    borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
   },
   saveBtnLabel: {
-    fontSize: 17,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
   signOutBtn: {
     marginHorizontal: 20,
@@ -2519,7 +2522,7 @@ const styles = StyleSheet.create({
   },
   signOutLabel: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#e53935',
     letterSpacing: 0.2,
   },
@@ -2533,14 +2536,14 @@ const styles = StyleSheet.create({
   },
   chartExpandIcon: {
     fontSize: 18,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 22,
   },
   chartCollapseIcon: {
     fontSize: 22,
-    color: TEXT,
+    color: INK,
     lineHeight: 26,
-    fontFamily: 'DMSans_400Regular',
+    fontFamily: 'SpaceGrotesk_400Regular',
   },
   modalBarChart: {
     flexDirection: 'row',
@@ -2563,14 +2566,14 @@ const styles = StyleSheet.create({
   },
   modalBarLabel: {
     fontSize: 10,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.2,
     marginTop: 5,
   },
   modalBarLabelActive: {
-    color: TEXT,
-    fontFamily: 'DMSans_800ExtraBold',
+    color: INK,
+    fontFamily: 'Syne_800ExtraBold',
   },
   modalChipScroll: {
     marginTop: 14,
@@ -2589,15 +2592,15 @@ const styles = StyleSheet.create({
   },
   modalSessionListHeading: {
     fontSize: 15,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   modalSessionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD,
+    backgroundColor: BG,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -2609,25 +2612,25 @@ const styles = StyleSheet.create({
   },
   modalSessionGym: {
     fontSize: 15,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.2,
   },
   modalSessionDate: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
     letterSpacing: 0.1,
   },
   modalSessionCount: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: PRIMARY,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
     letterSpacing: -0.2,
   },
   modalSessionChevron: {
     fontSize: 20,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 22,
   },
 
@@ -2672,13 +2675,13 @@ const styles = StyleSheet.create({
   },
   mediaPlayLabel: {
     fontSize: 18,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
     letterSpacing: 0.1,
   },
   mediaPlaySub: {
     fontSize: 13,
-    fontFamily: 'DMSans_400Regular',
+    fontFamily: 'SpaceGrotesk_400Regular',
     color: 'rgba(255,255,255,0.45)',
   },
   mediaPlaceholder: {
@@ -2688,13 +2691,13 @@ const styles = StyleSheet.create({
   },
   mediaPlaceholderTitle: {
     fontSize: 22,
-    fontFamily: 'BebasNeue_400Regular',
+    fontFamily: 'Syne_800ExtraBold',
     color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 1,
+    letterSpacing: -0.5,
   },
   mediaPlaceholderSub: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
     color: 'rgba(255,255,255,0.35)',
     textAlign: 'center',
   },
@@ -2711,13 +2714,13 @@ const styles = StyleSheet.create({
   },
   mediaInfoGym: {
     fontSize: 18,
-    fontFamily: 'DMSans_700Bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
     letterSpacing: -0.2,
   },
   mediaInfoMeta: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: 0.1,
   },
@@ -2739,7 +2742,7 @@ const styles = StyleSheet.create({
   sheetHandle: {
     width: 36,
     height: 4,
-    backgroundColor: DIVIDER,
+    backgroundColor: 'rgba(26,20,8,0.15)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -2753,13 +2756,13 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     fontSize: 18,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: TEXT,
-    letterSpacing: -0.3,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
   },
   sheetCloseBtn: {
     fontSize: 26,
-    color: TEXT_MUTED,
+    color: INK3,
     lineHeight: 30,
     paddingHorizontal: 4,
   },
@@ -2769,8 +2772,8 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     textAlign: 'center',
     paddingVertical: 32,
   },
@@ -2780,7 +2783,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
+    borderBottomColor: 'rgba(26,20,8,0.08)',
   },
   sheetAvatar: {
     width: 44,
@@ -2788,14 +2791,14 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   sheetAvatarFallback: {
-    backgroundColor: PRIMARY,
+    backgroundColor: '#2a2010',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sheetAvatarInitials: {
     fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
-    color: '#ffffff',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: SAND_LT,
   },
   sheetUserInfo: {
     flex: 1,
@@ -2803,17 +2806,17 @@ const styles = StyleSheet.create({
   },
   sheetUserName: {
     fontSize: 14,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
     letterSpacing: -0.1,
   },
   sheetUserUsername: {
     fontSize: 12,
-    fontFamily: 'DMSans_600SemiBold',
-    color: TEXT_SUB,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
   },
   sheetUnfollowBtn: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: DIVIDER,
     borderRadius: 16,
     paddingHorizontal: 12,
@@ -2822,8 +2825,8 @@ const styles = StyleSheet.create({
   },
   sheetUnfollowLabel: {
     fontSize: 12,
-    fontFamily: 'DMSans_700Bold',
-    color: TEXT_MUTED,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
     letterSpacing: 0.1,
   },
 });

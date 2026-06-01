@@ -14,7 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
-const ACCENT = '#ff507c';
+const SAND = '#c8a84a';
+const INK  = '#1a1408';
+const INK3 = '#8a7a50';
+const CARD = '#f4f1eb';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -38,7 +41,6 @@ export default function SignupScreen() {
     setLoading(true);
     setError('');
 
-    // Create the auth user
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -53,7 +55,6 @@ export default function SignupScreen() {
       return;
     }
 
-    // Insert profile record
     if (data.user) {
       const { error: profileError } = await supabase
         .from('profiles')
@@ -65,13 +66,11 @@ export default function SignupScreen() {
         });
 
       if (profileError) {
-        // Profile insert failed — log but don't block the user
         console.warn('Profile insert error:', profileError.message);
       }
     }
 
     setLoading(false);
-    // Auth listener in _layout.tsx handles redirect to (tabs)
   };
 
   return (
@@ -108,7 +107,7 @@ export default function SignupScreen() {
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="Alex Fox"
-                placeholderTextColor="#bbbbbb"
+                placeholderTextColor={INK3}
                 autoComplete="name"
                 autoCapitalize="words"
               />
@@ -123,7 +122,7 @@ export default function SignupScreen() {
                   value={username}
                   onChangeText={(t) => setUsername(t.toLowerCase().replace(/\s+/g, ''))}
                   placeholder="alexfox"
-                  placeholderTextColor="#bbbbbb"
+                  placeholderTextColor={INK3}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
@@ -137,7 +136,7 @@ export default function SignupScreen() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
-                placeholderTextColor="#bbbbbb"
+                placeholderTextColor={INK3}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
@@ -151,7 +150,7 @@ export default function SignupScreen() {
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Min. 6 characters"
-                placeholderTextColor="#bbbbbb"
+                placeholderTextColor={INK3}
                 secureTextEntry
                 autoComplete="new-password"
               />
@@ -209,15 +208,15 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 28,
-    fontFamily: 'DMSans_300Light',
-    color: '#0d2b36',
+    fontFamily: 'SpaceGrotesk_300Light',
+    color: INK,
     lineHeight: 28,
     marginTop: -2,
   },
   backLabel: {
     fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
-    color: '#0d2b36',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
   },
 
   // ─── Heading ─────────────────────────────────────────────────
@@ -227,15 +226,15 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 58,
-    fontFamily: 'BebasNeue_400Regular',
-    color: '#0d2b36',
-    letterSpacing: 1,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -2,
     lineHeight: 58,
   },
   subheading: {
     fontSize: 15,
-    fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
     letterSpacing: 0.1,
     lineHeight: 22,
   },
@@ -249,33 +248,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 11,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: '#aaaaaa',
-    letterSpacing: 1.4,
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: CARD,
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 16,
     fontSize: 16,
-    fontFamily: 'DMSans_500Medium',
-    color: '#0d2b36',
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
     flex: 1,
   },
   usernameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: CARD,
     borderRadius: 14,
     paddingLeft: 18,
     overflow: 'hidden',
   },
   usernameAt: {
     fontSize: 16,
-    fontFamily: 'DMSans_700Bold',
-    color: ACCENT,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: SAND,
     marginRight: 2,
   },
   usernameInput: {
@@ -285,31 +285,25 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    fontFamily: 'DMSans_600SemiBold',
-    color: ACCENT,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: '#e8383c',
     marginTop: 4,
   },
   submitBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 16,
+    backgroundColor: SAND,
+    borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
   },
   submitBtnDisabled: {
     opacity: 0.6,
-    shadowOpacity: 0,
   },
   submitLabel: {
-    fontSize: 17,
-    fontFamily: 'DMSans_800ExtraBold',
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
 
   // ─── Footer ──────────────────────────────────────────────────
@@ -320,12 +314,12 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    fontFamily: 'DMSans_600SemiBold',
-    color: '#888888',
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   footerLink: {
     fontSize: 14,
-    fontFamily: 'DMSans_800ExtraBold',
-    color: ACCENT,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
   },
 });
