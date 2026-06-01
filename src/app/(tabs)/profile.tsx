@@ -1304,12 +1304,7 @@ export default function ProfileScreen() {
                                 key={`${entry.sessionId}-${entry.grade}-${idx}`}
                                 style={{ flex: 1 }}
                                 activeOpacity={0.75}
-                                onPress={() =>
-                                  router.push({
-                                    pathname: '/(tabs)',
-                                    params: { focusSession: entry.sessionId },
-                                  })
-                                }>
+                                onPress={() => router.push(`/session/${entry.sessionId}`)}>
                                 <ClimbGridCard entry={entry} />
                               </TouchableOpacity>
                             ))}
