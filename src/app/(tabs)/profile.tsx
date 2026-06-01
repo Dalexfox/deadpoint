@@ -86,19 +86,18 @@ type ClimbEntry = {
   count:     number;
   gymName:   string;
   date:      string;
+  mediaUrl:  string | null;
 };
 
 // Shape of a session card built from Supabase data
 type SupabaseSession = {
-  id:            string;
-  gymName:       string;
-  gradesSummary: string;  // e.g. "V3 ×2  ·  V4 ×3  ·  V5 ×1"
-  topGrade:      string | null;  // highest grade climbed in this session
-  totalProblems: number;
-  date:          string;  // e.g. "May 27, 2026"
-  createdAt:     string;  // ISO string — used to filter sessions by day for chart drill-down
-  mediaUrl:      string | null;  // Supabase Storage URL for attached photo / video
-  notes:         string | null;  // optional description/notes from the log form
+  id:        string;
+  gymName:   string;
+  grade:     string | null;  // climbs[0].grade — every session is exactly one climb
+  date:      string;  // e.g. "May 27, 2026"
+  createdAt: string;  // ISO string — used to filter sessions by day for chart drill-down
+  mediaUrl:  string | null;  // Supabase Storage URL for attached photo / video
+  notes:     string | null;  // optional description/notes from the log form
 };
 
 // Data passed into the full-screen media viewer (Layer 3)
@@ -167,25 +166,25 @@ function toRows<T>(arr: T[], size = 3): T[][] {
 
 const CLIMB_CARD_GAP = 8;
 
-function ClimbGridCard({ session }: { session: SupabaseSession }) {
+function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
   return (
     <View style={styles.gridCard}>
-      {/* Photo thumbnail — full width top section */}
-      {session.mediaUrl ? (
-        <Image source={{ uri: session.mediaUrl }} style={styles.gridCardThumb} resizeMode="cover" />
+      {entry.mediaUrl ? (
+        <Image source={{ uri: entry.mediaUrl }} style={styles.gridCardThumb} resizeMode="cover" />
       ) : (
         <View style={styles.gridCardThumbEmpty}>
           <Text style={styles.gridCardEmptyIcon}>🧗</Text>
         </View>
       )}
-
-      {/* Text content below thumbnail */}
       <View style={styles.gridCardBody}>
-        {session.topGrade ? (
-          <Text style={styles.gridCardGrade}>{session.topGrade}</Text>
-        ) : null}
-        <Text style={styles.gridCardGym} numberOfLines={1}>{session.gymName}</Text>
-        <Text style={styles.gridCardDate}>{session.date}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+          <Text style={styles.gridCardGrade}>{entry.grade}</Text>
+          {entry.count > 1 && (
+            <Text style={styles.gridCardCount}>×{entry.count}</Text>
+          )}
+        </View>
+        <Text style={styles.gridCardGym} numberOfLines={1}>{entry.gymName}</Text>
+        <Text style={styles.gridCardDate}>{entry.date}</Text>
         <View style={styles.gridCardPill}>
           <Text style={styles.gridCardPillText}>▲ VITAL</Text>
         </View>
@@ -199,8 +198,8 @@ function CarouselCard({ session }: { session: SupabaseSession }) {
     <View style={styles.carouselCard}>
       {/* Left: text content */}
       <View style={styles.carouselLeft}>
-        {session.topGrade && (
-          <Text style={styles.carouselTopGrade}>{session.topGrade}</Text>
+        {session.grade && (
+          <Text style={styles.carouselTopGrade}>{session.grade}</Text>
         )}
         {session.notes ? (
           <Text style={styles.carouselNotes} numberOfLines={3}>{session.notes}</Text>
@@ -249,23 +248,20 @@ export default function ProfileScreen() {
 
   // Grade-grouped sessions for My Climbs — re-derived when sessions or sort changes
   const myClimbsGroups = (() => {
-    const byGrade: Record<string, SupabaseSession[]> = {};
-    sessions.forEach((s) => {
-      const g = s.topGrade ?? 'V0';
-      if (!byGrade[g]) byGrade[g] = [];
-      byGrade[g].push(s);
+    const byGrade: Record<string, ClimbEntry[]> = {};
+    climbEntries.forEach((e) => {
+      if (!byGrade[e.grade]) byGrade[e.grade] = [];
+      byGrade[e.grade].push(e);
     });
-    // Sort within each grade group
     Object.keys(byGrade).forEach((grade) => {
       byGrade[grade].sort((a, b) => {
         if (myClimbsSort === 'gym') return a.gymName.localeCompare(b.gymName);
-        // date: newest first (already Supabase order, preserve)
         return 0;
       });
     });
     return GRADES.filter((g) => byGrade[g]?.length).map((g) => ({
       grade: g,
-      sessions: byGrade[g],
+      entries: byGrade[g],
     }));
   })();
 
@@ -355,7 +351,7 @@ export default function ProfileScreen() {
           // ── 1. Sessions ─────────────────────────────────────────
           const { data: rawSessions, error: sessionsError } = await supabase
             .from('sessions')
-            .select('id, gym_id, total_problems, created_at, media_url, notes')
+            .select('id, gym_id, created_at, media_url, notes')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
 
@@ -385,27 +381,20 @@ export default function ProfileScreen() {
 
           // ── 3. Session cards ────────────────────────────────────
           const formatted: SupabaseSession[] = rawSessions.map((s) => {
-            const gymName      = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
-            const sessionClimbs = (climbsBySession[s.id] ?? [])
-              .sort((a, b) => GRADES.indexOf(a.grade) - GRADES.indexOf(b.grade));
-            const gradesSummary =
-              sessionClimbs.length > 0
-                ? sessionClimbs.map((c) => `${c.grade} ×${c.count}`).join('  ·  ')
-                : `${s.total_problems} problems`;
-            const topGrade = sessionClimbs.length > 0
-              ? sessionClimbs[sessionClimbs.length - 1].grade  // sorted ascending, so last = highest
-              : null;
-            const date = new Date(s.created_at).toLocaleDateString('en-US', {
+            const gymName = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
+            const grade   = (climbsBySession[s.id]?.[0]?.grade) ?? null;
+            const date    = new Date(s.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
             });
-            return { id: s.id, gymName, gradesSummary, topGrade, totalProblems: s.total_problems, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, notes: s.notes ?? null };
+            return { id: s.id, gymName, grade, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, notes: s.notes ?? null };
           });
           setSessions(formatted);
 
           // ── 4. Stats ────────────────────────────────────────────
-          const uniqueGyms   = new Set(rawSessions.map((s) => s.gym_id)).size;
-          const totalClimbs  = allClimbs.reduce((sum, c) => sum + (c.count ?? 0), 0);
-          let topGradeIndex  = -1;
+          const uniqueGyms  = new Set(rawSessions.map((s) => s.gym_id)).size;
+          const totalClimbs = allClimbs.length; // one climb row per session
+          // Overall top grade: highest V-scale grade across all sessions
+          let topGradeIndex = -1;
           allClimbs.forEach((c) => {
             const idx = GRADES.indexOf(c.grade);
             if (idx > topGradeIndex) topGradeIndex = idx;
@@ -424,7 +413,7 @@ export default function ProfileScreen() {
             const d = new Date(s.created_at);
             if (d >= weekStart) {
               const idx = (d.getDay() + 6) % 7;
-              if (idx < 7) dailyCounts[idx] += s.total_problems;
+              if (idx < 7) dailyCounts[idx] += 1;
             }
           });
 
@@ -448,7 +437,7 @@ export default function ProfileScreen() {
             weeklyTotals.push(
               rawSessions
                 .filter((s) => { const d = new Date(s.created_at); return d >= wStart && d <= wEnd; })
-                .reduce((sum, s) => sum + s.total_problems, 0)
+                .reduce((sum) => sum + 1, 0)
             );
             weekLabels.push(
               i % 2 === 0
@@ -460,13 +449,14 @@ export default function ProfileScreen() {
           setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels });
 
           // ── 6. Climb entries for grade drill-down ───────────────
-          const sessionMetaById: Record<string, { gymName: string; date: string }> = {};
+          const sessionMetaById: Record<string, { gymName: string; date: string; mediaUrl: string | null }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
               gymName: GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`,
               date: new Date(s.created_at).toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric', year: 'numeric',
               }),
+              mediaUrl: s.media_url ?? null,
             };
           });
           setClimbEntries(
@@ -478,6 +468,7 @@ export default function ProfileScreen() {
                 count:     c.count,
                 gymName:   sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
                 date:      sessionMetaById[c.session_id]?.date ?? '',
+                mediaUrl:  sessionMetaById[c.session_id]?.mediaUrl ?? null,
               }))
           );
 
@@ -885,12 +876,8 @@ export default function ProfileScreen() {
                             <View style={styles.dayDetailAccentBar} />
                             <View style={styles.dayDetailBody}>
                               <Text style={styles.dayDetailGym}>{s.gymName}</Text>
-                              <Text style={styles.dayDetailGrades}>{s.gradesSummary}</Text>
+                              {s.grade && <Text style={styles.dayDetailGrades}>{s.grade}</Text>}
                             </View>
-                            <Text style={styles.dayDetailProblems}>
-                              {s.totalProblems}{'\n'}
-                              <Text style={styles.dayDetailProblemsLabel}>problems</Text>
-                            </Text>
                           </View>
                         ))
                       )}
@@ -1210,7 +1197,7 @@ export default function ProfileScreen() {
                     <View style={styles.stepTrackLine} />
                     <View style={[styles.stepTrackLineFilled, { width: `${(myClimbsSlider / (GRADES.length - 1)) * 100}%` }]} />
                     {GRADES.map((grade, i) => {
-                      const hasData = myClimbsGroups.some((g) => g.grade === grade);
+                      const hasData = climbEntries.some((e) => e.grade === grade);
                       return (
                         <TouchableOpacity
                           key={grade}
@@ -1292,23 +1279,16 @@ export default function ProfileScreen() {
                         <Text style={styles.myClimbsGradePillText}>{group.grade}</Text>
                       </View>
                       <Text style={styles.myClimbsSectionMeta}>
-                        {group.sessions.length} climb{group.sessions.length !== 1 ? 's' : ''}
+                        {group.entries.reduce((s, e) => s + e.count, 0)} sends
                       </Text>
                     </View>
 
-                    {/*
-                      3-column row grid (grid-auto-flow: row):
-                      toRows chunks sessions into groups of 3 — each group is one
-                      horizontal row. Rows stack vertically inside the outer ScrollView.
-                      Last row pads with invisible filler Views so cards stay equal width.
-                    */}
                     <View style={styles.myClimbsGrid}>
-                      {toRows(group.sessions).map((row, rowIdx) => (
+                      {toRows(group.entries).map((row, rowIdx) => (
                         <View key={rowIdx} style={styles.myClimbsGridRow}>
-                          {row.map((session) => (
-                            <ClimbGridCard key={session.id} session={session} />
+                          {row.map((entry, idx) => (
+                            <ClimbGridCard key={`${entry.sessionId}-${entry.grade}-${idx}`} entry={entry} />
                           ))}
-                          {/* Pad incomplete last row so cards don't stretch */}
                           {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
                             <View key={`pad-${i}`} style={styles.myClimbsGridPad} />
                           ))}
@@ -2195,6 +2175,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Syne_800ExtraBold',
     color: SAND,
     letterSpacing: -0.3,
+  },
+  gridCardCount: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   gridCardGym: {
     fontSize: 12,

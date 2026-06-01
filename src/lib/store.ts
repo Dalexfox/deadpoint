@@ -20,18 +20,14 @@ export type Post = {
   userId?: string;        // Supabase auth user ID — used for profile tap-through
   username?: string;      // @username string for display
   gymId?: string;         // raw gym_id for navigation to /gym/[id]
-  topGrade?: string;      // highest grade with count > 0 (for stats bar)
-  climbsData?: { grade: string; count: number }[]; // active climbs for mini grade bars
+  topGrade?: string;  // grade from climbs[0].grade — every session is one climb
   timestamp: string;
   likes: number;
   comments: number;
   liked: boolean;
   media?: MediaItem[];
-  // Session posts
   postType?: 'session' | 'photo';
   gym?: string;
-  problems?: number;
-  difficulty?: string;
 };
 
 // ─── Posts ────────────────────────────────────────────────────

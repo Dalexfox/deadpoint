@@ -97,7 +97,7 @@ export default function UserProfileScreen() {
     // Fetch this user's sessions + their climbs for stat computation
     const { data: sessions } = await supabase
       .from('sessions')
-      .select('gym_id, climbs(grade, count)')
+      .select('gym_id, climbs(grade)')
       .eq('user_id', userId);
 
     // Compute stats from sessions
@@ -107,15 +107,14 @@ export default function UserProfileScreen() {
 
     (sessions ?? []).forEach((session) => {
       gymSet.add(session.gym_id);
-      ((session.climbs ?? []) as { grade: string; count: number }[]).forEach((climb) => {
-        if (climb.count > 0) {
-          totalClimbs += climb.count;
-          gradeCounts[climb.grade] = (gradeCounts[climb.grade] ?? 0) + climb.count;
-        }
-      });
+      const grade = ((session.climbs ?? []) as { grade: string }[])[0]?.grade;
+      if (grade) {
+        totalClimbs += 1;
+        gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1;
+      }
     });
 
-    // Top grade = highest grade in V-scale order that the user has climbed
+    // Top grade = highest V-scale grade across all sessions
     const topGrade =
       [...GRADE_ORDER].reverse().find((g) => (gradeCounts[g] ?? 0) > 0) ?? '—';
 

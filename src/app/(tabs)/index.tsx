@@ -69,7 +69,6 @@ const GYM_NAMES: Record<string, string> = {
   '4': 'Vital Climbing UWS',
 };
 
-const GRADE_ORDER = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
 
 // Height of the dark stats strip at the bottom of each card
 const STATS_BAR_H = 64;
@@ -105,12 +104,6 @@ function toInitials(name: string): string {
   return name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
 }
 
-function topGradeFromClimbs(climbs: { grade: string; count: number }[]): string | undefined {
-  return climbs
-    .filter(c => c.count > 0)
-    .sort((a, b) => GRADE_ORDER.indexOf(b.grade) - GRADE_ORDER.indexOf(a.grade))[0]?.grade;
-}
-
 // ─── Supabase fetch ───────────────────────────────────────────────────────────
 
 async function fetchSessionPosts(
@@ -118,7 +111,7 @@ async function fetchSessionPosts(
 ): Promise<{ posts: Post[]; followingSet: Set<string> }> {
   const { data: sessions, error } = await supabase
     .from('sessions')
-    .select('id, user_id, gym_id, total_problems, media_url, created_at, climbs(grade,count)')
+    .select('id, user_id, gym_id, media_url, created_at, climbs(grade)')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -157,28 +150,22 @@ async function fetchSessionPosts(
   const posts = sessions.map(session => {
     const profile = profileMap.get(session.user_id);
     const name    = profile?.full_name || profile?.username || 'Climber';
-    const grades  = (session.climbs ?? []) as { grade: string; count: number }[];
-    const active  = grades.filter(g => g.count > 0);
-
     const post: Post = {
-      id:          session.id,
-      userId:      session.user_id,
-      username:    profile?.username ?? undefined,
+      id:         session.id,
+      userId:     session.user_id,
+      username:   profile?.username ?? undefined,
       name,
-      initials:    toInitials(name),
-      avatarBg:    INK,
-      avatarUrl:   profile?.avatar_url ?? undefined,
-      timestamp:   timeAgo(session.created_at),
-      likes:       likeCountMap[session.id] ?? 0,
-      comments:    commentCountMap[session.id] ?? 0,
-      liked:       likedByMeMap[session.id] ?? false,
-      postType:    'session',
-      gym:         GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
-      gymId:       session.gym_id,
-      problems:    session.total_problems,
-      difficulty:  undefined,
-      topGrade:    topGradeFromClimbs(grades),
-      climbsData:  active,
+      initials:   toInitials(name),
+      avatarBg:   INK,
+      avatarUrl:  profile?.avatar_url ?? undefined,
+      timestamp:  timeAgo(session.created_at),
+      likes:      likeCountMap[session.id] ?? 0,
+      comments:   commentCountMap[session.id] ?? 0,
+      liked:      likedByMeMap[session.id] ?? false,
+      postType:   'session',
+      gym:        GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
+      gymId:      session.gym_id,
+      topGrade:   (session.climbs as { grade: string }[])?.[0]?.grade,
     };
 
     if (session.media_url) {
