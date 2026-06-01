@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 
@@ -396,6 +396,10 @@ function FullScreenCard({
 
 export default function FeedScreen() {
   const router = useRouter();
+  const { focusSession } = useLocalSearchParams<{ focusSession?: string }>();
+  const flatListRef      = useRef<FlatList<Post>>(null);
+  const focusSessionRef  = useRef<string | null>(null); // persist across renders
+
   const [posts,         setPosts]         = useState<Post[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -422,11 +426,14 @@ export default function FeedScreen() {
   );
   const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 60 });
 
-  // Load feed on every focus
+  // Load feed on every focus; if focusSession param is set, scroll to that post
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setLoading(true);
+
+      // Capture the param into a ref so the async callback can read it
+      if (focusSession) focusSessionRef.current = focusSession;
 
       (async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -439,10 +446,24 @@ export default function FeedScreen() {
         setPosts(sessionPosts);
         setFollowingSet(fs);
         setLoading(false);
+
+        // Scroll to the target session if one was requested
+        if (focusSessionRef.current) {
+          const targetId = focusSessionRef.current;
+          focusSessionRef.current = null; // consume it
+          const idx = sessionPosts.findIndex(p => p.id === targetId);
+          if (idx > 0) {
+            // Small delay to let the FlatList finish laying out
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({ index: idx, animated: false });
+            }, 100);
+          }
+        }
       })();
 
       return () => { active = false; };
-    }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusSession])
   );
 
   // Navigate to profile — own → tab, other → /user/[id]
@@ -615,6 +636,7 @@ export default function FeedScreen() {
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={posts}
             keyExtractor={item => item.id}
             renderItem={({ item, index }) => (
@@ -636,13 +658,13 @@ export default function FeedScreen() {
             showsVerticalScrollIndicator={false}
             snapToInterval={cardHeight}
             decelerationRate="fast"
+            getItemLayout={(_data, index) => ({ length: cardHeight, offset: cardHeight * index, index })}
+            onScrollToIndexFailed={({ index }) => {
+              // Fallback: scroll by offset if getItemLayout fails
+              flatListRef.current?.scrollToOffset({ offset: cardHeight * index, animated: false });
+            }}
             onViewableItemsChanged={onViewableItemsChangedRef.current}
             viewabilityConfig={viewabilityConfigRef.current}
-            getItemLayout={(_, index) => ({
-              length: cardHeight,
-              offset: cardHeight * index,
-              index,
-            })}
           />
         )}
       </View>

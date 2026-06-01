@@ -1304,16 +1304,12 @@ export default function ProfileScreen() {
                                 key={`${entry.sessionId}-${entry.grade}-${idx}`}
                                 style={{ flex: 1 }}
                                 activeOpacity={0.75}
-                                onPress={() => {
-                                  setMediaViewerData({
-                                    mediaUrl: entry.mediaUrl,
-                                    gymName:  entry.gymName,
-                                    date:     entry.date,
-                                    grade:    entry.grade,
-                                    count:    1,
-                                  });
-                                  setMediaViewerVisible(true);
-                                }}>
+                                onPress={() =>
+                                  router.push({
+                                    pathname: '/(tabs)',
+                                    params: { focusSession: entry.sessionId },
+                                  })
+                                }>
                                 <ClimbGridCard entry={entry} />
                               </TouchableOpacity>
                             ))}
