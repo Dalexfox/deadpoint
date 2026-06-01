@@ -93,7 +93,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="gym/[id]" />
-        <Stack.Screen name="session/[id]" />
+        <Stack.Screen name="session/[id]" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
     </ThemeProvider>
   );
