@@ -240,29 +240,18 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
 
   // ── My Climbs tab state ──────────────────────────────────────
-  const [myClimbsSlider,   setMyClimbsSlider]   = useState(0);           // index into GRADES
+  const [myClimbsSlider,   setMyClimbsSlider]   = useState<number | null>(null); // null = no dot highlighted
+  const [myClimbsFilter,   setMyClimbsFilter]   = useState<string | null>(null); // null = show all
   const [myClimbsSort,     setMyClimbsSort]     = useState<MyClimbsSort>('date');
   const [myClimbsDropdown, setMyClimbsDropdown] = useState(false);
-  const myClimbsScrollRef    = useRef<ScrollView>(null);
-  const myClimbsSectionOffsets = useRef<Record<string, number>>({});
 
-  // Grade-grouped sessions for My Climbs — re-derived when sessions or sort changes
-  const myClimbsGroups = (() => {
-    const byGrade: Record<string, ClimbEntry[]> = {};
-    climbEntries.forEach((e) => {
-      if (!byGrade[e.grade]) byGrade[e.grade] = [];
-      byGrade[e.grade].push(e);
-    });
-    Object.keys(byGrade).forEach((grade) => {
-      byGrade[grade].sort((a, b) => {
-        if (myClimbsSort === 'gym') return a.gymName.localeCompare(b.gymName);
-        return 0;
-      });
-    });
-    return GRADES.filter((g) => byGrade[g]?.length).map((g) => ({
-      grade: g,
-      entries: byGrade[g],
-    }));
+  // Filtered + sorted climb entries for the My Climbs grid
+  const filteredEntries = (() => {
+    const base = myClimbsFilter
+      ? climbEntries.filter((e) => e.grade === myClimbsFilter)
+      : [...climbEntries];
+    if (myClimbsSort === 'gym') base.sort((a, b) => a.gymName.localeCompare(b.gymName));
+    return base;
   })();
 
   const [editName, setEditName]         = useState('');
@@ -298,14 +287,10 @@ export default function ProfileScreen() {
   const [followingList,      setFollowingList]      = useState<FollowUser[]>([]);
   const [followListLoading,  setFollowListLoading]  = useState(false);
 
-  /** Grade slider tap → scroll My Climbs ScrollView to that grade's section */
+  /** Grade slider tap → set active filter to that grade */
   const handleMyClimbsSlider = (idx: number) => {
     setMyClimbsSlider(idx);
-    const grade = GRADES[idx];
-    const y = myClimbsSectionOffsets.current[grade];
-    if (y !== undefined) {
-      myClimbsScrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
-    }
+    setMyClimbsFilter(GRADES[idx]);
   };
 
   useEffect(() => {
@@ -1187,15 +1172,19 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
-              {/* ── Header row: slider left, sort menu right ──── */}
+              {/* ── Header row: slider left, clear/all + sort right ── */}
               <View style={styles.myClimbsHeader}>
 
                 {/* Grade step-slider */}
                 <View style={styles.myClimbsSliderWrap}>
-                  <Text style={styles.myClimbsSliderValue}>{GRADES[myClimbsSlider]}</Text>
+                  {myClimbsSlider !== null && (
+                    <Text style={styles.myClimbsSliderValue}>{GRADES[myClimbsSlider]}</Text>
+                  )}
                   <View style={styles.stepTrack}>
                     <View style={styles.stepTrackLine} />
-                    <View style={[styles.stepTrackLineFilled, { width: `${(myClimbsSlider / (GRADES.length - 1)) * 100}%` }]} />
+                    {myClimbsSlider !== null && (
+                      <View style={[styles.stepTrackLineFilled, { width: `${(myClimbsSlider / (GRADES.length - 1)) * 100}%` }]} />
+                    )}
                     {GRADES.map((grade, i) => {
                       const hasData = climbEntries.some((e) => e.grade === grade);
                       return (
@@ -1222,19 +1211,40 @@ export default function ProfileScreen() {
                   </View>
                 </View>
 
-                {/* Sort hamburger button */}
-                <TouchableOpacity
-                  style={styles.myClimbsMenuBtn}
-                  onPress={() => setMyClimbsDropdown((v) => !v)}
-                  activeOpacity={0.7}>
-                  <Ionicons name="menu" size={22} color={INK} />
-                </TouchableOpacity>
+                {/* Right column: Clear/All button + sort hamburger */}
+                <View style={styles.myClimbsRightCol}>
+                  {/* Clear / All button */}
+                  {myClimbsFilter !== null ? (
+                    <TouchableOpacity
+                      style={styles.myClimbsClearBtn}
+                      onPress={() => { setMyClimbsFilter(null); setMyClimbsSlider(null); }}
+                      activeOpacity={0.7}>
+                      <Text style={styles.myClimbsClearBtnText}>✕  Clear</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.myClimbsAllBtn}>
+                      <Text style={styles.myClimbsAllBtnText}>All</Text>
+                    </View>
+                  )}
+
+                  {/* Sort hamburger button */}
+                  <TouchableOpacity
+                    style={styles.myClimbsMenuBtn}
+                    onPress={() => setMyClimbsDropdown((v) => !v)}
+                    activeOpacity={0.7}>
+                    <Ionicons name="menu" size={22} color={INK} />
+                  </TouchableOpacity>
+                </View>
               </View>
+
+              {/* Active filter label */}
+              {myClimbsFilter !== null && (
+                <Text style={styles.myClimbsFilterLabel}>Showing {myClimbsFilter}</Text>
+              )}
 
               {/* Sort dropdown — closes on option select or outside tap */}
               {myClimbsDropdown && (
                 <>
-                  {/* Invisible full-screen backdrop to close on outside tap */}
                   <TouchableOpacity
                     style={styles.dropdownBackdrop}
                     activeOpacity={1}
@@ -1262,29 +1272,21 @@ export default function ProfileScreen() {
                 </>
               )}
 
-              {/* ── Grade sections scroll ─────────────────────── */}
+              {/* ── Filtered grid ────────────────────────────────── */}
               <ScrollView
-                ref={myClimbsScrollRef}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.myClimbsSections}>
 
-                {myClimbsGroups.map((group) => (
-                  <View
-                    key={group.grade}
-                    onLayout={(e) => { myClimbsSectionOffsets.current[group.grade] = e.nativeEvent.layout.y; }}>
-
-                    {/* Section header */}
-                    <View style={styles.myClimbsSectionHeader}>
-                      <View style={styles.myClimbsGradePill}>
-                        <Text style={styles.myClimbsGradePillText}>{group.grade}</Text>
-                      </View>
-                      <Text style={styles.myClimbsSectionMeta}>
-                        {group.entries.reduce((s, e) => s + e.count, 0)} sends
-                      </Text>
-                    </View>
-
+                {filteredEntries.length === 0 ? (
+                  <Text style={styles.myClimbsEmpty}>
+                    {myClimbsFilter
+                      ? `No ${myClimbsFilter} climbs logged yet`
+                      : 'No climbs logged yet'}
+                  </Text>
+                ) : (
+                  <>
                     <View style={styles.myClimbsGrid}>
-                      {toRows(group.entries).map((row, rowIdx) => (
+                      {toRows(filteredEntries).map((row, rowIdx) => (
                         <View key={rowIdx} style={styles.myClimbsGridRow}>
                           {row.map((entry, idx) => (
                             <ClimbGridCard key={`${entry.sessionId}-${entry.grade}-${idx}`} entry={entry} />
@@ -1295,10 +1297,9 @@ export default function ProfileScreen() {
                         </View>
                       ))}
                     </View>
-                  </View>
-                ))}
-
-                <View style={{ height: 32 }} />
+                    <View style={{ height: 32 }} />
+                  </>
+                )}
               </ScrollView>
             </>
           )}
@@ -2054,6 +2055,59 @@ const styles = StyleSheet.create({
   stepLabelText: { fontSize: 9, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
   stepLabelActive: { color: SAND, fontFamily: 'Syne_800ExtraBold' },
 
+  // Right column: clear/all + hamburger stacked
+  myClimbsRightCol: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+
+  // "✕  Clear" button — active when filter is set
+  myClimbsClearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(200,168,74,0.12)',
+    borderWidth: 0.5,
+    borderColor: SAND,
+  },
+  myClimbsClearBtnText: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: SAND,
+  },
+
+  // "All" label — passive when no filter
+  myClimbsAllBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  myClimbsAllBtnText: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: 'rgba(26,20,8,0.3)',
+  },
+
+  // "Showing V5" label below slider
+  myClimbsFilterLabel: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 12,
+    color: SAND,
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 4,
+    paddingHorizontal: 16,
+  },
+
+  // Empty state when filter finds no climbs
+  myClimbsEmpty: {
+    fontFamily: 'SpaceGrotesk_400Regular',
+    fontSize: 14,
+    color: 'rgba(26,20,8,0.35)',
+    textAlign: 'center',
+    marginTop: 40,
+  },
+
   // Hamburger menu button
   myClimbsMenuBtn: {
     width: 44,
@@ -2062,7 +2116,6 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
   },
 
   // Sort dropdown
@@ -2107,31 +2160,6 @@ const styles = StyleSheet.create({
   // Grade sections scroll container
   myClimbsSections: { paddingTop: 4, paddingBottom: 16 },
 
-  myClimbsSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  myClimbsGradePill: {
-    backgroundColor: SAND,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  myClimbsGradePillText: {
-    fontSize: 14,
-    fontFamily: 'Syne_800ExtraBold',
-    color: '#ffffff',
-    letterSpacing: 0.2,
-  },
-  myClimbsSectionMeta: {
-    fontSize: 13,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK3,
-  },
 
   // 3-column row grid
   myClimbsGrid: {
