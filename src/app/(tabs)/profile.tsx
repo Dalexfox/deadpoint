@@ -245,13 +245,23 @@ export default function ProfileScreen() {
   const [myClimbsSort,     setMyClimbsSort]     = useState<MyClimbsSort>('date');
   const [myClimbsDropdown, setMyClimbsDropdown] = useState(false);
 
-  // Filtered + sorted climb entries for the My Climbs grid
-  const filteredEntries = (() => {
-    const base = myClimbsFilter
+  // Grade-grouped sections for My Climbs — filtered by active grade, sorted within each group
+  const filteredGroups = (() => {
+    const source = myClimbsFilter
       ? climbEntries.filter((e) => e.grade === myClimbsFilter)
-      : [...climbEntries];
-    if (myClimbsSort === 'gym') base.sort((a, b) => a.gymName.localeCompare(b.gymName));
-    return base;
+      : climbEntries;
+    const byGrade: Record<string, ClimbEntry[]> = {};
+    source.forEach((e) => {
+      if (!byGrade[e.grade]) byGrade[e.grade] = [];
+      byGrade[e.grade].push(e);
+    });
+    Object.keys(byGrade).forEach((grade) => {
+      if (myClimbsSort === 'gym') byGrade[grade].sort((a, b) => a.gymName.localeCompare(b.gymName));
+    });
+    return GRADES.filter((g) => byGrade[g]?.length).map((g) => ({
+      grade: g,
+      entries: byGrade[g],
+    }));
   })();
 
   const [editName, setEditName]         = useState('');
@@ -1237,11 +1247,6 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              {/* Active filter label */}
-              {myClimbsFilter !== null && (
-                <Text style={styles.myClimbsFilterLabel}>Showing {myClimbsFilter}</Text>
-              )}
-
               {/* Sort dropdown — closes on option select or outside tap */}
               {myClimbsDropdown && (
                 <>
@@ -1272,34 +1277,47 @@ export default function ProfileScreen() {
                 </>
               )}
 
-              {/* ── Filtered grid ────────────────────────────────── */}
+              {/* ── Grade-grouped sections ───────────────────────── */}
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.myClimbsSections}>
 
-                {filteredEntries.length === 0 ? (
+                {filteredGroups.length === 0 ? (
                   <Text style={styles.myClimbsEmpty}>
                     {myClimbsFilter
                       ? `No ${myClimbsFilter} climbs logged yet`
                       : 'No climbs logged yet'}
                   </Text>
                 ) : (
-                  <>
-                    <View style={styles.myClimbsGrid}>
-                      {toRows(filteredEntries).map((row, rowIdx) => (
-                        <View key={rowIdx} style={styles.myClimbsGridRow}>
-                          {row.map((entry, idx) => (
-                            <ClimbGridCard key={`${entry.sessionId}-${entry.grade}-${idx}`} entry={entry} />
-                          ))}
-                          {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
-                            <View key={`pad-${i}`} style={styles.myClimbsGridPad} />
-                          ))}
+                  filteredGroups.map((group) => (
+                    <View key={group.grade}>
+                      {/* Section header: grade pill + send count */}
+                      <View style={styles.myClimbsSectionHeader}>
+                        <View style={styles.myClimbsGradePill}>
+                          <Text style={styles.myClimbsGradePillText}>{group.grade}</Text>
                         </View>
-                      ))}
+                        <Text style={styles.myClimbsSectionMeta}>
+                          {group.entries.length} send{group.entries.length !== 1 ? 's' : ''}
+                        </Text>
+                      </View>
+
+                      <View style={styles.myClimbsGrid}>
+                        {toRows(group.entries).map((row, rowIdx) => (
+                          <View key={rowIdx} style={styles.myClimbsGridRow}>
+                            {row.map((entry, idx) => (
+                              <ClimbGridCard key={`${entry.sessionId}-${entry.grade}-${idx}`} entry={entry} />
+                            ))}
+                            {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
+                              <View key={`pad-${i}`} style={styles.myClimbsGridPad} />
+                            ))}
+                          </View>
+                        ))}
+                      </View>
                     </View>
-                    <View style={{ height: 32 }} />
-                  </>
+                  ))
                 )}
+
+                <View style={{ height: 32 }} />
               </ScrollView>
             </>
           )}
@@ -2088,15 +2106,31 @@ const styles = StyleSheet.create({
     color: 'rgba(26,20,8,0.3)',
   },
 
-  // "Showing V5" label below slider
-  myClimbsFilterLabel: {
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    fontSize: 12,
-    color: SAND,
-    letterSpacing: 1,
-    marginBottom: 8,
-    marginTop: 4,
+  // Grade section header (grade pill + send count)
+  myClimbsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  myClimbsGradePill: {
+    backgroundColor: SAND,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  myClimbsGradePillText: {
+    fontSize: 14,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+  myClimbsSectionMeta: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 
   // Empty state when filter finds no climbs
