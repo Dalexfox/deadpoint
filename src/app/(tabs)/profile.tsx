@@ -1240,7 +1240,7 @@ export default function ProfileScreen() {
                   style={styles.myClimbsMenuBtn}
                   onPress={() => setMyClimbsDropdown((v) => !v)}
                   activeOpacity={0.7}>
-                  <Ionicons name="menu" size={22} color={TEXT} />
+                  <Ionicons name="menu" size={22} color={INK} />
                 </TouchableOpacity>
               </View>
 
@@ -1339,7 +1339,7 @@ export default function ProfileScreen() {
               value={editName}
               onChangeText={setEditName}
               placeholder="Your full name"
-              placeholderTextColor={TEXT_MUTED}
+              placeholderTextColor={INK3}
               autoCapitalize="words"
               returnKeyType="next"
             />
@@ -1352,7 +1352,7 @@ export default function ProfileScreen() {
                 value={editUsername}
                 onChangeText={setEditUsername}
                 placeholder="username"
-                placeholderTextColor={TEXT_MUTED}
+                placeholderTextColor={INK3}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="next"
@@ -1365,7 +1365,7 @@ export default function ProfileScreen() {
               value={editBio}
               onChangeText={setEditBio}
               placeholder="Tell the community about yourself…"
-              placeholderTextColor={TEXT_MUTED}
+              placeholderTextColor={INK3}
               multiline
               numberOfLines={3}
               textAlignVertical="top"

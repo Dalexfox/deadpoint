@@ -736,7 +736,7 @@ export default function FeedScreen() {
                   <TextInput
                     style={comment.input}
                     placeholder="Add a comment..."
-                    placeholderTextColor={TEXT_MUTED}
+                    placeholderTextColor={INK3}
                     value={commentInput}
                     onChangeText={setCommentInput}
                     returnKeyType="send"
