@@ -177,12 +177,7 @@ function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
         </View>
       )}
       <View style={styles.gridCardBody}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-          <Text style={styles.gridCardGrade}>{entry.grade}</Text>
-          {entry.count > 1 && (
-            <Text style={styles.gridCardCount}>×{entry.count}</Text>
-          )}
-        </View>
+        <Text style={styles.gridCardGrade}>{entry.grade}</Text>
         <Text style={styles.gridCardGym} numberOfLines={1}>{entry.gymName}</Text>
         <Text style={styles.gridCardDate}>{entry.date}</Text>
         <View style={styles.gridCardPill}>
@@ -2237,11 +2232,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Syne_800ExtraBold',
     color: SAND,
     letterSpacing: -0.3,
-  },
-  gridCardCount: {
-    fontSize: 11,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK3,
   },
   gridCardGym: {
     fontSize: 12,
