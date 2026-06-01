@@ -23,104 +23,112 @@ Key principles:
 - **Premium and minimal** — every element earns its place, no clutter
 - **Confident typography** — oversized, bold, editorial. Let the type do the talking
 - **White space is intentional** — breathing room makes things feel expensive
-- **Two-color system** — PRIMARY teal for structure, ACCENT pink only for key moments
+- **Warm ink + gold system** — INK near-black for structure, SAND gold for key moments, red ACCENT for likes only
 - **Performance meets culture** — this is a lifestyle app for people who take climbing seriously but also care how they look doing it
 
 Design references: Arc'teryx (clean, premium, minimal), Outside Days (bold oversized type), Baggu (editorial white space)
 
 ## Design System
 
-### Current Color Palette (Light)
+### Current Color Palette
 ```
-BG         = '#ffffff'   // Main background
-CARD       = '#d8eaf0'   // Card backgrounds
-SURFACE    = '#d8eaf0'   // Stats blocks, chips, grade rows
-ACCENT     = '#ff507c'   // Coral/hot pink — ONLY for: like buttons, submit/log session
-                         //   buttons, the Deadpoint wordmark, success screens
-PRIMARY    = '#2E7A96'   // Teal — active tabs, banners, gym tags, selectors, session bars
-TEXT       = '#0d2b36'   // Primary text
-TEXT_SUB   = '#3d7a8a'   // Subtitles, secondary text
-TEXT_MUTED = '#8bb5c4'   // Muted labels, section headers
-DIVIDER    = '#c8dde8'   // Hairline dividers
+BG         = '#ffffff'              // Main background — pure white
+CARD       = '#f4f1eb'              // Card / input backgrounds — warm cream
+SURFACE    = '#ece8df'              // Deeper surface, chip backgrounds
+INK        = '#1a1408'              // Primary text + structure (nav, banners, active dots)
+INK2       = '#3d3320'              // Secondary text
+INK3       = '#8a7a50'              // Muted text, labels, placeholders
+SAND       = '#c8a84a'              // PRIMARY ACCENT — grade display, active states,
+                                    //   submit buttons, active tab underline, top grade stat,
+                                    //   follow buttons, wordmark
+SAND_LT    = '#e8c87a'              // Light sand — feed card grade display,
+                                    //   avatar initials on dark backgrounds
+ACCENT     = '#e8383c'              // Red — ONLY for likes (heart) + peak grade bar on charts
+DIVIDER    = 'rgba(26,20,8,0.08)'   // Hairline dividers
 ```
 
-**ACCENT usage rules — use sparingly:**
-- ✅ Like buttons (heart icon + count)
-- ✅ Submit / Log Session buttons
+**SAND usage (the main accent — use for anything that needs emphasis):**
+- ✅ Submit / Log Session / Save Changes buttons
 - ✅ The Deadpoint wordmark on auth screens
-- ✅ "SESSION LOGGED" success screen title
-- ✅ Add Friend button border + text (social action)
-- ✅ Monthly Volume line chart line color
-- ✅ Peak bar in Grade Distribution chart
+- ✅ Active tab underline (profile tabs + feed "For You" underline)
+- ✅ Grade display (big V-scale number on Log / Gym Detail)
+- ✅ Top Grade stat value on Profile
+- ✅ Follow / Invite Friends button
 - ✅ Comment sheet Send button
-- ❌ Navigation buttons → use PRIMARY
-- ❌ Grade selectors / radio buttons → use PRIMARY
-- ❌ Banners / stat cards → use PRIMARY
+- ✅ Monthly Volume line chart color
+- ✅ Grade Distribution non-peak bars
+
+**ACCENT (red #e8383c) — use sparingly:**
+- ✅ Like buttons (heart icon + count) — only place red appears in the UI
+- ✅ Peak bar in Grade Distribution chart
+- ❌ Everything else → use SAND or INK
 
 ### Auth Screens (white background — intentionally different from main app)
 - Background: `#ffffff`
-- Heading text: `#0d2b36`
-- Subtext: `#888888`
-- Inputs: `#f5f5f5` fill, `borderRadius: 14`, text `#0d2b36`
-- Wordmark / accent: `#ff507c`
-- Submit button: ACCENT (`#ff507c`)
+- Heading text: INK (`#1a1408`)
+- Subtext: INK3 (`#8a7a50`)
+- Inputs: CARD (`#f4f1eb`) fill, `borderRadius: 14`, text INK
+- Wordmark / accent: SAND (`#c8a84a`)
+- Submit button: SAND
 
 ### Typography
-- **Display / Headings:** `BebasNeue_400Regular` — all caps, large, editorial
-  - Screen titles: 42px, letterSpacing: 1
-  - Auth headings: 58px, letterSpacing: 1
-  - Gym detail name: 40px
-- **Body / UI:** DM Sans family
-  - `DMSans_800ExtraBold` — card names, stat values, button labels
-  - `DMSans_700Bold` — gym names, action counts, dates
-  - `DMSans_600SemiBold` — subtitles, metadata, descriptions
-  - `DMSans_500Medium` — form inputs
-  - `DMSans_400Regular` — counter buttons
-  - `DMSans_300Light` — back arrow chevron
-- Section labels: 11px, DMSans_800ExtraBold, letterSpacing: 1.4, TEXT_MUTED color
+- **Display / Headings:** `Syne_800ExtraBold` — bold, editorial, tight tracking
+  - Screen titles: 42px, letterSpacing: -1.5
+  - Auth headings: 58px, letterSpacing: -2
+  - Profile name: 28px, letterSpacing: -1
+- **Body / UI:** Space Grotesk family
+  - `SpaceGrotesk_700Bold` — gym names, action counts, dates, button labels
+  - `SpaceGrotesk_600SemiBold` — subtitles, metadata, descriptions
+  - `SpaceGrotesk_500Medium` — form inputs
+  - `SpaceGrotesk_400Regular` — body text, notes
+  - `SpaceGrotesk_300Light` — back arrow chevron
+- Section labels: 9px, SpaceGrotesk_600SemiBold, letterSpacing: 2.5, textTransform: uppercase, INK3 color
 
-### Cards
-- `borderRadius: 20`, `borderWidth: 1.5`, `borderColor: DIVIDER`
-- Stats/surface blocks: `borderRadius: 14`, `backgroundColor: SURFACE`
-- Grade chips: `borderRadius: 10`, `backgroundColor: SURFACE` (active: `TEXT` `#0d2b36` bg + white label; unselected: SURFACE bg + TEXT label)
+### Cards + Inputs
+- `borderRadius: 14`, `borderWidth: 0.5`, `borderColor: DIVIDER`
+- `backgroundColor: CARD` (`#f4f1eb`)
+- Surface blocks (chips, sliders): `borderRadius: 10-14`, `backgroundColor: SURFACE`
 
 ### Feed Cards (TikTok full-screen)
 Each card fills the entire screen. Two background variants:
 - **With media** — full-screen `Image` or `expo-av Video` background
-- **Without media** — `LinearGradient '#2E7A96 → #0d2b36'` background
+- **Without media** — `LinearGradient '#2a2010 → #1a1408'` background (warm dark)
 
 Overlays (all `position: 'absolute'`):
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down
-- **Top tab row** — Following / For You / Nearby tabs at `top: 32`
+- **Top tab row** — Following / For You / Nearby tabs at `top: 32`; "For You" underline in SAND_LT
 - **Right action rail** — avatar, like, comment, share, gym icons stacked on right
-- **Bottom-left** — `@username` only
-- **Stats bar** — `height: 64`, `rgba(0,0,0,0.50)`, pinned to bottom: **left** — top grade in ACCENT pink + `GRADE` label; **right** — `📍 gymName` in white
+- **Bottom-left** — `@username` only (Syne_800ExtraBold, 18px)
+- **Stats bar** — `height: 64`, `rgba(0,0,0,0.50)`, pinned to bottom: **left** — top grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label; **right** — `📍 gymName` in white
 
 ### Profile Session Carousel Cards
 - `borderRadius: 20`, `backgroundColor: CARD`
-- `borderWidth: 1.5`, `borderColor: '#b0cdd8'` — light blue border
+- `borderWidth: 0.5`, `borderColor: DIVIDER`
 - Width: `SCREEN_WIDTH - 20 - CARD_GAP - CARD_PEEK` (peeks next card in from right)
-- **Layout:** left text column + image absolutely positioned on the right, vertically centered to full card height (`position: 'absolute', right: 30, top: 20, bottom: 20, justifyContent: 'center'`)
-- **Left column** (top → bottom): top grade in ACCENT pink (DMSans_800ExtraBold, 28px) → notes in TEXT_MUTED if present → hairline divider → gym name (BebasNeue) → date (muted) → teal `▲ VITAL` pill at bottom. `paddingRight: 139` keeps text clear of the image.
-- **Image thumbnail:** 113×150, `borderRadius: 12`, `overflow: 'hidden'`, `resizeMode: 'cover'`. Only shown when session has `media_url`.
-- **No PROBLEMS badge** — removed. Grade shown as single value (e.g. `V5`) in ACCENT pink.
+- **Left column** (top → bottom): top grade in SAND (Syne_800ExtraBold, 28px) → notes in INK3 → hairline divider → gym name (Syne_800ExtraBold) → date (INK3) → dark `▲ VITAL` pill with SAND_LT text
+- **Image thumbnail:** 113×150, `borderRadius: 12`, `overflow: 'hidden'`, `resizeMode: 'cover'`
 
 ### Buttons
-- Submit/CTA: `backgroundColor: ACCENT`, `borderRadius: 16`, `paddingVertical: 18`
-- Shadow: `shadowColor: ACCENT`, `shadowOpacity: 0.4`, `shadowRadius: 16`
-- Label: `DMSans_800ExtraBold`, 17px, `color: '#ffffff'`
-- Navigation CTA (e.g. "Log →"): `backgroundColor: PRIMARY`, same shape, white label
+- Submit/CTA: `backgroundColor: SAND`, `borderRadius: 12`, `paddingVertical: 18`, no shadow
+- Label: `Syne_800ExtraBold`, 15px, `letterSpacing: -0.3`, `color: '#ffffff'`
+
+### Grade Step-Track Slider
+- Track line: `height: 1.5`, `backgroundColor: DIVIDER`
+- Inactive dot: `backgroundColor: SURFACE`, `borderWidth: 0.5`, `borderColor: rgba(26,20,8,0.1)`
+- Active dot: `backgroundColor: INK`, `borderWidth: 3`, `borderColor: '#ffffff'`
+- Active label: SAND color
 
 ### Profile Avatar
 - **Square** with soft corners: `width: 100, height: 100, borderRadius: 16`
 - Edit badge: square `borderRadius: 8`, ACCENT background, bottom-right corner
-- Default background: PRIMARY (not ACCENT)
+- Default background: `#2a2010` (warm dark brown)
+- Initials color: SAND_LT
 - Border: `borderWidth: 3, borderColor: BG` (white ring separating avatar from banner)
 - Avatar uploads to Supabase Storage (`avatars/{userId}.jpg`) and `profiles.avatar_url` is updated — propagates to all feed cards
 
 ### Profile Banner
 - Full-width, height 140, sits at top of profile scroll
-- Placeholder: `backgroundColor: PRIMARY`
+- Placeholder: `backgroundColor: INK` (`#1a1408`)
 - Camera button (top-right) to change it: `aspect: [3, 1]` crop
 - Avatar overlaps banner by 36px (`marginTop: -36`)
 
@@ -129,7 +137,7 @@ Overlays (all `position: 'absolute'`):
 - **Navigation:** expo-router (NOT react-navigation — NEVER use react-navigation)
 - **Database:** Supabase (live — `src/lib/supabase.ts`)
 - **Auth:** Supabase Auth (live — email/password)
-- **Fonts:** `@expo-google-fonts/bebas-neue`, `@expo-google-fonts/dm-sans`
+- **Fonts:** `@expo-google-fonts/syne`, `@expo-google-fonts/space-grotesk`
 - **Storage:** `@react-native-async-storage/async-storage` (avatar URL cache, banner, photo posts)
 - **Media:** `expo-image-picker` (photos and videos)
 - **File I/O:** `expo-file-system/legacy` — MUST use the `/legacy` subpath in SDK 56; `readAsStringAsync` was moved there
@@ -465,17 +473,17 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
-- **My Climbs tab** — redesigned as a grade-grouped 3-column grid. Grade step-slider (V0–V10) scrolls to grade sections; hamburger sort dropdown (Date / Gym) sorts within sections. ClimbGridCard: photo thumbnail top, grade in ACCENT pink, gym name, date, VITAL pill. Same `toRows()` 3-column row-first grid pattern as Current Climbs.
+- **My Climbs tab** — redesigned as a grade-grouped 3-column grid. Grade step-slider (V0–V10) scrolls to grade sections; hamburger sort dropdown (Date / Gym) sorts within sections. ClimbGridCard: photo thumbnail top, grade in SAND gold, gym name, date, dark VITAL pill. Same `toRows()` 3-column row-first grid pattern as Current Climbs.
 - **Notes / description field** — multiline text input on Log screen and Gym Detail; saves to `sessions.notes`; displayed on My Climbs cards when present
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
-- **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT pink when liked
+- **Likes — Supabase-backed** — real like counts on feed cards; optimistic toggle inserts/deletes from `likes` table; heart fills ACCENT red when liked
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
-- **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or teal→dark gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (ACCENT pink) + gym name only
+- **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or warm dark ink gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (SAND_LT) + gym name only
 - **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
 - **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
-- **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d2b36` background + white tints on `/`; all other tabs use the normal light style
+- **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d0d0b` background + white tints on `/`; all other tabs use white bg with INK active tint
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
@@ -485,8 +493,8 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
-- Sign up / log in screens (white background, Bebas Neue, premium minimal)
-- Full light color system across all screens
+- Sign up / log in screens (white background, Syne ExtraBold, premium minimal)
+- Full ink/sand/cream design system across all screens
 
 ### 🔜 Phase 2
 - [x] Follow infrastructure (`follows` table + RLS) — done
@@ -504,11 +512,13 @@ Posts have a `postType` field: `'session'` or `'photo'`
 ## Important Rules for Claude Code
 - Always use **expo-router** for navigation, NEVER react-navigation
 - Always keep compatibility with **Expo SDK 56**
-- Use the **light palette** defined above — BG white, CARD/SURFACE `#d8eaf0`, PRIMARY `#2E7A96`, ACCENT `#ff507c`
-- ACCENT (`#ff507c`) is ONLY for: like buttons, submit/log buttons, wordmark, success screen titles, Monthly Volume chart line, Grade Distribution peak bar
-- PRIMARY (`#2E7A96`) is for: everything else that needs a color — tabs, banners, gym tags, selectors, nav buttons, carousel pills
-- Auth screens use **white backgrounds** with `#0d2b36` heading text — intentionally minimal
-- **Bebas Neue** for all display headings, **DM Sans** for all body/UI text
+- Use the **ink/sand/cream palette** defined above — BG white, CARD `#f4f1eb`, SURFACE `#ece8df`, INK `#1a1408`, SAND `#c8a84a`, ACCENT `#e8383c`
+- ACCENT (`#e8383c`) is ONLY for: like buttons (heart) + Grade Distribution peak bar — nowhere else
+- SAND (`#c8a84a`) is for: everything else that needs a color — buttons, active tabs, grade display, follow buttons, wordmark, chart lines, pills
+- INK (`#1a1408`) is for: structure — nav text, banners, active slider dots, body text
+- Auth screens use **white backgrounds** with INK heading text — intentionally minimal
+- **Syne_800ExtraBold** for all display headings, **SpaceGrotesk_*** for all body/UI text
+- NEVER use BebasNeue, DMSans, or the old teal/pink color system
 - Profile avatar is **square** (`borderRadius: 16`) — NOT circular
 - Always import Supabase from `src/lib/supabase.ts`
 - Keep `.env` out of git — credentials go there only
