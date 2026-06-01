@@ -518,7 +518,6 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - INK (`#1a1408`) is for: structure — nav text, banners, active slider dots, body text
 - Auth screens use **white backgrounds** with INK heading text — intentionally minimal
 - **Syne_800ExtraBold** for all display headings, **SpaceGrotesk_*** for all body/UI text
-- NEVER use BebasNeue, DMSans, or the old teal/pink color system
 - Profile avatar is **square** (`borderRadius: 16`) — NOT circular
 - Always import Supabase from `src/lib/supabase.ts`
 - Keep `.env` out of git — credentials go there only
