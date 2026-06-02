@@ -413,17 +413,9 @@ export default function ExploreScreen() {
               <Text style={styles.tagline}>Send It.</Text>
               <Text style={styles.taglineSub}>Find your people. Discover your next project.</Text>
             </View>
-            <Text style={styles.sectionHeader}>SUGGESTED CLIMBERS</Text>
             {suggestionsLoading ? (
               <ActivityIndicator color={SAND} style={styles.loader} />
-            ) : suggestions.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No suggestions yet</Text>
-                <Text style={styles.emptyText}>
-                  Log a session to find climbers at your gym.
-                </Text>
-              </View>
-            ) : (
+            ) : suggestions.length === 0 ? null : (
               suggestions.map((user) => (
                 <UserRowItem
                   key={user.id}
