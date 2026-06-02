@@ -396,13 +396,16 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Explore Tab (`/explore`)
-- "EXPLORE" BebasNeue header, SURFACE search bar with Ionicons `search-outline` icon
-- **Search** — TextInput debounced 350ms; queries `profiles` with `.ilike('username', '%q%')`; filters out the current user. Results show when query is non-empty.
-- **Suggested Climbers** — shown when search is empty. Finds users who have sessions at the same gyms as the current user (queries `sessions` by `gym_id`), excludes self and already-followed users, batch-fetches their profiles.
-- **User rows** — circular avatar (real photo or PRIMARY initials fallback), `full_name` (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), Follow/Following toggle button.
-- **Follow button** — PRIMARY solid background + white label when not following; SURFACE background + DIVIDER border + TEXT_MUTED label when following. Optimistic: UI updates immediately, then writes to/deletes from `follows` table.
-- **Empty state** — "Log a session to find climbers at your gym." shown if no suggestions.
+- "EXPLORE" header (Syne_800ExtraBold), SURFACE search bar with Ionicons `search-outline` icon
+- **Search** — placeholder "Search climbers & gyms...". TextInput debounced 350ms for climbers; gyms filtered instantly from `fetchGyms()` cache. Results show when query is non-empty.
+- **Gym search** — matches gym `name`, `neighborhood`, or `city` client-side. Results shown in a **GYMS** section above climbers. Each gym row: SAND location-pin icon in a CARD square, gym name (Syne_800ExtraBold) + neighborhood (SpaceGrotesk_600SemiBold, INK3), chevron. Tapping navigates to `/gym/[id]`.
+- **Climber search** — queries `profiles` with `.or('username.ilike,full_name.ilike')`; filters out current user. Shown in a **CLIMBERS** section below gyms.
+- **Empty search state** — bold `"Send It."` tagline (38px Syne_800ExtraBold) + subline `"Find your people. Discover your next project."` above the suggested climbers list. No section label shown.
+- **Suggested Climbers** — shown below tagline when search is empty. Finds users who have sessions at the same gyms as the current user (queries `sessions` by `gym_id`), excludes self and already-followed users, batch-fetches their profiles. No header label. No empty state message — if no suggestions, just the tagline is shown.
+- **User rows** — circular avatar (real photo or SAND initials fallback), `full_name` (Syne_800ExtraBold), `@username` (SpaceGrotesk_600SemiBold, INK2), Follow/Following toggle button.
+- **Follow button** — SAND solid + white label when not following; SURFACE background + DIVIDER border + INK3 label when following. Optimistic: UI updates immediately, then writes to/deletes from `follows` table.
 - `followingSet` is a `Set<string>` of following_ids; refreshed on every screen focus via `useFocusEffect`.
+- Gyms loaded once on mount via `useEffect` + `fetchGyms()` (cached).
 
 ### Gym Detail (`/gym/[id]`)
 The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
@@ -553,7 +556,7 @@ Therefore:
 - **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d0d0b` background + white tints on `/`; all other tabs use white bg with INK active tint
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
-- **Explore tab** — search climbers by username (`ilike`), suggested climbers from shared gyms, Follow/Following toggle (optimistic, writes to `follows` table)
+- **Explore tab** — search climbers AND gyms simultaneously; gym results instant from cache, climber results debounced via Supabase; "Send It." tagline when search empty; suggested climbers from shared gyms (no header/empty-state text); Follow/Following toggle (optimistic)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
 - **Gym detail two-tab layout** — "Log a Climb" (gym info + CTA) and "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal)
 - **Current Climbs grade slider** — always shows V0–V10; filters section to selected grade; "No climbs logged" empty state per grade; defaults to V0 (no auto-snap)
