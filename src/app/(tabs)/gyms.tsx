@@ -25,7 +25,7 @@ const INK3    = '#8a7a50';
 const DIVIDER = 'rgba(26,20,8,0.08)';
 
 const SCREEN_W  = Dimensions.get('window').width;
-const MAP_HEIGHT = Math.max(340, Dimensions.get('window').height * 0.52);
+const MAP_HEIGHT = Math.max(170, Dimensions.get('window').height * 0.26);
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 12) / 2;
 
 // Placeholder images per gym id — no image_url column in DB yet
