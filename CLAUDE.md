@@ -271,6 +271,22 @@ Current rows (ids 1–4, all Vital Climbing NYC locations):
 | 3 | Vital Climbing UES | Upper East Side | 40.7694 | -73.9547 |
 | 4 | Vital Climbing UWS | Upper West Side | 40.7831 | -73.9712 |
 
+### ✅ Adding a new gym
+To add a new gym to the app, simply insert a row
+into the `gyms` Supabase table with:
+  - id (next available string integer e.g. '5')
+  - name
+  - address
+  - neighborhood
+  - city
+  - latitude
+  - longitude
+
+The map, the gym list, the log screen dropdown,
+and the explore suggestions all source from
+fetchGyms() — they pick up new gyms automatically.
+No code changes. No redeployment needed.
+
 ### Storage bucket
 `session-media` (public) — stores:
 - Session media: `{userId}/{timestamp}.ext`
