@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, type Gym } from '../../lib/gyms';
 
 const BG         = '#ffffff';
 const CARD       = '#f4f1eb';
@@ -132,6 +133,27 @@ function UserRowItem({
   );
 }
 
+function GymRowItem({ gym }: { gym: Gym }) {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      style={styles.gymRow}
+      onPress={() => router.push(`/gym/${gym.id}`)}
+      activeOpacity={0.7}>
+      <View style={styles.gymIcon}>
+        <Ionicons name="location-outline" size={18} color={SAND} />
+      </View>
+      <View style={styles.userMeta}>
+        <Text style={styles.gymName} numberOfLines={1}>{gym.name}</Text>
+        <Text style={styles.gymNeighborhood} numberOfLines={1}>
+          {gym.neighborhood}{gym.city ? ` · ${gym.city}` : ''}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={INK3} />
+    </TouchableOpacity>
+  );
+}
+
 export default function ExploreScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
@@ -139,12 +161,19 @@ export default function ExploreScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserRow[]>([]);
+  const [gymResults, setGymResults]       = useState<Gym[]>([]);
+  const [allGyms, setAllGyms]             = useState<Gym[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [suggestions, setSuggestions] = useState<UserRow[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load gyms once — cached after first call
+  useEffect(() => {
+    fetchGyms().then(setAllGyms);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -239,11 +268,23 @@ export default function ExploreScreen() {
     const q = searchQuery.trim();
     if (!q) {
       setSearchResults([]);
+      setGymResults([]);
       setSearchLoading(false);
       return;
     }
 
     setSearchLoading(true);
+
+    // Filter gyms instantly from local cache
+    const lower = q.toLowerCase();
+    setGymResults(
+      allGyms.filter(g =>
+        g.name.toLowerCase().includes(lower) ||
+        (g.neighborhood ?? '').toLowerCase().includes(lower) ||
+        (g.city ?? '').toLowerCase().includes(lower)
+      )
+    );
+
     searchDebounceRef.current = setTimeout(async () => {
       const { data } = await supabase
         .from('profiles')
@@ -267,7 +308,7 @@ export default function ExploreScreen() {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [searchQuery, currentUserId]);
+  }, [searchQuery, currentUserId, allGyms]);
 
   const handleToggleFollow = async (targetId: string) => {
     if (!currentUserId || togglingId) return;
@@ -311,7 +352,7 @@ export default function ExploreScreen() {
         <Ionicons name="search-outline" size={17} color={INK3} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search climbers..."
+          placeholder="Search climbers & gyms..."
           placeholderTextColor={INK3}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -333,26 +374,45 @@ export default function ExploreScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
         {isSearching ? (
-          searchLoading ? (
-            <ActivityIndicator color={SAND} style={styles.loader} />
-          ) : searchResults.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No climbers found</Text>
-              <Text style={styles.emptyText}>Try a different username.</Text>
-            </View>
-          ) : (
-            searchResults.map((user) => (
-              <UserRowItem
-                key={user.id}
-                user={user}
-                isFollowing={followingSet.has(user.id)}
-                isToggling={togglingId === user.id}
-                onToggle={handleToggleFollow}
-              />
-            ))
-          )
+          <>
+            {/* Gym results — instant from local cache */}
+            {gymResults.length > 0 && (
+              <>
+                <Text style={styles.sectionHeader}>GYMS</Text>
+                {gymResults.map(gym => <GymRowItem key={gym.id} gym={gym} />)}
+                <View style={styles.sectionDivider} />
+              </>
+            )}
+
+            {/* Climber results */}
+            {searchLoading ? (
+              <ActivityIndicator color={SAND} style={styles.loader} />
+            ) : searchResults.length === 0 && gymResults.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No results</Text>
+                <Text style={styles.emptyText}>Try a different name or gym.</Text>
+              </View>
+            ) : searchResults.length > 0 ? (
+              <>
+                <Text style={styles.sectionHeader}>CLIMBERS</Text>
+                {searchResults.map((user) => (
+                  <UserRowItem
+                    key={user.id}
+                    user={user}
+                    isFollowing={followingSet.has(user.id)}
+                    isToggling={togglingId === user.id}
+                    onToggle={handleToggleFollow}
+                  />
+                ))}
+              </>
+            ) : null}
+          </>
         ) : (
           <>
+            <View style={styles.taglineBlock}>
+              <Text style={styles.tagline}>Send It.</Text>
+              <Text style={styles.taglineSub}>Find your people. Discover your next project.</Text>
+            </View>
             <Text style={styles.sectionHeader}>SUGGESTED CLIMBERS</Text>
             {suggestionsLoading ? (
               <ActivityIndicator color={SAND} style={styles.loader} />
@@ -452,6 +512,58 @@ const styles = StyleSheet.create({
     color: INK3,
     textAlign: 'center',
   },
+  // ── Tagline (empty search state) ────────────────────────────
+  taglineBlock: {
+    marginBottom: 24,
+  },
+  tagline: {
+    fontSize: 38,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1,
+    lineHeight: 42,
+  },
+  taglineSub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    marginTop: 4,
+  },
+
+  // ── Gym row ──────────────────────────────────────────────────
+  gymRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+  },
+  gymIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: CARD,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  gymName: {
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.1,
+  },
+  gymNeighborhood: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+  },
+  sectionDivider: {
+    height: 20,
+  },
+
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
