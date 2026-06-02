@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { supabase } from '../../lib/supabase';
 
 const BG        = '#ffffff';
@@ -24,6 +25,8 @@ const GYMS = [
     neighborhood: 'Lower East Side',
     city: 'NYC',
     image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-les.jpg',
+    lat: 40.7195,
+    lng: -73.9865,
   },
   {
     id: '2',
@@ -31,6 +34,8 @@ const GYMS = [
     neighborhood: 'Brooklyn',
     city: 'NYC',
     image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-bk.jpg',
+    lat: 40.6892,
+    lng: -73.9442,
   },
   {
     id: '3',
@@ -38,6 +43,8 @@ const GYMS = [
     neighborhood: 'Upper East Side',
     city: 'NYC',
     image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-ues.jpg',
+    lat: 40.7739,
+    lng: -73.9540,
   },
   {
     id: '4',
@@ -45,12 +52,23 @@ const GYMS = [
     neighborhood: 'Upper West Side',
     city: 'NYC',
     image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-uws.jpg',
+    lat: 40.7870,
+    lng: -73.9754,
   },
 ];
+
+const MAP_REGION = {
+  latitude: 40.7400,
+  longitude: -73.9600,
+  latitudeDelta: 0.14,
+  longitudeDelta: 0.14,
+};
 
 export default function GymsScreen() {
   const router = useRouter();
   const [visitedGymIds, setVisitedGymIds] = useState<Set<string>>(new Set());
+  const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,7 +119,33 @@ export default function GymsScreen() {
         <Text style={styles.subheading}>{GYMS.length} locations</Text>
       </View>
 
+      <MapView
+        style={styles.map}
+        provider={PROVIDER_DEFAULT}
+        initialRegion={MAP_REGION}
+        showsUserLocation
+        showsMyLocationButton={false}>
+        {GYMS.map((gym) => (
+          <Marker
+            key={gym.id}
+            coordinate={{ latitude: gym.lat, longitude: gym.lng }}
+            onPress={() => {
+              setSelectedGymId(gym.id);
+              router.push(`/gym/${gym.id}`);
+            }}>
+            <View style={[
+              styles.pin,
+              visitedGymIds.has(gym.id) && styles.pinVisited,
+              selectedGymId === gym.id && styles.pinSelected,
+            ]}>
+              <Text style={styles.pinLabel}>{gym.neighborhood.split(' ')[0]}</Text>
+            </View>
+          </Marker>
+        ))}
+      </MapView>
+
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
 
@@ -230,6 +274,33 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_600SemiBold',
     color: INK2,
     letterSpacing: 0.1,
+  },
+
+  // ── Map ─────────────────────────────────────────────────────
+  map: {
+    width: '100%',
+    height: 220,
+  },
+  pin: {
+    backgroundColor: INK,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  pinVisited: {
+    backgroundColor: SAND,
+  },
+  pinSelected: {
+    backgroundColor: SAND,
+    transform: [{ scale: 1.1 }],
+  },
+  pinLabel: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+    letterSpacing: 0.2,
   },
 
   // ── Empty ───────────────────────────────────────────────────
