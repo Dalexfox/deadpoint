@@ -143,6 +143,7 @@ Overlays (all `position: 'absolute'`):
 - **File I/O:** `expo-file-system/legacy` — MUST use the `/legacy` subpath in SDK 56; `readAsStringAsync` was moved there
 - **Base64 decode:** `base64-arraybuffer` — use `decode()` for reliable base64→ArrayBuffer in Hermes (never atob())
 - **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart (Weekly Intensity) and LineChart (Monthly Volume) on Profile. Grade Distribution uses a fully custom View-based bar chart (no chart-kit) to avoid label clipping.
+- **Maps:** `react-native-maps` — used on the Gyms tab. Works in Expo Go on iOS (Apple Maps, no API key needed). Do NOT pass `provider={PROVIDER_GOOGLE}` unless a Google Maps API key is configured.
 - **Gradients:** `expo-linear-gradient` (feed card photo overlay)
 - **Video:** `expo-av` is installed (`package.json`) but **requires a development build** — it does NOT work in Expo Go (throws `ExponentAV` native module error). For video playback in Expo Go, use `Linking.openURL(url)` to hand off to the system player. When a dev build is available, swap in `expo-av Video`.
 - **Icons:** `@expo/vector-icons` (Ionicons) — installed, works in Expo Go. Used for all tab bar icons and inline icons throughout the app. **Do NOT use `expo-symbols` (SymbolView)** — it requires a dev build and crashes Expo Go.
@@ -236,13 +237,39 @@ const { data: profiles } = await supabase.from('profiles')
 const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
 ```
 
-### ⚠️ No `gyms` table
-Gym names are resolved locally via a `GYM_NAMES` constant in each file that needs them:
+### Gyms table
+Gym data lives in the `gyms` Supabase table — **never hardcode gym names or IDs** in any file.
+Always use the shared helper in `src/lib/gyms.ts`:
 ```ts
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital LES', '2': 'Vital Brooklyn', '3': 'Vital UES', '4': 'Vital UWS',
-};
+import { fetchGyms, gymName } from '../../lib/gyms';
+
+const gyms = await fetchGyms();          // cached in-process after first call
+const name = gymName(gyms, session.gym_id); // sync lookup once gyms are loaded
 ```
+
+`gyms` table schema:
+```sql
+gyms (
+  id text primary key,              -- '1', '2', '3', '4'
+  name text not null,               -- 'Vital Climbing LES'
+  address text,                     -- '61 Chrystie St, New York, NY 10002'
+  neighborhood text,                -- 'Lower East Side'
+  city text default 'NYC',
+  latitude double precision,        -- used by the map on the Gyms tab
+  longitude double precision,
+  created_at timestamp with time zone default now()
+)
+-- RLS: publicly readable (no auth required)
+```
+
+Current rows (ids 1–4, all Vital Climbing NYC locations):
+
+| id | name | neighborhood | lat | lng |
+|----|------|-------------|-----|-----|
+| 1 | Vital Climbing LES | Lower East Side | 40.7157 | -73.9952 |
+| 2 | Vital Climbing Brooklyn | Williamsburg | 40.7057 | -73.9490 |
+| 3 | Vital Climbing UES | Upper East Side | 40.7694 | -73.9547 |
+| 4 | Vital Climbing UWS | Upper West Side | 40.7831 | -73.9712 |
 
 ### Storage bucket
 `session-media` (public) — stores:
@@ -305,11 +332,12 @@ src/app/
 src/lib/
   supabase.ts          — Supabase client (import this everywhere)
   store.ts             — AsyncStorage helpers, media upload, avatar upload
+  gyms.ts              — fetchGyms() + gymName() helper; in-process cache; SINGLE SOURCE OF TRUTH for gym data
 ```
 
 ### 5 Main Tabs
 1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase ordered by `created_at` descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
-2. **Gyms** — List of 4 Vital Climbing NYC locations. Tap → Gym Detail screen.
+2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(340, screenHeight * 0.55)`.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym, add optional notes. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Notes saved to `sessions.notes`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Notes → Submit.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
@@ -452,10 +480,11 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - All follow data is fetched inside a `try/catch` so the screen renders correctly even if the `follows` table doesn't exist.
 
 ## Current Gyms (Phase 1 — NYC)
-- Vital Climbing LES (id: 1, Lower East Side)
-- Vital Climbing Brooklyn (id: 2, Brooklyn)
-- Vital Climbing UES (id: 3, Upper East Side)
-- Vital Climbing UWS (id: 4, Upper West Side)
+All gym data lives in the `gyms` Supabase table. To add a gym, insert a row — no code changes needed.
+- Vital Climbing LES (id: 1, Lower East Side, 40.7157 / -73.9952)
+- Vital Climbing Brooklyn (id: 2, Williamsburg, 40.7057 / -73.9490)
+- Vital Climbing UES (id: 3, Upper East Side, 40.7694 / -73.9547)
+- Vital Climbing UWS (id: 4, Upper West Side, 40.7831 / -73.9712)
 
 ## Difficulty Scale
 V-scale standard for bouldering: V0 (easiest) through V10 (hardest).
@@ -513,6 +542,8 @@ Therefore:
 - **Gym detail two-tab layout** — "Log a Climb" (gym info + CTA) and "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal)
 - **Current Climbs grade slider** — always shows V0–V10; filters section to selected grade; "No climbs logged" empty state per grade; defaults to V0 (no auto-snap)
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
+- **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.
+- **`gyms` Supabase table** — single source of truth for all gym data (name, address, neighborhood, lat/lng). `src/lib/gyms.ts` provides `fetchGyms()` (with in-process cache) and `gymName(gyms, id)`. All hardcoded `GYM_NAMES` constants removed from every file.
 - "SESSION LOGGED" success screen on both Log tab and Gym Detail
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
@@ -527,7 +558,8 @@ Therefore:
 - [ ] More gyms (expand beyond NYC Vital locations)
 
 ### 🔜 Phase 3
-- [ ] Global gym database
+- [x] Gym database in Supabase — done (`gyms` table, seeded with 4 NYC locations)
+- [ ] Expand gym coverage beyond NYC Vital locations
 - [ ] Individual problem tracking
 - [ ] Leaderboards
 - [ ] App Store launch
@@ -563,7 +595,7 @@ Therefore:
 - Keep designs minimal and premium — less is more
 - **Media uploads:** ALWAYS use `expo-file-system/legacy` readAsStringAsync → `base64-arraybuffer` decode() → ArrayBuffer → supabase.storage.upload(). NEVER use fetch+blob or FormData.
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
-- **Gym names:** there is no `gyms` table — use a local `GYM_NAMES` constant in each file
+- **Gym data:** ALWAYS use `src/lib/gyms.ts` — `fetchGyms()` fetches from Supabase (cached), `gymName(gyms, id)` does the lookup. NEVER hardcode gym names, IDs, or coordinates in any screen file. There is no fallback `GYM_NAMES` constant anywhere in the codebase.
 - **Icons:** ALWAYS use `@expo/vector-icons` Ionicons — NEVER use `expo-symbols` / `SymbolView` (requires dev build, crashes Expo Go)
 - **Video playback:** `expo-av` IS used in the Feed (`index.tsx`) for TikTok-style video autoplay (`shouldPlay={isActive}`). It is loaded via a **dynamic `require()` inside `try/catch`** (not a static import) so Expo Go doesn't crash — if the native module is absent, `VideoPlayer` is `null` and video cards fall back to a static thumbnail. A TODO comment marks where to restore the static import once a dev build is set up. The Profile media viewer still uses `Linking.openURL(url)` as its own fallback.
 - **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
