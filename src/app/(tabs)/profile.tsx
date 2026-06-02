@@ -27,6 +27,7 @@ import {
   saveUserPost,
 } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
@@ -62,13 +63,6 @@ const ACCENT_CHART_CONFIG = {
   color: (opacity = 1) => `rgba(200, 168, 74, ${opacity})`, // SAND
 };
 
-// Maps sessions.gym_id → human-readable gym name
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital Climbing LES',
-  '2': 'Vital Climbing Brooklyn',
-  '3': 'Vital Climbing UES',
-  '4': 'Vital Climbing UWS',
-};
 
 // Derived datasets fed into the three charts
 type ChartData = {
@@ -339,11 +333,14 @@ export default function ProfileScreen() {
           } catch { /* follows table may not exist yet */ }
 
           // ── 1. Sessions ─────────────────────────────────────────
-          const { data: rawSessions, error: sessionsError } = await supabase
+          const [gyms, { data: rawSessions, error: sessionsError }] = await Promise.all([
+            fetchGyms(),
+            supabase
             .from('sessions')
-            .select('id, gym_id, created_at, media_url, notes')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false });
+              .select('id, gym_id, created_at, media_url, notes')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false }),
+          ]);
 
           if (sessionsError || !rawSessions) return;
 
@@ -371,7 +368,7 @@ export default function ProfileScreen() {
 
           // ── 3. Session cards ────────────────────────────────────
           const formatted: SupabaseSession[] = rawSessions.map((s) => {
-            const gymName = GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`;
+            const gymName = resolveGymName(gyms, s.gym_id);
             const grade   = (climbsBySession[s.id]?.[0]?.grade) ?? null;
             const date    = new Date(s.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
@@ -442,7 +439,7 @@ export default function ProfileScreen() {
           const sessionMetaById: Record<string, { gymName: string; date: string; mediaUrl: string | null }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
-              gymName: GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`,
+              gymName: resolveGymName(gyms, s.gym_id),
               date: new Date(s.created_at).toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric', year: 'numeric',
               }),

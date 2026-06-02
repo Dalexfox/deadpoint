@@ -27,6 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const STATS_BAR_H = 64;
@@ -40,12 +41,6 @@ const SAND    = '#c8a84a';
 const SAND_LT = '#e8c87a';
 const ACCENT  = '#e8383c';
 
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital LES',
-  '2': 'Vital Brooklyn',
-  '3': 'Vital UES',
-  '4': 'Vital UWS',
-};
 
 function toInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
@@ -140,11 +135,12 @@ export default function SessionDetailScreen() {
       const grade    = ((s.climbs ?? []) as { grade: string }[])[0]?.grade ?? null;
       const mediaUrl = s.media_url ?? null;
 
+      const gyms = await fetchGyms();
       setSession({
         id:       s.id,
         userId:   s.user_id,
         gymId:    s.gym_id,
-        gymName:  GYM_NAMES[s.gym_id] ?? `Gym ${s.gym_id}`,
+        gymName:  resolveGymName(gyms, s.gym_id),
         grade,
         mediaUrl,
         isVideo:  !!mediaUrl && /\.(mp4|mov|m4v|avi)$/i.test(mediaUrl),

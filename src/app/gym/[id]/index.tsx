@@ -69,13 +69,6 @@ type GymData = {
   coords: { lat: number; lng: number };
 };
 
-// Gym names also available as a simple map (used by log.tsx and other screens)
-export const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital Climbing LES',
-  '2': 'Vital Climbing Brooklyn',
-  '3': 'Vital Climbing UES',
-  '4': 'Vital Climbing UWS',
-};
 
 const GYMS: Record<string, GymData> = {
   '1': {

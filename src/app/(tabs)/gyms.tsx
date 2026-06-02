@@ -2,103 +2,97 @@ import { useCallback, useRef, useState } from 'react';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Callout, Marker } from 'react-native-maps';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, type Gym } from '../../lib/gyms';
 
-const BG        = '#ffffff';
-const CARD      = '#f4f1eb';
-const SURFACE   = '#ece8df';
-const SAND      = '#c8a84a';
-const SAND_LT   = '#e8c87a';
-const INK       = '#1a1408';
-const INK2      = '#3d3320';
-const INK3      = '#8a7a50';
-const DIVIDER   = 'rgba(26,20,8,0.08)';
+const BG      = '#ffffff';
+const CARD    = '#f4f1eb';
+const SURFACE = '#ece8df';
+const SAND    = '#c8a84a';
+const INK     = '#1a1408';
+const INK2    = '#3d3320';
+const INK3    = '#8a7a50';
+const DIVIDER = 'rgba(26,20,8,0.08)';
 
-const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_W  = Dimensions.get('window').width;
+const SCREEN_H  = Dimensions.get('window').height;
+const MAP_H     = Math.max(340, SCREEN_H * 0.55);
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 12) / 2;
 
-const GYMS = [
-  {
-    id: '1',
-    name: 'Vital Climbing LES',
-    neighborhood: 'Lower East Side',
-    city: 'NYC',
-    image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-les.jpg',
-    lat: 40.7195,
-    lng: -73.9865,
-  },
-  {
-    id: '2',
-    name: 'Vital Climbing Brooklyn',
-    neighborhood: 'Brooklyn',
-    city: 'NYC',
-    image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-bk.jpg',
-    lat: 40.6892,
-    lng: -73.9442,
-  },
-  {
-    id: '3',
-    name: 'Vital Climbing UES',
-    neighborhood: 'Upper East Side',
-    city: 'NYC',
-    image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-ues.jpg',
-    lat: 40.7739,
-    lng: -73.9540,
-  },
-  {
-    id: '4',
-    name: 'Vital Climbing UWS',
-    neighborhood: 'Upper West Side',
-    city: 'NYC',
-    image: 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-uws.jpg',
-    lat: 40.7870,
-    lng: -73.9754,
-  },
-];
-
-const MAP_REGION = {
-  latitude: 40.7400,
-  longitude: -73.9600,
-  latitudeDelta: 0.14,
-  longitudeDelta: 0.14,
+// Placeholder images per gym id — no image_url column in DB yet
+const GYM_IMAGES: Record<string, string> = {
+  '1': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-les.jpg',
+  '2': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-bk.jpg',
+  '3': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-ues.jpg',
+  '4': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-uws.jpg',
 };
+
+const MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#f5f2ea' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#1a1408' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f2ea' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#ece8df' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#e8e0cc' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c8dce8' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d6070' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8a7a50' }] },
+];
 
 export default function GymsScreen() {
   const router = useRouter();
+  const mapRef = useRef<MapView>(null);
+  const [gyms, setGyms] = useState<Gym[]>([]);
   const [visitedGymIds, setVisitedGymIds] = useState<Set<string>>(new Set());
   const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       (async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user || !active) return;
+        const [gymList, { data: { user } }] = await Promise.all([
+          fetchGyms(),
+          supabase.auth.getUser(),
+        ]);
+        if (!active) return;
+        setGyms(gymList);
+        if (!user) return;
         const { data } = await supabase
           .from('sessions')
           .select('gym_id')
           .eq('user_id', user.id);
         if (!active) return;
-        const ids = new Set((data ?? []).map((s: any) => s.gym_id));
-        setVisitedGymIds(ids);
+        setVisitedGymIds(new Set((data ?? []).map((s: any) => s.gym_id)));
       })();
       return () => { active = false; };
     }, [])
   );
 
-  const yourGyms = GYMS.filter((g) => visitedGymIds.has(g.id));
-  const discoverGyms = GYMS.filter((g) => !visitedGymIds.has(g.id));
+  const yourGyms     = gyms.filter((g) => visitedGymIds.has(g.id));
+  const discoverGyms = gyms.filter((g) => !visitedGymIds.has(g.id));
 
-  const renderCard = (gym: typeof GYMS[0]) => (
+  const handleCardPress = (gym: Gym) => {
+    if (gym.latitude && gym.longitude) {
+      setSelectedGymId(gym.id);
+      mapRef.current?.animateToRegion(
+        { latitude: gym.latitude, longitude: gym.longitude, latitudeDelta: 0.04, longitudeDelta: 0.04 },
+        500,
+      );
+    }
+    router.push(`/gym/${gym.id}`);
+  };
+
+  const renderCard = (gym: Gym) => (
     <TouchableOpacity
       key={gym.id}
       style={styles.thumbCard}
-      onPress={() => router.push(`/gym/${gym.id}`)}
+      onPress={() => handleCardPress(gym)}
       activeOpacity={0.8}>
       <View style={styles.thumbImageWrap}>
-        <Image source={{ uri: gym.image }} style={styles.thumbImage} />
+        <Image source={{ uri: GYM_IMAGES[gym.id] }} style={styles.thumbImage} />
         <View style={styles.thumbOverlay}>
           <Text style={styles.thumbInitial}>{gym.name.split(' ').pop()}</Text>
         </View>
@@ -106,7 +100,7 @@ export default function GymsScreen() {
       <View style={styles.thumbInfo}>
         <Text style={styles.thumbName} numberOfLines={1}>{gym.name}</Text>
         <Text style={styles.thumbLocation} numberOfLines={1}>
-          {gym.neighborhood} · {gym.city}
+          {gym.neighborhood} · {gym.city ?? 'NYC'}
         </Text>
       </View>
     </TouchableOpacity>
@@ -116,36 +110,53 @@ export default function GymsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.heading}>Gyms</Text>
-        <Text style={styles.subheading}>{GYMS.length} locations</Text>
+        <Text style={styles.subheading}>{gyms.length} locations · NYC</Text>
       </View>
 
       <MapView
+        ref={mapRef}
         style={styles.map}
-        provider={PROVIDER_DEFAULT}
-        initialRegion={MAP_REGION}
-        showsUserLocation
-        showsMyLocationButton={false}>
-        {GYMS.map((gym) => (
-          <Marker
-            key={gym.id}
-            coordinate={{ latitude: gym.lat, longitude: gym.lng }}
-            onPress={() => {
-              setSelectedGymId(gym.id);
-              router.push(`/gym/${gym.id}`);
-            }}>
-            <View style={[
-              styles.pin,
-              visitedGymIds.has(gym.id) && styles.pinVisited,
-              selectedGymId === gym.id && styles.pinSelected,
-            ]}>
-              <Text style={styles.pinLabel}>{gym.neighborhood.split(' ')[0]}</Text>
-            </View>
-          </Marker>
-        ))}
+        customMapStyle={MAP_STYLE}
+        initialRegion={{
+          latitude: 40.7484,
+          longitude: -73.9967,
+          latitudeDelta: 0.18,
+          longitudeDelta: 0.12,
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsScale={false}
+        showsPointsOfInterests={false}
+        showsBuildings={true}
+        zoomEnabled={true}
+        scrollEnabled={true}
+        pitchEnabled={false}
+        rotateEnabled={false}>
+        {gyms.filter(g => g.latitude && g.longitude).map((gym) => {
+          const isSelected = selectedGymId === gym.id;
+          return (
+            <Marker
+              key={gym.id}
+              coordinate={{ latitude: gym.latitude!, longitude: gym.longitude! }}
+              onPress={() => setSelectedGymId(gym.id)}>
+              <View style={isSelected ? styles.dotSelected : styles.dot} />
+              <Callout onPress={() => router.push(`/gym/${gym.id}`)}>
+                <View style={styles.callout}>
+                  <Text style={styles.calloutName}>{gym.name}</Text>
+                  <Text style={styles.calloutNeighborhood}>{gym.neighborhood}</Text>
+                  <Text style={styles.calloutAddress}>{gym.address}</Text>
+                  <View style={styles.calloutBtn}>
+                    <Text style={styles.calloutBtnLabel}>View Gym →</Text>
+                  </View>
+                </View>
+              </Callout>
+            </Marker>
+          );
+        })}
       </MapView>
 
       <ScrollView
-        ref={scrollRef}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
 
@@ -185,7 +196,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   heading: {
     fontSize: 42,
@@ -201,13 +212,91 @@ const styles = StyleSheet.create({
     marginTop: 6,
     letterSpacing: 0.1,
   },
+
+  // ── Map ─────────────────────────────────────────────────────
+  map: {
+    width: '100%',
+    height: MAP_H,
+  },
+
+  // ── Markers ─────────────────────────────────────────────────
+  dot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: SAND,
+    borderWidth: 2.5,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  dotSelected: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: INK,
+    borderWidth: 2.5,
+    borderColor: SAND,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  // ── Callout ──────────────────────────────────────────────────
+  callout: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    width: 200,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  calloutName: {
+    fontFamily: 'Syne_800ExtraBold',
+    fontSize: 14,
+    color: INK,
+    letterSpacing: -0.3,
+  },
+  calloutNeighborhood: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: SAND,
+    marginTop: 1,
+  },
+  calloutAddress: {
+    fontFamily: 'SpaceGrotesk_400Regular',
+    fontSize: 11,
+    color: 'rgba(26,20,8,0.45)',
+    marginTop: 3,
+  },
+  calloutBtn: {
+    marginTop: 10,
+    backgroundColor: INK,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
+  calloutBtnLabel: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+
+  // ── Scroll list ──────────────────────────────────────────────
   scroll: {
     paddingHorizontal: 16,
+    paddingTop: 20,
     paddingBottom: 32,
     gap: 28,
   },
-
-  // ── Section ─────────────────────────────────────────────────
   sectionBlock: {
     gap: 12,
   },
@@ -218,15 +307,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     paddingHorizontal: 4,
   },
-
-  // ── Grid ────────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
 
-  // ── Thumbnail card ──────────────────────────────────────────
+  // ── Thumbnail card ───────────────────────────────────────────
   thumbCard: {
     width: THUMB_SIZE,
     borderRadius: 16,
@@ -276,34 +363,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Map ─────────────────────────────────────────────────────
-  map: {
-    width: '100%',
-    height: 220,
-  },
-  pin: {
-    backgroundColor: INK,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  pinVisited: {
-    backgroundColor: SAND,
-  },
-  pinSelected: {
-    backgroundColor: SAND,
-    transform: [{ scale: 1.1 }],
-  },
-  pinLabel: {
-    fontSize: 11,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    color: '#ffffff',
-    letterSpacing: 0.2,
-  },
-
-  // ── Empty ───────────────────────────────────────────────────
+  // ── Empty ────────────────────────────────────────────────────
   emptyState: {
     backgroundColor: SURFACE,
     borderRadius: 14,

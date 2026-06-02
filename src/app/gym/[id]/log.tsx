@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../../lib/supabase';
 import { uploadSessionMedia } from '../../../lib/store';
+import { fetchGyms, gymName } from '../../../lib/gyms';
 
 const BG        = '#ffffff';
 const CARD      = '#f4f1eb';
@@ -27,12 +28,6 @@ const INK2      = '#3d3320';
 const INK3      = '#8a7a50';
 const DIVIDER   = 'rgba(26,20,8,0.08)';
 
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital Climbing LES',
-  '2': 'Vital Climbing Brooklyn',
-  '3': 'Vital Climbing UES',
-  '4': 'Vital Climbing UWS',
-};
 
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
@@ -41,7 +36,11 @@ type MediaItem = { type: 'image' | 'video'; uri: string };
 export default function GymLogScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const gymName = GYM_NAMES[id as string] ?? 'Gym';
+  const [resolvedGymName, setResolvedGymName] = useState('Gym');
+
+  useEffect(() => {
+    fetchGyms().then(gyms => setResolvedGymName(gymName(gyms, id as string)));
+  }, [id]);
 
   const [gradeIndex, setGradeIndex] = useState(0);
   const selectedGrade = GRADES[gradeIndex];
@@ -140,13 +139,13 @@ export default function GymLogScreen() {
       <View style={styles.nav}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backLabel}>{gymName}</Text>
+          <Text style={styles.backLabel}>{resolvedGymName}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.header}>
         <Text style={styles.heading}>Log a Climb</Text>
-        <Text style={styles.subheading}>{gymName}</Text>
+        <Text style={styles.subheading}>{resolvedGymName}</Text>
       </View>
 
       <ScrollView

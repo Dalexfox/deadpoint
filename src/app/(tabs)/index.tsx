@@ -28,6 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 
 // ─── expo-av dynamic load ─────────────────────────────────────────────────────
 // expo-av requires a development build. In Expo Go the native ExponentAV module
@@ -62,12 +63,6 @@ const BG         = '#ffffff';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const GYM_NAMES: Record<string, string> = {
-  '1': 'Vital Climbing LES',
-  '2': 'Vital Climbing Brooklyn',
-  '3': 'Vital Climbing UES',
-  '4': 'Vital Climbing UWS',
-};
 
 
 // Height of the dark stats strip at the bottom of each card
@@ -109,6 +104,7 @@ function toInitials(name: string): string {
 async function fetchSessionPosts(
   currentUserId: string | null,
 ): Promise<{ posts: Post[]; followingSet: Set<string> }> {
+  const gyms = await fetchGyms();
   const { data: sessions, error } = await supabase
     .from('sessions')
     .select('id, user_id, gym_id, media_url, created_at, climbs(grade)')
@@ -163,7 +159,7 @@ async function fetchSessionPosts(
       comments:   commentCountMap[session.id] ?? 0,
       liked:      likedByMeMap[session.id] ?? false,
       postType:   'session',
-      gym:        GYM_NAMES[session.gym_id] ?? `Gym ${session.gym_id}`,
+      gym:        resolveGymName(gyms, session.gym_id),
       gymId:      session.gym_id,
       topGrade:   (session.climbs as { grade: string }[])?.[0]?.grade,
     };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,9 +11,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadSessionMedia, type MediaItem } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, type Gym } from '../../lib/gyms';
 
 const BG        = '#ffffff';
 const CARD      = '#f4f1eb';
@@ -25,32 +27,23 @@ const INK2      = '#3d3320';
 const INK3      = '#8a7a50';
 const DIVIDER   = 'rgba(26,20,8,0.08)';
 
-const GYMS = [
-  'Vital Climbing LES',
-  'Vital Climbing Brooklyn',
-  'Vital Climbing UES',
-  'Vital Climbing UWS',
-];
-
-// Maps gym display name → the gym_id stored in Supabase
-const GYM_IDS: Record<string, string> = {
-  'Vital Climbing LES': '1',
-  'Vital Climbing Brooklyn': '2',
-  'Vital Climbing UES': '3',
-  'Vital Climbing UWS': '4',
-};
 
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
 export default function LogScreen() {
-  const [selectedGym, setSelectedGym]     = useState<string | null>(null);
-  const [gradeIndex, setGradeIndex] = useState(0);
+  const [gyms, setGyms]                   = useState<Gym[]>([]);
+  const [selectedGym, setSelectedGym]     = useState<Gym | null>(null);
+  const [gradeIndex, setGradeIndex]       = useState(0);
   const selectedGrade = GRADES[gradeIndex];
   const [media, setMedia]                 = useState<MediaItem | null>(null);
   const [notes, setNotes]                 = useState('');
   const [submitted, setSubmitted]         = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [gymDropdownOpen, setGymDropdownOpen] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    fetchGyms().then(setGyms);
+  }, []));
 
   const canSubmit = selectedGym !== null;
 
@@ -95,8 +88,7 @@ export default function LogScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not logged in');
 
-      const gymId = GYM_IDS[selectedGym!];
-      if (!gymId) throw new Error('Unknown gym');
+      const gymId = selectedGym!.id;
 
       // Upload media if attached; silently continue without it if upload fails
       let mediaUrl: string | null = null;
@@ -234,21 +226,21 @@ export default function LogScreen() {
             onPress={() => setGymDropdownOpen(!gymDropdownOpen)}
             activeOpacity={0.7}>
             <Text style={[styles.dropdownTriggerText, !selectedGym && styles.dropdownPlaceholder]}>
-              {selectedGym ?? 'Select a gym'}
+              {selectedGym?.name ?? 'Select a gym'}
             </Text>
             <Text style={styles.dropdownChevron}>{gymDropdownOpen ? '▲' : '▼'}</Text>
           </TouchableOpacity>
           {gymDropdownOpen && (
             <View style={styles.dropdownList}>
-              {GYMS.map((gym, i) => {
-                const active = selectedGym === gym;
+              {gyms.map((gym, i) => {
+                const active = selectedGym?.id === gym.id;
                 return (
                   <TouchableOpacity
-                    key={gym}
-                    style={[styles.dropdownItem, i < GYMS.length - 1 && styles.dropdownItemBorder]}
+                    key={gym.id}
+                    style={[styles.dropdownItem, i < gyms.length - 1 && styles.dropdownItemBorder]}
                     onPress={() => { setSelectedGym(gym); setGymDropdownOpen(false); }}
                     activeOpacity={0.7}>
-                    <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>{gym}</Text>
+                    <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>{gym.name}</Text>
                     {active && <Text style={styles.dropdownItemCheck}>✓</Text>}
                   </TouchableOpacity>
                 );
