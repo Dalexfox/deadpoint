@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   thumbOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(13,43,54,0.45)',
     alignItems: 'center',
     justifyContent: 'center',

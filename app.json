@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "deadpoint",
+    "name": "Deadpoint",
     "slug": "deadpoint",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,8 +8,10 @@
     "scheme": "deadpoint",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.deadpoint"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.foxcollective.deadpoint",
+      "buildNumber": "1",
+      "supportsTablet": false
     },
     "android": {
       "adaptiveIcon": {
@@ -32,11 +34,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
+          "backgroundColor": "#1a1408",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
         }
       ],
       "expo-font",
