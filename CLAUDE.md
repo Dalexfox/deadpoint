@@ -4,7 +4,7 @@
 Deadpoint is a social climbing tracker app for indoor bouldering gyms. Think Strava, but for climbing. Users can track which gyms they've visited, log the problems they've completed, and share their sessions with a community feed — like Instagram or TikTok but for climbers.
 
 ## Core Concept
-- Users visit a gym, log their climbs (problems completed, difficulty level)
+- Users visit a gym and log **one climb at a time** (one session = one climb at one grade)
 - Their session is shared to a social feed visible to their friends
 - Friends can like and comment on sessions
 - Users can also share photos and videos directly to the feed from their profile
@@ -293,6 +293,9 @@ src/app/
       _layout.tsx      — Stack layout for gym screens
       index.tsx        — Gym detail (two tabs: Log a Climb info + Current Climbs browser)
       log.tsx          — Climb logging form (navigated to from gym detail CTA)
+  session/
+    [id].tsx           — Full-screen feed card modal for a single session
+                         (presented as fullScreenModal, slides up over profile)
   user/
     [id].tsx           — View-only profile page for other users
 ```
@@ -334,7 +337,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
 - **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) — tappable, navigates to that user's profile.
-- **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — `topGrade` in ACCENT pink (`#ff507c`, 22px DMSans_800ExtraBold) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px DMSans_600SemiBold, `numberOfLines={1}`).
+- **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px SpaceGrotesk_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
 - Search bar was removed from the Feed in the TikTok rewrite. Lives in Explore tab (Phase 2 plan).
@@ -388,12 +391,16 @@ Three chart cards, all data derived from the existing sessions+climbs fetch (zer
 2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit — it clipped V10). Collapsed card: compact 130px bars + grade chips + drill-down list. Tap `↗` to expand inline (no Modal — avoids iOS touch-blocking bugs): expanded shows 180px bars + grade chips + tappable session rows. Tap `×` to collapse. State: `selectedGrade` (collapsed) and `modalSelectedGrade` (expanded) are separate. **Tapping any climb row** (collapsed or expanded) opens the full-screen media viewer.
 3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. ACCENT line color, bezier curve.
 
-### Profile Media Viewer
-- Full-screen `Modal` with `animationType="fade"`, **conditionally rendered** (`{mediaViewerVisible && <Modal>}`) so it fully unmounts on close and never blocks touches on the profile scroll view.
-- **Photos** — `Image` component, `resizeMode="contain"`, black background, info strip at bottom (gym · grade count · date).
-- **Videos** — `Linking.openURL(url)` hands off to the iPhone system player (expo-av requires a dev build and crashes in Expo Go).
-- **No media** — centred "No media attached" white text on black background.
-- Close `×` button top-right (white, always visible).
+### Session Detail Screen (`/session/[id]`)
+- Route: `src/app/session/[id].tsx` — presented as `fullScreenModal` (slides up over profile).
+- Looks **exactly like a feed card**: full-bleed media background (or `#2a2010 → #1a1408` dark gradient if no media), bottom vignette, right action rail, bottom stats bar, @username overlay.
+- **Close** — × button top-left (Ionicons, white, safe-area offset). Tap to go back.
+- **Right action rail** — avatar, ♥ like (ACCENT, optimistic), ◎ comment count, ↗ share, ⬡ gym.
+- **Stats bar** — grade (SAND_LT, Syne_800ExtraBold 28px) + gym name, pinned to bottom.
+- **Comment sheet** — identical to the feed comment sheet; slides up as a nested Modal. Full thread with avatars, timestamps, comment input + Send button.
+- **No top tab row** (Following/For You/Nearby) — single post view.
+- Registered in `_layout.tsx` as `<Stack.Screen name="session/[id]" options={{ presentation: 'fullScreenModal' }} />`.
+- Navigated to from: My Climbs card tap (`router.push('/session/${entry.sessionId}')`).
 
 ### Profile Edit State
 Two separate state buckets to prevent live-typing from updating the displayed header:
@@ -413,14 +420,17 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Background `BG` white, `hairlineWidth` bottom border in `DIVIDER`
 - Tab bar is fixed (outside the ScrollView); profile header + tab content scroll as one page
 
-### My Climbs Tab (grade-grouped grid)
-- **Layout** — grade step-slider (left, fills available width) + hamburger ☰ sort button (top-right, 44px teal surface tile). Below: a vertical ScrollView of grade sections.
-- **Grade step-slider** — same V0–V10 step-track visual as Current Climbs and the Log screen. Selected grade in ACCENT pink. Dots for grades with no logged climbs are dimmed (40% opacity). Tapping a dot scrolls the section list to that grade's section via `myClimbsScrollRef.current?.scrollTo()`.
-- **Sort dropdown** — tapping ☰ opens a floating dropdown (absolutely positioned, z-index 10, shadow card). Two options: **Date** (newest first, default) · **Gym** (alphabetical by `gymName`). Active option has an Ionicons checkmark in PRIMARY. Closing: tap an option or the invisible full-screen backdrop behind the dropdown.
-- **Grade sections** — one per grade the user has logged, ordered V0→V10. Each has a pink ACCENT grade pill + climb count in TEXT_MUTED. Sessions within each section are sorted by the active sort option.
-- **3-column row grid** — `toRows()` helper chunks sessions into groups of 3; each group renders as a `flexDirection: 'row'` View. Rows stack vertically. Incomplete last rows padded with invisible `flex: 1` filler Views so cards stay equal width.
-- **ClimbGridCard** (120px nominal, `flex: 1` in practice) — photo thumbnail (full width, 80px tall) at top or 🧗 placeholder; grade in ACCENT pink; gym name in BebasNeue; date in TEXT_MUTED; ▲ VITAL pill. `borderRadius: 14`, `borderColor: '#b0cdd8'`.
-- **State** — `myClimbsSlider` (index into GRADES), `myClimbsSort: MyClimbsSort`, `myClimbsDropdown: boolean`, `myClimbsScrollRef`, `myClimbsSectionOffsets` ref. Grade groups computed inline (`myClimbsGroups`) from `sessions` — no extra Supabase queries.
+### My Climbs Tab (grade-filtered grid)
+- **Layout** — grade step-slider (left) + Clear/All button + hamburger ☰ sort button (right column). Below: grade-grouped sections ScrollView.
+- **Grade step-slider** — V0–V10 step-track. `myClimbsSlider: number | null` (null = no dot highlighted on load). Tapping a dot sets `myClimbsFilter` to that grade AND highlights the dot. Dimmed dots (0.4 opacity) = grades with no climbs logged.
+- **Filter logic** — `myClimbsFilter: string | null`. When set, `filteredGroups` shows only sections matching that grade. When null, all grade sections show. Computed from `climbEntries` (individual climb rows), NOT from `sessions`.
+- **Clear button** — shown when filter active: SAND gold, `rgba(200,168,74,0.12)` bg, border. Resets both `myClimbsFilter` and `myClimbsSlider` to null. Shows "All" (greyed out) when no filter.
+- **Sort dropdown** — tapping ☰ opens a floating dropdown. Two options: **Date** (default) · **Gym**. Applies within each grade section.
+- **Grade sections** — one per grade in `filteredGroups`, ordered V0→V10. Each has a SAND grade pill + `N sends` count. `filteredGroups` is derived from `climbEntries` grouped by `e.grade`, filtered by `myClimbsFilter`.
+- **3-column row grid** — `toRows()` chunks `group.entries` (ClimbEntry[]) into rows of 3. Incomplete last rows padded with invisible filler Views.
+- **ClimbGridCard** — takes a `ClimbEntry` (not SupabaseSession). Shows: photo thumbnail (80px, `mediaUrl`) or 🧗 placeholder; grade in SAND (Syne_800ExtraBold); gym name; date; ▲ VITAL pill. `borderRadius: 14`. **Tapping a card** navigates to `/session/[sessionId]`.
+- **ClimbEntry type** — `{ sessionId, grade, count, gymName, date, mediaUrl }`. Derived from the `climbs` table joined with session metadata. Every session has exactly one ClimbEntry (count always 1).
+- **Empty state** — "No V5 climbs logged yet" centred when filter active but no matches.
 
 ### Feed Likes & Comments (Supabase-backed)
 - **Like toggle** — optimistic: UI updates immediately, then inserts/deletes from `likes` table in background. Heart filled ACCENT when liked, outline when not.
@@ -453,8 +463,20 @@ Both the Log screen and Gym Detail log one climb at a time with a single V-grade
 
 ## Post Types
 Posts have a `postType` field: `'session'` or `'photo'`
-- **session** — has `gym`, `problems`, `difficulty`. Shows stats block in feed card.
+- **session** — has `gym`, `gymId`, `topGrade` (= `climbs[0].grade`). Shows stats block in feed card.
 - **photo** — has `media` only. No stats block. Created from Profile `+` button.
+
+## ⚠️ Critical: Session = 1 Climb
+Every session in this app is exactly **one climb at one grade**:
+- 1 row in `sessions` (`total_problems: 1`)
+- 1 row in `climbs` (`{ grade: 'V5', count: 1 }`)
+
+Therefore:
+- `session.climbs?.[0]?.grade` ← this IS the grade, full stop
+- There is no "top grade" calculation *within* a session — just direct access
+- The only legitimate grade comparison is finding the **best grade across all sessions** (for the profile Top Grade stat)
+- `total_problems` is always 1 — never display it as a meaningful number
+- The `Post` type's `topGrade` field is set to `climbs[0].grade` directly in `fetchSessionPosts`
 
 ## Features — MVP Status
 
@@ -473,7 +495,8 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
-- **My Climbs tab** — redesigned as a grade-grouped 3-column grid. Grade step-slider (V0–V10) scrolls to grade sections; hamburger sort dropdown (Date / Gym) sorts within sections. ClimbGridCard: photo thumbnail top, grade in SAND gold, gym name, date, dark VITAL pill. Same `toRows()` 3-column row-first grid pattern as Current Climbs.
+- **My Climbs tab** — grade-grouped 3-column grid. Grade step-slider **filters** (not scrolls) to that grade; Clear button resets. ClimbGridCard takes ClimbEntry (individual climb row), shows photo thumbnail, grade in SAND gold, gym name, date, VITAL pill. Tapping a card opens the session detail modal.
+- **Session detail modal** (`/session/[id]`) — full-screen feed card experience: media fill, vignette, right rail (like/comment/share/gym), stats bar, comment sheet. Presented as `fullScreenModal`, slides up over profile.
 - **Notes / description field** — multiline text input on Log screen and Gym Detail; saves to `sessions.notes`; displayed on My Climbs cards when present
 - **Edit profile** — Settings tab form for Full Name, Username, Bio; saves to Supabase `profiles` table; bio shown in profile header
 - **Sign out** — Log Out button in Settings tab with confirmation alert, wired to `supabase.auth.signOut()`
@@ -509,6 +532,22 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - [ ] Leaderboards
 - [ ] App Store launch
 
+## app.json — TestFlight Config
+```json
+{
+  "name": "Deadpoint",
+  "slug": "deadpoint",
+  "bundleIdentifier": "com.foxcollective.deadpoint",
+  "buildNumber": "1",
+  "version": "1.0.0",
+  "supportsTablet": false
+}
+```
+- Splash background: `#1a1408` (INK dark)
+- Icon: `./assets/images/icon.png` — **needs a real 1024×1024 PNG** (currently placeholder)
+- Splash image: `./assets/images/splash-icon.png` — replace with Deadpoint wordmark/logo
+- Zero TypeScript errors as of last commit
+
 ## Important Rules for Claude Code
 - Always use **expo-router** for navigation, NEVER react-navigation
 - Always keep compatibility with **Expo SDK 56**
@@ -529,6 +568,8 @@ Posts have a `postType` field: `'session'` or `'photo'`
 - **Video playback:** `expo-av` IS used in the Feed (`index.tsx`) for TikTok-style video autoplay (`shouldPlay={isActive}`). It is loaded via a **dynamic `require()` inside `try/catch`** (not a static import) so Expo Go doesn't crash — if the native module is absent, `VideoPlayer` is `null` and video cards fall back to a static thumbnail. A TODO comment marks where to restore the static import once a dev build is set up. The Profile media viewer still uses `Linking.openURL(url)` as its own fallback.
 - **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
 - **Modals that overlay scrollable content:** ALWAYS conditionally render them (`{visible && <Modal visible>}`) so they fully unmount when closed and cannot intercept touches on the screen behind them.
+- **Session grade access:** ALWAYS use `session.climbs?.[0]?.grade` — never `.reduce()`, never `.sort()`, never `Math.max()` on grades within a single session. One session = one climb = one grade.
+- **StyleSheet.absoluteFill** — use `StyleSheet.absoluteFill` (not `absoluteFillObject`, which does not exist in SDK 56).
 - **Never hardcode user data** — names, usernames, initials, and any other per-user values must always come from Supabase (`profiles` table) via state variables. No `const USER = { name: '...' }` constants or similar placeholders in production code. Use the `displayName / displayUsername / displayBio` pattern (committed header state) and `toInitials(displayName)` for avatar fallbacks.
 - After every completed task, **commit and push to GitHub**
 - GitHub repo: https://github.com/Dalexfox/deadpoint.git
