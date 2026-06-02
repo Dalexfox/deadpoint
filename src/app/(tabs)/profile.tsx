@@ -667,7 +667,7 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.7}>
             <Ionicons name="add-circle-outline" size={24} color={SAND} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} hitSlop={12}>
+          <TouchableOpacity style={styles.iconBtn} hitSlop={12} onPress={() => setActiveTab('settings')}>
             <Ionicons name="settings-outline" size={22} color={INK3} />
           </TouchableOpacity>
         </View>
