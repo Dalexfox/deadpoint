@@ -1,5 +1,14 @@
-import { useCallback, useRef, useState } from 'react';
-import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MapView, { Callout, Marker } from 'react-native-maps';
@@ -16,8 +25,7 @@ const INK3    = '#8a7a50';
 const DIVIDER = 'rgba(26,20,8,0.08)';
 
 const SCREEN_W  = Dimensions.get('window').width;
-const SCREEN_H  = Dimensions.get('window').height;
-const MAP_H     = Math.max(340, SCREEN_H * 0.55);
+const MAP_HEIGHT = Math.max(340, Dimensions.get('window').height * 0.52);
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 12) / 2;
 
 // Placeholder images per gym id — no image_url column in DB yet
@@ -42,24 +50,51 @@ const MAP_STYLE = [
   { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8a7a50' }] },
 ];
 
+function getRegion(gyms: Gym[]) {
+  if (!gyms.length) return {
+    latitude: 40.7484,
+    longitude: -73.9967,
+    latitudeDelta: 0.22,
+    longitudeDelta: 0.14,
+  };
+  const lats = gyms.map(g => g.latitude ?? 0);
+  const lngs = gyms.map(g => g.longitude ?? 0);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const padLat = (maxLat - minLat) * 0.35;
+  const padLng = (maxLng - minLng) * 0.35;
+  return {
+    latitude:       (minLat + maxLat) / 2,
+    longitude:      (minLng + maxLng) / 2,
+    latitudeDelta:  (maxLat - minLat) + padLat,
+    longitudeDelta: (maxLng - minLng) + padLng,
+  };
+}
+
 export default function GymsScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
-  const [gyms, setGyms] = useState<Gym[]>([]);
+  const [gyms, setGyms]               = useState<Gym[]>([]);
+  const [loading, setLoading]         = useState(true);
   const [visitedGymIds, setVisitedGymIds] = useState<Set<string>>(new Set());
   const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
 
+  // Load gyms once on mount — fetchGyms() is cached after first call
+  useEffect(() => {
+    fetchGyms()
+      .then(setGyms)
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Refresh visited gyms on every tab focus
   useFocusEffect(
     useCallback(() => {
       let active = true;
       (async () => {
-        const [gymList, { data: { user } }] = await Promise.all([
-          fetchGyms(),
-          supabase.auth.getUser(),
-        ]);
-        if (!active) return;
-        setGyms(gymList);
-        if (!user) return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || !active) return;
         const { data } = await supabase
           .from('sessions')
           .select('gym_id')
@@ -71,8 +106,8 @@ export default function GymsScreen() {
     }, [])
   );
 
-  const yourGyms     = gyms.filter((g) => visitedGymIds.has(g.id));
-  const discoverGyms = gyms.filter((g) => !visitedGymIds.has(g.id));
+  const yourGyms     = gyms.filter(g => visitedGymIds.has(g.id));
+  const discoverGyms = gyms.filter(g => !visitedGymIds.has(g.id));
 
   const handleCardPress = (gym: Gym) => {
     if (gym.latitude && gym.longitude) {
@@ -113,48 +148,48 @@ export default function GymsScreen() {
         <Text style={styles.subheading}>{gyms.length} locations · NYC</Text>
       </View>
 
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        customMapStyle={MAP_STYLE}
-        initialRegion={{
-          latitude: 40.7484,
-          longitude: -73.9967,
-          latitudeDelta: 0.18,
-          longitudeDelta: 0.12,
-        }}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        showsScale={false}
-        showsPointsOfInterests={false}
-        showsBuildings={true}
-        zoomEnabled={true}
-        scrollEnabled={true}
-        pitchEnabled={false}
-        rotateEnabled={false}>
-        {gyms.filter(g => g.latitude && g.longitude).map((gym) => {
-          const isSelected = selectedGymId === gym.id;
-          return (
-            <Marker
-              key={gym.id}
-              coordinate={{ latitude: gym.latitude!, longitude: gym.longitude! }}
-              onPress={() => setSelectedGymId(gym.id)}>
-              <View style={isSelected ? styles.dotSelected : styles.dot} />
-              <Callout onPress={() => router.push(`/gym/${gym.id}`)}>
-                <View style={styles.callout}>
-                  <Text style={styles.calloutName}>{gym.name}</Text>
-                  <Text style={styles.calloutNeighborhood}>{gym.neighborhood}</Text>
-                  <Text style={styles.calloutAddress}>{gym.address}</Text>
-                  <View style={styles.calloutBtn}>
-                    <Text style={styles.calloutBtnLabel}>View Gym →</Text>
+      {loading ? (
+        <View style={styles.mapPlaceholder}>
+          <ActivityIndicator color={SAND} size="large" />
+        </View>
+      ) : (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          customMapStyle={MAP_STYLE}
+          initialRegion={getRegion(gyms)}
+          showsUserLocation={true}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          showsPointsOfInterests={false}
+          showsBuildings={true}
+          zoomEnabled={true}
+          scrollEnabled={true}
+          pitchEnabled={false}
+          rotateEnabled={false}>
+          {gyms.filter(g => g.latitude && g.longitude).map(gym => {
+            const isSelected = selectedGymId === gym.id;
+            return (
+              <Marker
+                key={gym.id}
+                coordinate={{ latitude: gym.latitude!, longitude: gym.longitude! }}
+                onPress={() => setSelectedGymId(gym.id)}>
+                <View style={isSelected ? styles.dotSelected : styles.dot} />
+                <Callout onPress={() => router.push(`/gym/${gym.id}`)}>
+                  <View style={styles.callout}>
+                    <Text style={styles.calloutName}>{gym.name}</Text>
+                    <Text style={styles.calloutNeighborhood}>{gym.neighborhood}</Text>
+                    <Text style={styles.calloutAddress}>{gym.address}</Text>
+                    <View style={styles.calloutBtn}>
+                      <Text style={styles.calloutBtnLabel}>Visit Gym →</Text>
+                    </View>
                   </View>
-                </View>
-              </Callout>
-            </Marker>
-          );
-        })}
-      </MapView>
+                </Callout>
+              </Marker>
+            );
+          })}
+        </MapView>
+      )}
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -213,10 +248,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Map ─────────────────────────────────────────────────────
+  // ── Map / placeholder ────────────────────────────────────────
   map: {
     width: '100%',
-    height: MAP_H,
+    height: MAP_HEIGHT,
+  },
+  mapPlaceholder: {
+    width: '100%',
+    height: MAP_HEIGHT,
+    backgroundColor: CARD,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Markers ─────────────────────────────────────────────────
@@ -228,8 +270,8 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: '#ffffff',
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
     elevation: 4,
   },
   dotSelected: {
@@ -240,54 +282,56 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: SAND,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 6,
   },
 
   // ── Callout ──────────────────────────────────────────────────
   callout: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 12,
-    width: 200,
+    borderRadius: 14,
+    padding: 14,
+    width: 210,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 8,
     borderWidth: 0.5,
     borderColor: DIVIDER,
   },
   calloutName: {
     fontFamily: 'Syne_800ExtraBold',
-    fontSize: 14,
+    fontSize: 15,
     color: INK,
     letterSpacing: -0.3,
+    marginBottom: 2,
   },
   calloutNeighborhood: {
     fontFamily: 'SpaceGrotesk_600SemiBold',
     fontSize: 11,
     color: SAND,
-    marginTop: 1,
+    marginBottom: 2,
   },
   calloutAddress: {
     fontFamily: 'SpaceGrotesk_400Regular',
     fontSize: 11,
-    color: 'rgba(26,20,8,0.45)',
-    marginTop: 3,
+    color: 'rgba(26,20,8,0.4)',
+    marginBottom: 12,
   },
   calloutBtn: {
-    marginTop: 10,
     backgroundColor: INK,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    alignSelf: 'stretch',
+    alignItems: 'center',
   },
   calloutBtnLabel: {
     fontFamily: 'SpaceGrotesk_600SemiBold',
-    fontSize: 11,
+    fontSize: 12,
     color: '#ffffff',
-    textAlign: 'center',
+    letterSpacing: 0.3,
   },
 
   // ── Scroll list ──────────────────────────────────────────────
