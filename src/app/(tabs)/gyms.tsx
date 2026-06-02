@@ -75,11 +75,22 @@ function getRegion(gyms: Gym[]) {
 
 export default function GymsScreen() {
   const router = useRouter();
-  const mapRef = useRef<MapView>(null);
+  const mapRef       = useRef<MapView>(null);
+  const regionRef    = useRef(getRegion([])); // tracks current map region for zoom buttons
   const [gyms, setGyms]               = useState<Gym[]>([]);
   const [loading, setLoading]         = useState(true);
   const [visitedGymIds, setVisitedGymIds] = useState<Set<string>>(new Set());
   const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
+
+  const handleZoom = (direction: 'in' | 'out') => {
+    const factor = direction === 'in' ? 0.5 : 2;
+    const r = regionRef.current;
+    mapRef.current?.animateToRegion({
+      ...r,
+      latitudeDelta:  r.latitudeDelta  * factor,
+      longitudeDelta: r.longitudeDelta * factor,
+    }, 250);
+  };
 
   // Load gyms once on mount — fetchGyms() is cached after first call
   useEffect(() => {
@@ -153,20 +164,22 @@ export default function GymsScreen() {
           <ActivityIndicator color={SAND} size="large" />
         </View>
       ) : (
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          customMapStyle={MAP_STYLE}
-          initialRegion={getRegion(gyms)}
-          showsUserLocation={true}
-          showsMyLocationButton={false}
-          showsCompass={false}
-          showsPointsOfInterests={false}
-          showsBuildings={true}
-          zoomEnabled={true}
-          scrollEnabled={true}
-          pitchEnabled={false}
-          rotateEnabled={false}>
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            customMapStyle={MAP_STYLE}
+            initialRegion={getRegion(gyms)}
+            onRegionChangeComplete={r => { regionRef.current = r; }}
+            showsUserLocation={true}
+            showsMyLocationButton={false}
+            showsCompass={false}
+            showsPointsOfInterests={false}
+            showsBuildings={true}
+            zoomEnabled={true}
+            scrollEnabled={true}
+            pitchEnabled={false}
+            rotateEnabled={false}>
           {gyms.filter(g => g.latitude && g.longitude).map(gym => {
             const isSelected = selectedGymId === gym.id;
             return (
@@ -188,7 +201,19 @@ export default function GymsScreen() {
               </Marker>
             );
           })}
-        </MapView>
+          </MapView>
+
+          {/* Zoom buttons */}
+          <View style={styles.zoomControls}>
+            <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')} activeOpacity={0.8}>
+              <Text style={styles.zoomBtnLabel}>+</Text>
+            </TouchableOpacity>
+            <View style={styles.zoomDivider} />
+            <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')} activeOpacity={0.8}>
+              <Text style={styles.zoomBtnLabel}>−</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       <ScrollView
@@ -249,6 +274,10 @@ const styles = StyleSheet.create({
   },
 
   // ── Map / placeholder ────────────────────────────────────────
+  mapContainer: {
+    width: '100%',
+    height: MAP_HEIGHT,
+  },
   map: {
     width: '100%',
     height: MAP_HEIGHT,
@@ -259,6 +288,39 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Zoom controls ────────────────────────────────────────────
+  zoomControls: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  zoomBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomBtnLabel: {
+    fontSize: 20,
+    color: INK,
+    fontFamily: 'SpaceGrotesk_300Light',
+    lineHeight: 24,
+  },
+  zoomDivider: {
+    height: 0.5,
+    backgroundColor: DIVIDER,
+    marginHorizontal: 6,
   },
 
   // ── Markers ─────────────────────────────────────────────────
