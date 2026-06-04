@@ -143,7 +143,7 @@ async function fetchSessionPosts(
     commentCountMap[c.session_id] = (commentCountMap[c.session_id] ?? 0) + 1;
   });
 
-  const posts = sessions.map(session => {
+  const allPosts = sessions.map(session => {
     const profile = profileMap.get(session.user_id);
     const name    = profile?.full_name || profile?.username || 'Climber';
     const post: Post = {
@@ -170,6 +170,15 @@ async function fetchSessionPosts(
 
     return post;
   });
+
+  // Followed users' posts first (already sorted by created_at desc from the query),
+  // then everyone else sorted by like count descending.
+  const followedPosts = allPosts.filter(p => p.userId && followingSet.has(p.userId));
+  const otherPosts    = allPosts
+    .filter(p => !p.userId || !followingSet.has(p.userId))
+    .sort((a, b) => b.likes - a.likes);
+
+  const posts = [...followedPosts, ...otherPosts];
 
   return { posts, followingSet };
 }
