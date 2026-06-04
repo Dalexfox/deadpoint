@@ -352,7 +352,7 @@ src/lib/
 ```
 
 ### 5 Main Tabs
-1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase ordered by `created_at` descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
+1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
 2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(170, screenHeight * 0.26)` — kept compact so the gym list is easy to reach.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym, add optional notes. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Notes saved to `sessions.notes`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Notes → Submit.
@@ -554,6 +554,7 @@ Therefore:
 - **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or warm dark ink gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (SAND_LT) + gym name only
 - **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
 - **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
+- **Feed ordering** — followed users' sessions shown first (chronological), then everyone else sorted by like count descending. Computed in JS in `fetchSessionPosts`: `allPosts` split into `followedPosts` (userId in `followingSet`) + `otherPosts` (sorted by `.likes` desc), then concatenated.
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d0d0b` background + white tints on `/`; all other tabs use white bg with INK active tint
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers AND gyms simultaneously; gym results instant from cache, climber results debounced via Supabase; "Send It." tagline when search empty; suggested climbers from shared gyms (no header/empty-state text); Follow/Following toggle (optimistic)
@@ -572,7 +573,7 @@ Therefore:
 ### 🔜 Phase 2
 - [x] Follow infrastructure (`follows` table + RLS) — done
 - [x] Follower/following counts on profiles + bottom-sheet user lists — done
-- [ ] Feed filtered to followed users only
+- [x] Feed prioritises followed users — their posts appear first, then others by likes — done
 - [ ] Push notifications
 - [ ] More gyms (expand beyond NYC Vital locations)
 
