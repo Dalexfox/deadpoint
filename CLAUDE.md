@@ -586,6 +586,19 @@ Therefore:
 - `total_problems` is always 1 — never display it as a meaningful number
 - The `Post` type's `topGrade` field is set to `climbs[0].grade` directly in `fetchSessionPosts`
 
+### Sessions vs Climbs vs Problems — what each table is
+
+| Table | What it represents | What to delete to remove a send |
+|-------|-------------------|----------------------------------|
+| `sessions` | The **social post** — who logged it, which gym, timestamp, photo/video, notes. This is what appears on the feed and in My Climbs. | ✅ Always delete this |
+| `climbs` | The **grade detail** inside that post — V-grade, count (always 1), and the `problem_id` link. | ✅ Always delete this |
+| `problems` | The **community climb record** — shared across all users who have logged that specific hold color + grade + wall section at a gym. | ⚠️ Only delete if you created it AND no other climbers have logged it. Deleting a problem removes the reference for everyone who has sent it. |
+
+**To fully delete a logged send from the Supabase dashboard:**
+1. Delete the row from `climbs` (find by `session_id`)
+2. Delete the row from `sessions` (this removes it from the feed and My Climbs)
+3. Optionally delete from `problems` only if you are `created_by` and no other `climbs` rows reference that `problem_id`
+
 ## Features — MVP Status
 
 ### ✅ Built
