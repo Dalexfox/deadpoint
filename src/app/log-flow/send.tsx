@@ -62,9 +62,10 @@ export default function SendScreen() {
     gymName:      string;
     holdColor:    string;
     wallSection:  string;
+    grade?:       string;  // from Screen 1 (identify flow)
     problemId?:   string;
     problemName?: string;
-    problemGrade?: string;
+    problemGrade?: string; // from Screen 2 (matched problem)
     newProblem?:  string;
   }>();
 
@@ -73,11 +74,16 @@ export default function SendScreen() {
     gymName: paramGymName,
     holdColor,
     wallSection,
+    grade: screen1Grade,
     problemId,
     problemName,
     problemGrade,
     newProblem,
   } = params;
+
+  // Grade comes from Screen 2 (problemGrade) if a match was selected,
+  // or from Screen 1 (screen1Grade) if skipped / no match found.
+  const initialGrade = problemGrade ?? screen1Grade ?? 'V0';
 
   const isNew = newProblem === 'true';
   const swatch = HOLD_COLOR_SWATCHES[holdColor] ?? '#888';
@@ -90,7 +96,7 @@ export default function SendScreen() {
   const [gymDropdownOpen, setGymDropdownOpen] = useState(false);
 
   const [gradeIndex, setGradeIndex]   = useState(() => {
-    const idx = GRADES.indexOf(problemGrade ?? 'V0');
+    const idx = GRADES.indexOf(initialGrade);
     return idx >= 0 ? idx : 0;
   });
   const selectedGrade = GRADES[gradeIndex];
