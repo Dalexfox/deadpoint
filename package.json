@@ -21,6 +21,7 @@
     "expo-font": "~56.0.5",
     "expo-glass-effect": "~56.0.4",
     "expo-image": "~56.0.9",
+    "expo-image-manipulator": "~56.0.16",
     "expo-image-picker": "~56.0.14",
     "expo-linear-gradient": "~56.0.4",
     "expo-linking": "~56.0.12",
@@ -30,6 +31,7 @@
     "expo-symbols": "~56.0.5",
     "expo-system-ui": "~56.0.5",
     "expo-web-browser": "~56.0.5",
+    "pako": "^2.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.85.3",
@@ -45,6 +47,7 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
+    "@types/pako": "^2.0.4",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },

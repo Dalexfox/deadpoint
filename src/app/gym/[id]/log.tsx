@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -14,137 +13,175 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../../lib/supabase';
-import { uploadSessionMedia } from '../../../lib/store';
 import { fetchGyms, gymName } from '../../../lib/gyms';
+import { detectHolds, type BoundingBox } from '../../../lib/holdDetection';
 
-const BG        = '#ffffff';
-const CARD      = '#f4f1eb';
-const SURFACE   = '#ece8df';
-const ACCENT    = '#e8383c';
-const SAND      = '#c8a84a';
-const SAND_LT   = '#e8c87a';
-const INK       = '#1a1408';
-const INK2      = '#3d3320';
-const INK3      = '#8a7a50';
-const DIVIDER   = 'rgba(26,20,8,0.08)';
+const BG      = '#ffffff';
+const CARD    = '#f4f1eb';
+const SURFACE = '#ece8df';
+const SAND    = '#c8a84a';
+const INK     = '#1a1408';
+const INK2    = '#3d3320';
+const INK3    = '#8a7a50';
+const DIVIDER = 'rgba(26,20,8,0.08)';
 
+const HOLD_COLORS = [
+  { id: 'blue',   label: 'Blue',   swatch: '#3070c0' },
+  { id: 'red',    label: 'Red',    swatch: '#e8383c' },
+  { id: 'yellow', label: 'Yellow', swatch: '#f0c030' },
+  { id: 'green',  label: 'Green',  swatch: '#40a060' },
+  { id: 'orange', label: 'Orange', swatch: '#f07030' },
+  { id: 'purple', label: 'Purple', swatch: '#8050c0' },
+  { id: 'pink',   label: 'Pink',   swatch: '#e070a0' },
+  { id: 'white',  label: 'White',  swatch: '#e8e4da' },
+  { id: 'black',  label: 'Black',  swatch: '#2a2010' },
+];
 
-const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
+const WALL_SECTIONS = ['Main Wall', 'Cave', 'Slab', 'Overhang', 'Arete'];
+const GRADES = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
 
-type MediaItem = { type: 'image' | 'video'; uri: string };
+function StepIndicator() {
+  return (
+    <View style={si.row}>
+      {([1, 2, 3] as const).map((step, i) => (
+        <View key={step} style={si.stepGroup}>
+          {i > 0 && <View style={si.line} />}
+          <View style={[si.dot, step === 1 ? si.dotActive : si.dotFuture, step === 1 && si.dotCurrent]} />
+        </View>
+      ))}
+      <Text style={si.label}>Step 1 of 3 — Identify climb</Text>
+    </View>
+  );
+}
+
+const si = StyleSheet.create({
+  row:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4, gap: 0 },
+  stepGroup:  { flexDirection: 'row', alignItems: 'center' },
+  dot:        { width: 8, height: 8, borderRadius: 4 },
+  dotActive:  { backgroundColor: SAND },
+  dotFuture:  { backgroundColor: 'rgba(26,20,8,0.15)' },
+  dotCurrent: { width: 10, height: 10, borderRadius: 5 },
+  line:       { width: 24, height: 1, backgroundColor: 'rgba(26,20,8,0.15)', marginHorizontal: 4 },
+  label:      { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, marginLeft: 10 },
+});
 
 export default function GymLogScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: gymId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+
   const [resolvedGymName, setResolvedGymName] = useState('Gym');
-
   useEffect(() => {
-    fetchGyms().then(gyms => setResolvedGymName(gymName(gyms, id as string)));
-  }, [id]);
+    fetchGyms().then(gyms => setResolvedGymName(gymName(gyms, gymId as string)));
+  }, [gymId]);
 
-  const [gradeIndex, setGradeIndex] = useState(0);
+  const [holdColor, setHoldColor]     = useState<string | null>(null);
+  const [wallSection, setWallSection] = useState<string | null>(null);
+  const [gradeIndex, setGradeIndex]   = useState(0);
   const selectedGrade = GRADES[gradeIndex];
-  const [media, setMedia] = useState<MediaItem | null>(null);
-  const [notes, setNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [photoUri, setPhotoUri]       = useState<string | null>(null);
+  const [boxes, setBoxes]             = useState<BoundingBox[]>([]);
+  const [detecting, setDetecting]     = useState(false);
+  const [photoLayout, setPhotoLayout] = useState({ width: 1, height: 1 });
+  const [querying, setQuerying]       = useState(false);
 
-  useEffect(() => {
-    if (!submitted) return;
-    const timer = setTimeout(() => router.back(), 2500);
-    return () => clearTimeout(timer);
-  }, [submitted]);
+  const canContinue = holdColor !== null && wallSection !== null;
 
-  const handleAddMedia = () => {
-    Alert.alert('Add to your post', '', [
-      { text: 'Choose Photo', onPress: () => pickMedia('images') },
-      { text: 'Choose Video', onPress: () => pickMedia('videos') },
-      { text: 'Take Photo',   onPress: takePhoto },
-      { text: 'Cancel',       style: 'cancel' },
+  // ── Photo & detection ───────────────────────────────────────────
+
+  const runDetection = async (uri: string, color: string) => {
+    setDetecting(true);
+    setBoxes([]);
+    try {
+      const result = await detectHolds(uri, color);
+      setBoxes(result);
+    } catch {
+      setBoxes([]);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleTakePhoto = () => {
+    Alert.alert('Identify hold color', '', [
+      { text: 'Take Photo',          onPress: launchCamera },
+      { text: 'Choose from Library', onPress: launchLibrary },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const pickMedia = async (type: 'images' | 'videos') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [type],
-      allowsEditing: true,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
-    }
+  const launchCamera = async () => {
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.8 });
+    if (!result.canceled) processPhoto(result.assets[0].uri);
   };
 
-  const takePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-    if (!result.canceled) {
-      setMedia({ type: 'image', uri: result.assets[0].uri });
-    }
+  const launchLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8 });
+    if (!result.canceled) processPhoto(result.assets[0].uri);
   };
 
-  const handleSubmit = async () => {
-    if (submitting) return;
-    setSubmitting(true);
+  const processPhoto = (uri: string) => {
+    setPhotoUri(uri);
+    if (holdColor) runDetection(uri, holdColor);
+  };
+
+  const handleSelectColor = (colorId: string) => {
+    setHoldColor(colorId);
+    if (photoUri) runDetection(photoUri, colorId);
+  };
+
+  // ── Query & navigate ────────────────────────────────────────────
+
+  const queryAndNavigate = async (skip: boolean) => {
+    if (!canContinue || querying) return;
+    setQuerying(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not logged in');
+      const base = new URLSearchParams({
+        gymId:       gymId as string,
+        gymName:     resolvedGymName,
+        holdColor:   holdColor!,
+        wallSection: wallSection!,
+        grade:       selectedGrade,
+      });
 
-      let mediaUrl: string | null = null;
-      if (media) {
-        mediaUrl = await uploadSessionMedia(media.uri, media.type);
+      if (!skip) {
+        const { data } = await supabase
+          .from('problems')
+          .select('*')
+          .eq('gym_id', gymId)
+          .eq('hold_color', holdColor!)
+          .eq('wall_section', wallSection!)
+          .eq('grade', selectedGrade);
+
+        if (data && data.length > 0) {
+          router.push(`/log-flow/match?${base.toString()}`);
+          return;
+        }
+        base.set('newProblem', 'true');
+        Alert.alert("You're the first! 🧗", "No one has logged this climb yet. You're breaking new ground.", [
+          { text: 'Log It', onPress: () => router.push(`/log-flow/send?${base.toString()}`) },
+        ]);
+        return;
       }
-
-      const { data: session, error: sessionError } = await supabase
-        .from('sessions')
-        .insert({
-          user_id: user.id,
-          gym_id: id,
-          total_problems: 1,
-          ...(mediaUrl ? { media_url: mediaUrl } : {}),
-          ...(notes.trim() ? { notes: notes.trim() } : {}),
-        })
-        .select('id')
-        .single();
-      if (sessionError) throw sessionError;
-
-      const { error: climbError } = await supabase
-        .from('climbs')
-        .insert({ session_id: session.id, grade: selectedGrade, count: 1 });
-      if (climbError) throw climbError;
-
-      setSubmitted(true);
+      base.set('newProblem', 'true');
+      router.push(`/log-flow/send?${base.toString()}`);
     } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Could not save session.');
+      Alert.alert('Error', err.message ?? 'Could not search problems.');
     } finally {
-      setSubmitting(false);
+      setQuerying(false);
     }
   };
-
-  if (submitted) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <View style={styles.successScreen}>
-          <Text style={styles.successEmoji}>🧗</Text>
-          <Text style={styles.successTitle}>SESSION LOGGED</Text>
-          <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.nav}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backLabel}>{resolvedGymName}</Text>
-        </TouchableOpacity>
-      </View>
+      <StepIndicator />
+
+      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+        <Text style={styles.backArrow}>‹</Text>
+        <Text style={styles.backLabel}>{resolvedGymName}</Text>
+      </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.heading}>Log a Climb</Text>
+        <Text style={styles.heading}>Identify Your{'\n'}Climb</Text>
         <Text style={styles.subheading}>{resolvedGymName}</Text>
       </View>
 
@@ -154,32 +191,89 @@ export default function GymLogScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
-        {/* Photo / Video */}
+        {/* 1 ── Recognition photo */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ADD PHOTO / VIDEO</Text>
-          {media ? (
-            <View style={styles.mediaPreviewWrapper}>
-              {media.type === 'image' ? (
-                <Image source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode="cover" />
-              ) : (
-                <View style={styles.videoPreview}>
-                  <Text style={styles.videoIcon}>▶</Text>
-                  <Text style={styles.videoLabel}>Video selected</Text>
+          <Text style={styles.sectionLabel}>RECOGNITION PHOTO</Text>
+          <TouchableOpacity
+            style={styles.photoArea}
+            onPress={handleTakePhoto}
+            activeOpacity={0.85}
+            onLayout={e => setPhotoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
+            {photoUri ? (
+              <>
+                <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                {boxes.length > 0 && <View style={[StyleSheet.absoluteFill, styles.darkOverlay]} />}
+                {boxes.map((box, i) => (
+                  <View key={i} style={[styles.holdBox, {
+                    left:   box.x * photoLayout.width,
+                    top:    box.y * photoLayout.height,
+                    width:  box.width * photoLayout.width,
+                    height: box.height * photoLayout.height,
+                  }]} />
+                ))}
+                {detecting && (
+                  <View style={styles.detectingOverlay}>
+                    <ActivityIndicator color={SAND} />
+                    <Text style={styles.detectingLabel}>Detecting holds…</Text>
+                  </View>
+                )}
+                {!detecting && boxes.length === 0 && (
+                  <View style={styles.noHoldsLabel}>
+                    <Text style={styles.noHoldsText}>No holds detected</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.photoEmpty}>
+                <Text style={styles.cameraIcon}>📷</Text>
+                <Text style={styles.photoEmptyLabel}>Take a photo of the climb</Text>
+                <View style={styles.detectionPill}>
+                  <Text style={styles.detectionPillText}>For detection only — not posted</Text>
                 </View>
-              )}
-              <TouchableOpacity style={styles.mediaRemoveBtn} onPress={() => setMedia(null)} activeOpacity={0.8}>
-                <Text style={styles.mediaRemoveText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.mediaPickerBtn} onPress={handleAddMedia} activeOpacity={0.7}>
-              <Text style={styles.mediaPickerIcon}>📷</Text>
-              <Text style={styles.mediaPickerLabel}>Add a photo or video</Text>
-            </TouchableOpacity>
-          )}
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Difficulty */}
+        {/* 2 ── Hold color chips */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>HOLD COLOR</Text>
+          <View style={styles.chipRow}>
+            {HOLD_COLORS.map(c => {
+              const active = holdColor === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.colorChip, active ? { backgroundColor: c.swatch, borderWidth: 0 } : styles.colorChipInactive]}
+                  onPress={() => handleSelectColor(c.id)}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.chipText, { color: active ? '#ffffff' : INK2 }]}>{c.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 3 ── Wall section chips */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>WALL SECTION</Text>
+          <View style={styles.chipRow}>
+            {WALL_SECTIONS.map(ws => {
+              const active = wallSection === ws;
+              return (
+                <TouchableOpacity
+                  key={ws}
+                  style={[styles.wallChip, active ? styles.wallChipActive : styles.wallChipInactive]}
+                  onPress={() => setWallSection(ws)}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.chipText, { color: active ? '#ffffff' : INK2 }]}>{ws}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 4 ── Grade */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>DIFFICULTY</Text>
           <View style={styles.sliderCard}>
@@ -210,36 +304,25 @@ export default function GymLogScreen() {
           </View>
         </View>
 
-        {/* Notes */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>NOTES</Text>
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Describe the climb, beta, or how it felt..."
-            placeholderTextColor={INK3}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-      </ScrollView>
-
-      {/* Submit */}
-      <View style={styles.footer}>
+        {/* 5 ── CTA */}
         <TouchableOpacity
-          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+          style={[styles.ctaBtn, (!canContinue || querying) && styles.ctaBtnDisabled]}
+          onPress={() => queryAndNavigate(false)}
           activeOpacity={0.85}
-          disabled={submitting}
-          onPress={handleSubmit}>
-          {submitting ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.submitLabel}>Submit Session</Text>
-          )}
+          disabled={!canContinue || querying}>
+          {querying ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.ctaLabel}>IDENTIFY CLIMB</Text>}
         </TouchableOpacity>
-      </View>
+
+        <View style={styles.skipRow}>
+          <Text style={styles.skipStatic}>No photo? </Text>
+          <TouchableOpacity onPress={() => queryAndNavigate(true)} disabled={!canContinue || querying} activeOpacity={0.7}>
+            <Text style={[styles.skipLink, (!canContinue || querying) && { opacity: 0.4 }]}>
+              Skip — log by attributes only
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -247,57 +330,60 @@ export default function GymLogScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
-  nav: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
-  backArrow: { fontSize: 28, fontFamily: 'SpaceGrotesk_300Light', color: INK, lineHeight: 28, marginTop: -2 },
-  backLabel: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: 0.1 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 2, gap: 2, alignSelf: 'flex-start' },
+  backArrow: { fontSize: 22, fontFamily: 'SpaceGrotesk_300Light', color: INK2, lineHeight: 24, marginTop: -1 },
+  backLabel: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold', color: INK2 },
 
-  header: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
-  heading: { fontSize: 42, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: 1, lineHeight: 46 },
-  subheading: { fontSize: 16, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, marginTop: 6, letterSpacing: 0.1 },
+  header: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 18 },
+  heading: { fontSize: 26, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: -1, lineHeight: 30 },
+  subheading: { fontSize: 12, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginTop: 6, lineHeight: 18 },
 
   scrollWrap: { flex: 1 },
-  scroll: { paddingHorizontal: 20, paddingBottom: 16, gap: 28 },
-  section: { gap: 12 },
-  sectionLabel: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: INK3, letterSpacing: 1.4 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 32, gap: 14 },
+  section: { gap: 8 },
+  sectionLabel: { fontSize: 9, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, letterSpacing: 2.5, textTransform: 'uppercase' },
 
-  // Media
-  mediaPickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: SURFACE, borderRadius: 16, paddingVertical: 22 },
-  mediaPickerIcon: { fontSize: 22 },
-  mediaPickerLabel: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK2, letterSpacing: -0.1 },
-  mediaPreviewWrapper: { position: 'relative', borderRadius: 16, overflow: 'hidden' },
-  mediaPreview: { width: '100%', height: 200, borderRadius: 16 },
-  videoPreview: { width: '100%', height: 200, backgroundColor: SURFACE, borderRadius: 16, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  videoIcon: { fontSize: 36, color: INK },
-  videoLabel: { fontSize: 14, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
-  mediaRemoveBtn: { position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  mediaRemoveText: { fontSize: 13, color: '#ffffff', fontFamily: 'SpaceGrotesk_700Bold' },
+  // Photo
+  photoArea: { height: 180, backgroundColor: CARD, borderRadius: 16, borderWidth: 0.5, borderColor: DIVIDER, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  photoEmpty: { alignItems: 'center', gap: 6 },
+  cameraIcon: { fontSize: 28 },
+  photoEmptyLabel: { fontSize: 12, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3 },
+  detectionPill: { marginTop: 4, backgroundColor: 'rgba(200,168,74,0.12)', borderWidth: 0.5, borderColor: 'rgba(200,168,74,0.4)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  detectionPillText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND },
+  darkOverlay: { backgroundColor: 'rgba(0,0,0,0.55)' },
+  holdBox: { position: 'absolute', borderWidth: 2, borderColor: SAND, borderRadius: 6, backgroundColor: 'rgba(200,168,74,0.15)' },
+  detectingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  detectingLabel: { fontSize: 12, fontFamily: 'SpaceGrotesk_600SemiBold', color: '#ffffff' },
+  noHoldsLabel: { position: 'absolute', bottom: 10, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  noHoldsText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: 'rgba(255,255,255,0.7)' },
 
-  // Grade step slider
-  sliderCard: { backgroundColor: SURFACE, borderRadius: 14, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, alignItems: 'center' },
-  sliderValue: { fontSize: 32, fontFamily: 'Syne_800ExtraBold', color: SAND, letterSpacing: 0.5, marginBottom: 16 },
+  // Chips
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  colorChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
+  colorChipInactive: { backgroundColor: SURFACE, borderWidth: 0.5, borderColor: DIVIDER },
+  wallChip: { borderRadius: 10, paddingHorizontal: 11, paddingVertical: 5 },
+  wallChipActive: { backgroundColor: SAND, borderWidth: 0 },
+  wallChipInactive: { backgroundColor: SURFACE, borderWidth: 0.5, borderColor: DIVIDER },
+  chipText: { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold' },
+
+  // Grade slider
+  sliderCard: { backgroundColor: CARD, borderRadius: 14, borderWidth: 0.5, borderColor: DIVIDER, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, alignItems: 'center' },
+  sliderValue: { fontSize: 56, fontFamily: 'Syne_800ExtraBold', color: SAND, letterSpacing: -3, marginBottom: 14 },
   stepTrack: { width: '100%', height: 32, justifyContent: 'center', marginBottom: 8 },
-  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
-  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: SAND, borderRadius: 2 },
+  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 1.5, backgroundColor: DIVIDER, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 1.5, backgroundColor: INK, borderRadius: 2 },
   stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
-  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
-  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: SAND, borderWidth: 3, borderColor: '#ffffff' },
+  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: SURFACE, borderWidth: 0.5, borderColor: 'rgba(26,20,8,0.1)' },
+  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: INK, borderWidth: 3, borderColor: '#ffffff' },
   stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   stepLabelText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
-  stepLabelTextActive: { color: SAND, fontFamily: 'Syne_800ExtraBold' },
+  stepLabelTextActive: { color: SAND, fontFamily: 'SpaceGrotesk_700Bold' },
 
-  // Notes
-  notesInput: { backgroundColor: SURFACE, borderRadius: 14, padding: 14, fontSize: 15, fontFamily: 'SpaceGrotesk_400Regular', color: INK, minHeight: 100 },
-
-  // Footer
-  footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: DIVIDER },
-  submitBtn: { backgroundColor: ACCENT, borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowColor: ACCENT, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 4 },
-  submitBtnDisabled: { opacity: 0.35, shadowOpacity: 0 },
-  submitLabel: { fontSize: 17, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
-
-  // Success
-  successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  successEmoji: { fontSize: 64 },
-  successTitle: { fontSize: 52, fontFamily: 'Syne_800ExtraBold', color: ACCENT, letterSpacing: 2 },
-  successSub: { fontSize: 16, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, letterSpacing: 0.1 },
+  // CTA
+  ctaBtn: { backgroundColor: SAND, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 4 },
+  ctaBtnDisabled: { opacity: 0.35 },
+  ctaLabel: { fontSize: 14, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: -0.3 },
+  skipRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingBottom: 8 },
+  skipStatic: { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3 },
+  skipLink: { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND, textDecorationLine: 'underline' },
 });

@@ -188,8 +188,30 @@ climbs (
   id uuid primary key default gen_random_uuid(),
   session_id uuid references sessions(id),
   grade text,
-  count int
+  count int,
+  problem_id uuid references problems(id)   -- links to a specific problem; null for pre-problems-table sessions
 )
+
+-- Climbing problems (community-created, one per distinct climb at a gym)
+problems (
+  id uuid primary key default gen_random_uuid(),
+  gym_id text,                              -- references gyms.id (no FK constraint — consistent with sessions)
+  name text not null,                       -- auto-generated: e.g. "Blue V4 Main Wall"
+  custom_name text,                         -- optional nickname set by the creator e.g. "The Crimpy Traverse"
+  hold_color text not null,                 -- e.g. 'blue', 'red', 'yellow'
+  grade text not null,                      -- V-scale: 'V0'–'V10'
+  wall_section text,                        -- e.g. 'Main Wall', 'Cave', 'Slab'
+  media_url text,                           -- cover photo = media_url of most-liked session for this problem
+  map_x float,                              -- reserved for future wall map (always null for now)
+  map_y float,
+  map_wall_id text,
+  created_by uuid references auth.users(id),
+  created_at timestamp with time zone default now()
+)
+-- RLS policies required:
+--   SELECT: public (USING true)
+--   INSERT: authenticated (WITH CHECK true)
+--   UPDATE: creator only (USING auth.uid() = created_by)
 
 -- Post likes (one row per user-per-session like; unique constraint prevents double-liking)
 likes (
@@ -329,13 +351,17 @@ src/app/
     index.tsx          — Feed screen
     gyms.tsx           — Gyms list
     explore.tsx        — Explore / find climbers
-    log.tsx            — Log a session
+    log.tsx            — Screen 1 of 3-screen log flow (Identify Your Climb)
     profile.tsx        — User profile
   gym/
     [id]/
       _layout.tsx      — Stack layout for gym screens
       index.tsx        — Gym detail (two tabs: Log a Climb info + Current Climbs browser)
-      log.tsx          — Climb logging form (navigated to from gym detail CTA)
+      log.tsx          — Screen 1 of 3-screen log flow (gymId pre-filled from route)
+  log-flow/
+    _layout.tsx        — Stack layout for Screens 2 & 3 (slide_from_right animation)
+    match.tsx          — Screen 2: Is This Your Climb (matched problem cards)
+    send.tsx           — Screen 3: Log Your Send (grade, media, notes, submit)
   session/
     [id].tsx           — Full-screen feed card modal for a single session
                          (presented as fullScreenModal, slides up over profile)
@@ -347,15 +373,18 @@ src/app/
 ```
 src/lib/
   supabase.ts          — Supabase client (import this everywhere)
-  store.ts             — AsyncStorage helpers, media upload, avatar upload
+  store.ts             — AsyncStorage helpers, media upload, avatar upload. Post type includes climbNickname (problems.custom_name) and climbNotes (sessions.notes)
   gyms.ts              — fetchGyms() + gymName() helper; in-process cache; SINGLE SOURCE OF TRUTH for gym data
+  holdDetection.ts     — On-device hold color detection: resize to 100×100 PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching, flood-fill cluster detection, returns BoundingBox[] as 0–1 proportional coords
+src/components/
+  ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
 ```
 
 ### 5 Main Tabs
 1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
 2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(170, screenHeight * 0.26)` — kept compact so the gym list is easy to reach.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
-4. **Log** — Log one climb at a time: add optional photo/video, pick difficulty (V-scale chip), pick gym, add optional notes. Saves to Supabase (`sessions` + `climbs` tables) with `total_problems: 1` and a single climb row `{ grade, count: 1 }`. Notes saved to `sessions.notes`. Media uploaded to Supabase Storage. Success screen shown after submit. Form order: Photo/Video → Difficulty → Gym → Notes → Submit.
+4. **Log** — 3-screen flow for identifying and logging a climb. See 3-Screen Log Flow section below.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
    - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
    - **My Climbs tab** — grade-grouped 3-column grid with a grade step-slider and sort dropdown. See My Climbs section below for full detail.
@@ -380,7 +409,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
   3. `◎` + comment count → `onComment` (opens comment sheet)
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
-- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (DMSans_800ExtraBold, white) — tappable, navigates to that user's profile.
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (Syne_800ExtraBold, white) — tappable, navigates to that user's profile. Below username: `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set; then `climbNotes` (white 75% opacity, SpaceGrotesk_400Regular, 12px, max 2 lines) if set.
 - **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px SpaceGrotesk_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
@@ -426,11 +455,42 @@ The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
 - **Video grid modal** — conditionally rendered bottom sheet (`{modalGroup !== null && <Modal>}`); header shows grade pill + gym name + send count; 3-column portrait thumbnail grid sorted by most-liked; each cell shows climber initials chip (top-left, from `profiles.full_name`) and like count (bottom-left, ACCENT pink). TODO comment marks where to wire cell tap to feed navigation.
 - **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus. Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
 
-**Log form** (`gym/[id]/log.tsx`):
-- Optional photo/video, single V-grade step-track slider (V0–V10), optional notes, fixed Submit footer
-- Submit saves `total_problems: 1` to `sessions` and one `climbs` row `{ grade, count: 1 }`; notes saved to `sessions.notes`
-- Requires authenticated user (`supabase.auth.getUser()`)
-- Shows "SESSION LOGGED" success screen for 2.5s, then navigates back
+**Log form** (`gym/[id]/log.tsx`) — Screen 1 of the 3-screen log flow with gymId pre-filled:
+- Recognition photo (for hold detection only — never uploaded), hold color chips, wall section chips, grade slider, IDENTIFY CLIMB button
+- Queries `problems` by gym_id + hold_color + wall_section + grade; navigates to `/log-flow/match` if matches found, `/log-flow/send?newProblem=true` if not (with "You're the first!" alert)
+- No gym picker — gymId comes from the route param
+
+### 3-Screen Log Flow (`/log-flow/`)
+
+Logging a climb is split across three screens. Both `(tabs)/log.tsx` (tab entry) and `gym/[id]/log.tsx` (gym detail entry) are Screen 1. Screens 2 and 3 live in `src/app/log-flow/` and cover the full screen (no tab bar).
+
+**Route params flow:**
+```
+Screen 1 → matches found:   router.push('/log-flow/match?gymId=&gymName=&holdColor=&wallSection=&grade=')
+Screen 1 → no matches:      Alert "You're the first! 🧗" → router.push('/log-flow/send?...&newProblem=true')
+Screen 1 → skip link:       same as no matches but skips detection query
+Screen 2 "YES LOG MY SEND": router.push('/log-flow/send?...&problemId=&problemName=&problemGrade=')
+Screen 2 "NO NEW CLIMB":    router.push('/log-flow/send?...&newProblem=true')
+Screen 3 success (2.5s):    router.navigate('/(tabs)')
+```
+
+**Screen 1 — Identify Your Climb** (`(tabs)/log.tsx` and `gym/[id]/log.tsx`):
+- Step indicator (Step 1 of 3), recognition photo area (camera/library, for detection only — never posted), hold color chips (9 colors), wall section chips (Main Wall / Cave / Slab / Overhang / Arete), grade slider (V0–V10), gym dropdown (tab version) or pre-filled gym (gym version)
+- Hold color + wall section required to continue; grade defaults to V0
+- On photo select + color select: `detectHolds(uri, color)` runs automatically, shows SAND bounding boxes over detected holds with dark desaturating overlay. Zero clusters → "No holds detected" label.
+- "IDENTIFY CLIMB" button queries `problems` (gym_id + hold_color + wall_section + grade); navigates based on results
+- "Skip — log by attributes only" link does the same query without detection
+
+**Screen 2 — Is This Your Climb** (`log-flow/match.tsx`):
+- Shows matched `ProblemCard` list. Tap a card to select it (SAND border + glow). "YES — LOG MY SEND" (disabled until card selected) → Screen 3 with problemId. "NO — IT'S A NEW CLIMB" → Screen 3 with newProblem=true.
+
+**Screen 3 — Log Your Send** (`log-flow/send.tsx`):
+- Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
+- Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) show "CLIMB LOGGED" for 2.5s → navigate to feed.
+
+**Hold detection** (`src/lib/holdDetection.ts`):
+- `detectHolds(imageUri, color)` → `BoundingBox[]`
+- Resize to 100×100 PNG via `expo-image-manipulator`; decode base64 → ArrayBuffer via `base64-arraybuffer`; parse PNG chunks; decompress IDAT with `pako.inflate`; reconstruct PNG filter bytes (None/Sub/Up/Average/Paeth); convert each pixel RGB→HSL; match against `COLOR_RANGES` table; flood-fill connected cells into clusters; discard clusters < 400px²; return proportional 0–1 bounding boxes.
 
 ### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
@@ -564,7 +624,12 @@ Therefore:
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.
 - **`gyms` Supabase table** — single source of truth for all gym data (name, address, neighborhood, lat/lng). `src/lib/gyms.ts` provides `fetchGyms()` (with in-process cache) and `gymName(gyms, id)`. All hardcoded `GYM_NAMES` constants removed from every file.
-- "SESSION LOGGED" success screen on both Log tab and Gym Detail
+- **3-screen log flow** — Screen 1 (Identify: photo + hold detection + color/wall/grade chips + gym), Screen 2 (match ProblemCard list), Screen 3 (send media + grade + notes + submit). Lives in `src/app/log-flow/`. Route: `/log-flow/match` and `/log-flow/send`.
+- **On-device hold detection** — `src/lib/holdDetection.ts` using `expo-image-manipulator` + `pako`; PNG parsing + HSL color range matching + flood-fill clustering; returns bounding boxes rendered as SAND overlays on the recognition photo
+- **`problems` table** — community-created climb records (gym_id, hold_color, grade, wall_section, name, custom_name, media_url). `climbs.problem_id` links each logged climb to a problem. `problems.media_url` auto-updated to the most-liked session photo on each send.
+- **Feed shows climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on feed cards when set
+- **"You're the first!" alert** — shown when no matching problem exists; confirms before navigating to Screen 3
+- "CLIMB LOGGED" success screen (centered) after submitting a send
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
 - Sign up / log in screens (white background, Syne ExtraBold, premium minimal)
@@ -580,7 +645,7 @@ Therefore:
 ### 🔜 Phase 3
 - [x] Gym database in Supabase — done (`gyms` table, seeded with 4 NYC locations)
 - [ ] Expand gym coverage beyond NYC Vital locations
-- [ ] Individual problem tracking
+- [x] Individual problem tracking — `problems` table + 3-screen log flow — done
 - [ ] Leaderboards
 - [ ] App Store launch
 

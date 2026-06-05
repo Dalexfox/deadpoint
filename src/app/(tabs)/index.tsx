@@ -107,7 +107,7 @@ async function fetchSessionPosts(
   const gyms = await fetchGyms();
   const { data: sessions, error } = await supabase
     .from('sessions')
-    .select('id, user_id, gym_id, media_url, created_at, climbs(grade)')
+    .select('id, user_id, gym_id, media_url, notes, created_at, climbs(grade, problem_id)')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -116,12 +116,22 @@ async function fetchSessionPosts(
   const sessionIds = sessions.map(s => s.id);
   const userIds    = [...new Set(sessions.map(s => s.user_id))];
 
-  const [profilesRes, likesRes, commentsRes, followsRes] = await Promise.all([
+  const problemIds = [
+    ...new Set(
+      sessions.flatMap(s => (s.climbs as { grade: string; problem_id: string | null }[])
+        .map(c => c.problem_id).filter(Boolean) as string[]
+    )
+  )];
+
+  const [profilesRes, likesRes, commentsRes, followsRes, problemsRes] = await Promise.all([
     supabase.from('profiles').select('id,full_name,username,avatar_url').in('id', userIds),
     supabase.from('likes').select('session_id,user_id').in('session_id', sessionIds),
     supabase.from('comments').select('session_id').in('session_id', sessionIds),
     currentUserId
       ? supabase.from('follows').select('following_id').eq('follower_id', currentUserId)
+      : Promise.resolve({ data: [] }),
+    problemIds.length > 0
+      ? supabase.from('problems').select('id,custom_name').in('id', problemIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -130,6 +140,7 @@ async function fetchSessionPosts(
   );
 
   const profileMap = new Map((profilesRes.data ?? []).map(p => [p.id, p]));
+  const problemMap = new Map((problemsRes.data ?? []).map((p: { id: string; custom_name: string | null }) => [p.id, p]));
 
   const likeCountMap: Record<string, number>  = {};
   const likedByMeMap: Record<string, boolean> = {};
@@ -161,7 +172,14 @@ async function fetchSessionPosts(
       postType:   'session',
       gym:        resolveGymName(gyms, session.gym_id),
       gymId:      session.gym_id,
-      topGrade:   (session.climbs as { grade: string }[])?.[0]?.grade,
+      topGrade:   (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.grade,
+      climbNotes: (session as any).notes ?? undefined,
+      climbNickname: (() => {
+        const pid = (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id;
+        if (!pid) return undefined;
+        const prob = problemMap.get(pid);
+        return prob?.custom_name ?? undefined;
+      })(),
     };
 
     if (session.media_url) {
@@ -376,6 +394,12 @@ function FullScreenCard({
         activeOpacity={0.75}
         onPress={() => post.userId && onPressUser(post.userId)}>
         <Text style={card.username}>{displayName}</Text>
+        {post.climbNickname ? (
+          <Text style={card.climbNickname}>{post.climbNickname}</Text>
+        ) : null}
+        {post.climbNotes ? (
+          <Text style={card.climbNotes} numberOfLines={2}>{post.climbNotes}</Text>
+        ) : null}
       </TouchableOpacity>
 
       {/* ── Stats bar ────────────────────────────────────────────────────────── */}
@@ -876,6 +900,24 @@ const card = StyleSheet.create({
     fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: -0.3,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  climbNickname: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND_LT,
+    letterSpacing: 0.1,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  climbNotes: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,

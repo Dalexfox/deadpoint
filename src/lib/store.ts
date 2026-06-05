@@ -20,7 +20,9 @@ export type Post = {
   userId?: string;        // Supabase auth user ID — used for profile tap-through
   username?: string;      // @username string for display
   gymId?: string;         // raw gym_id for navigation to /gym/[id]
-  topGrade?: string;  // grade from climbs[0].grade — every session is one climb
+  topGrade?: string;       // grade from climbs[0].grade — every session is one climb
+  climbNickname?: string;  // custom_name from the linked problem row, if set
+  climbNotes?: string;     // notes entered on the log screen
   timestamp: string;
   likes: number;
   comments: number;

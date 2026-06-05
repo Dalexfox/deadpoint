@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,153 +6,178 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadSessionMedia, type MediaItem } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
-import { fetchGyms, type Gym } from '../../lib/gyms';
+import { fetchGyms, gymName, type Gym } from '../../lib/gyms';
+import { detectHolds, type BoundingBox } from '../../lib/holdDetection';
 
-const BG        = '#ffffff';
-const CARD      = '#f4f1eb';
-const SURFACE   = '#ece8df';
-const ACCENT    = '#e8383c';
-const SAND      = '#c8a84a';
-const INK       = '#1a1408';
-const INK2      = '#3d3320';
-const INK3      = '#8a7a50';
-const DIVIDER   = 'rgba(26,20,8,0.08)';
+const BG      = '#ffffff';
+const CARD    = '#f4f1eb';
+const SURFACE = '#ece8df';
+const SAND    = '#c8a84a';
+const INK     = '#1a1408';
+const INK2    = '#3d3320';
+const INK3    = '#8a7a50';
+const DIVIDER = 'rgba(26,20,8,0.08)';
 
+const HOLD_COLORS = [
+  { id: 'blue',   label: 'Blue',   swatch: '#3070c0' },
+  { id: 'red',    label: 'Red',    swatch: '#e8383c' },
+  { id: 'yellow', label: 'Yellow', swatch: '#f0c030' },
+  { id: 'green',  label: 'Green',  swatch: '#40a060' },
+  { id: 'orange', label: 'Orange', swatch: '#f07030' },
+  { id: 'purple', label: 'Purple', swatch: '#8050c0' },
+  { id: 'pink',   label: 'Pink',   swatch: '#e070a0' },
+  { id: 'white',  label: 'White',  swatch: '#e8e4da' },
+  { id: 'black',  label: 'Black',  swatch: '#2a2010' },
+];
 
-const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
+const WALL_SECTIONS = ['Main Wall', 'Cave', 'Slab', 'Overhang', 'Arete'];
+const GRADES = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
+
+function StepIndicator({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <View style={si.row}>
+      {([1, 2, 3] as const).map((step, i) => (
+        <View key={step} style={si.stepGroup}>
+          {i > 0 && <View style={si.line} />}
+          <View style={[si.dot, step <= current ? si.dotActive : si.dotFuture, step === current && si.dotCurrent]} />
+        </View>
+      ))}
+      <Text style={si.label}>Step 1 of 3 — Identify climb</Text>
+    </View>
+  );
+}
+
+const si = StyleSheet.create({
+  row:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4, gap: 0 },
+  stepGroup:  { flexDirection: 'row', alignItems: 'center' },
+  dot:        { width: 8, height: 8, borderRadius: 4 },
+  dotActive:  { backgroundColor: SAND },
+  dotFuture:  { backgroundColor: 'rgba(26,20,8,0.15)' },
+  dotCurrent: { width: 10, height: 10, borderRadius: 5 },
+  line:       { width: 24, height: 1, backgroundColor: 'rgba(26,20,8,0.15)', marginHorizontal: 4 },
+  label:      { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, marginLeft: 10 },
+});
 
 export default function LogScreen() {
-  const [gyms, setGyms]                   = useState<Gym[]>([]);
-  const [selectedGym, setSelectedGym]     = useState<Gym | null>(null);
-  const [gradeIndex, setGradeIndex]       = useState(0);
-  const selectedGrade = GRADES[gradeIndex];
-  const [media, setMedia]                 = useState<MediaItem | null>(null);
-  const [notes, setNotes]                 = useState('');
-  const [submitted, setSubmitted]         = useState(false);
-  const [submitting, setSubmitting]       = useState(false);
+  const router = useRouter();
+  const [gyms, setGyms]                     = useState<Gym[]>([]);
+  const [selectedGym, setSelectedGym]       = useState<Gym | null>(null);
   const [gymDropdownOpen, setGymDropdownOpen] = useState(false);
+  const [holdColor, setHoldColor]           = useState<string | null>(null);
+  const [wallSection, setWallSection]       = useState<string | null>(null);
+  const [gradeIndex, setGradeIndex]         = useState(0);
+  const selectedGrade = GRADES[gradeIndex];
+  const [photoUri, setPhotoUri]             = useState<string | null>(null);
+  const [boxes, setBoxes]                   = useState<BoundingBox[]>([]);
+  const [detecting, setDetecting]           = useState(false);
+  const [photoLayout, setPhotoLayout]       = useState({ width: 1, height: 1 });
+  const [querying, setQuerying]             = useState(false);
 
   useFocusEffect(useCallback(() => {
     fetchGyms().then(setGyms);
   }, []));
 
-  const canSubmit = selectedGym !== null;
+  const canContinue = selectedGym !== null && holdColor !== null && wallSection !== null;
 
-  // ─── Media helpers ────────────────────────────────────────────
+  // ── Photo & detection ───────────────────────────────────────────
 
-  const handleAddMedia = () => {
-    Alert.alert('Add to your post', '', [
-      { text: 'Choose Photo', onPress: () => pickMedia('images') },
-      { text: 'Choose Video', onPress: () => pickMedia('videos') },
-      { text: 'Take Photo',   onPress: takePhoto },
-      { text: 'Cancel',       style: 'cancel' },
+  const runDetection = async (uri: string, color: string) => {
+    setDetecting(true);
+    setBoxes([]);
+    try {
+      const result = await detectHolds(uri, color);
+      setBoxes(result);
+    } catch {
+      setBoxes([]);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    Alert.alert('Identify hold color', '', [
+      { text: 'Take Photo',        onPress: () => launchCamera() },
+      { text: 'Choose from Library', onPress: () => launchLibrary() },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const pickMedia = async (type: 'images' | 'videos') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [type],
-      allowsEditing: true,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
-    }
+  const launchCamera = async () => {
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.8 });
+    if (!result.canceled) processPhoto(result.assets[0].uri);
   };
 
-  const takePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-    if (!result.canceled) {
-      setMedia({ type: 'image', uri: result.assets[0].uri });
-    }
+  const launchLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8 });
+    if (!result.canceled) processPhoto(result.assets[0].uri);
   };
 
-  // ─── Submit ───────────────────────────────────────────────────
+  const processPhoto = (uri: string) => {
+    setPhotoUri(uri);
+    if (holdColor) runDetection(uri, holdColor);
+  };
 
-  const handleSubmit = async () => {
-    if (!canSubmit || submitting) return;
-    setSubmitting(true);
+  const handleSelectColor = (colorId: string) => {
+    setHoldColor(colorId);
+    if (photoUri) runDetection(photoUri, colorId);
+  };
 
+  // ── Query & navigate ────────────────────────────────────────────
+
+  const queryAndNavigate = async (skip: boolean) => {
+    if (!canContinue || querying) return;
+    setQuerying(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not logged in');
+      const params = new URLSearchParams({
+        gymId:       selectedGym!.id,
+        gymName:     selectedGym!.name,
+        holdColor:   holdColor!,
+        wallSection: wallSection!,
+        grade:       selectedGrade,
+      });
 
-      const gymId = selectedGym!.id;
+      if (!skip) {
+        const { data } = await supabase
+          .from('problems')
+          .select('*')
+          .eq('gym_id', selectedGym!.id)
+          .eq('hold_color', holdColor!)
+          .eq('wall_section', wallSection!)
+          .eq('grade', selectedGrade);
 
-      // Upload media if attached; silently continue without it if upload fails
-      let mediaUrl: string | null = null;
-      if (media) {
-        mediaUrl = await uploadSessionMedia(media.uri, media.type);
+        if (data && data.length > 0) {
+          router.push(`/log-flow/match?${params.toString()}`);
+          return;
+        }
+        params.set('newProblem', 'true');
+        Alert.alert("You're the first! 🧗", "No one has logged this climb yet. You're breaking new ground.", [
+          { text: 'Log It', onPress: () => router.push(`/log-flow/send?${params.toString()}`) },
+        ]);
+        return;
       }
-
-      // Each log = exactly 1 climb
-      const { data: session, error: sessionError } = await supabase
-        .from('sessions')
-        .insert({
-          user_id: user.id,
-          gym_id: gymId,
-          total_problems: 1,
-          ...(mediaUrl ? { media_url: mediaUrl } : {}),
-          ...(notes.trim() ? { notes: notes.trim() } : {}),
-        })
-        .select('id')
-        .single();
-
-      if (sessionError) throw sessionError;
-
-      // One climb row, count always 1
-      const { error: climbError } = await supabase
-        .from('climbs')
-        .insert({ session_id: session.id, grade: selectedGrade, count: 1 });
-
-      if (climbError) throw climbError;
-
-      // Reset and show success screen
-      setSelectedGym(null);
-      setGradeIndex(0);
-      setMedia(null);
-      setNotes('');
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 2500);
+      params.set('newProblem', 'true');
+      router.push(`/log-flow/send?${params.toString()}`);
     } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
+      Alert.alert('Error', err.message ?? 'Could not search problems.');
     } finally {
-      setSubmitting(false);
+      setQuerying(false);
     }
   };
-
-  // ─── Success screen ───────────────────────────────────────────
-
-  if (submitted) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.successScreen}>
-          <Text style={styles.successEmoji}>🧗</Text>
-          <Text style={styles.successTitle}>SESSION LOGGED</Text>
-          <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // ─── Form ─────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <StepIndicator current={1} />
+
       <View style={styles.header}>
-        <Text style={styles.heading}>Log</Text>
-        <Text style={styles.subheading}>Record your climb</Text>
+        <Text style={styles.heading}>Identify Your{'\n'}Climb</Text>
+        <Text style={styles.subheading}>Photo helps detect hold color automatically</Text>
       </View>
 
       <ScrollView
@@ -160,32 +185,97 @@ export default function LogScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
-        {/* 1 ── Photo / Video */}
+        {/* 1 ── Recognition photo */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ADD PHOTO / VIDEO</Text>
-          {media ? (
-            <View style={styles.mediaPreviewWrapper}>
-              {media.type === 'image' ? (
-                <Image source={{ uri: media.uri }} style={styles.mediaPreview} resizeMode="cover" />
-              ) : (
-                <View style={styles.videoPreview}>
-                  <Text style={styles.videoIcon}>▶</Text>
-                  <Text style={styles.videoLabel}>Video selected</Text>
+          <Text style={styles.sectionLabel}>RECOGNITION PHOTO</Text>
+          <TouchableOpacity
+            style={styles.photoArea}
+            onPress={handleTakePhoto}
+            activeOpacity={0.85}
+            onLayout={e => setPhotoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
+
+            {photoUri ? (
+              <>
+                <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                {/* Dark desaturating overlay */}
+                {boxes.length > 0 && (
+                  <View style={[StyleSheet.absoluteFill, styles.darkOverlay]} />
+                )}
+                {/* Hold highlight boxes */}
+                {boxes.map((box, i) => (
+                  <View
+                    key={i}
+                    style={[styles.holdBox, {
+                      left:   box.x      * photoLayout.width,
+                      top:    box.y      * photoLayout.height,
+                      width:  box.width  * photoLayout.width,
+                      height: box.height * photoLayout.height,
+                    }]}
+                  />
+                ))}
+                {detecting && (
+                  <View style={styles.detectingOverlay}>
+                    <ActivityIndicator color={SAND} />
+                    <Text style={styles.detectingLabel}>Detecting holds…</Text>
+                  </View>
+                )}
+                {!detecting && boxes.length === 0 && photoUri && (
+                  <View style={styles.noHoldsLabel}>
+                    <Text style={styles.noHoldsText}>No holds detected</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.photoEmpty}>
+                <Text style={styles.cameraIcon}>📷</Text>
+                <Text style={styles.photoEmptyLabel}>Take a photo of the climb</Text>
+                <View style={styles.detectionPill}>
+                  <Text style={styles.detectionPillText}>For detection only — not posted</Text>
                 </View>
-              )}
-              <TouchableOpacity style={styles.mediaRemoveBtn} onPress={() => setMedia(null)} activeOpacity={0.8}>
-                <Text style={styles.mediaRemoveText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.mediaPickerBtn} onPress={handleAddMedia} activeOpacity={0.7}>
-              <Text style={styles.mediaPickerIcon}>📷</Text>
-              <Text style={styles.mediaPickerLabel}>Add a photo or video</Text>
-            </TouchableOpacity>
-          )}
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* 2 ── Difficulty */}
+        {/* 2 ── Hold color chips */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>HOLD COLOR</Text>
+          <View style={styles.chipRow}>
+            {HOLD_COLORS.map(c => {
+              const active = holdColor === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.colorChip, active ? { backgroundColor: c.swatch, borderWidth: 0 } : styles.colorChipInactive]}
+                  onPress={() => handleSelectColor(c.id)}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.chipText, { color: active ? '#ffffff' : INK2 }]}>{c.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 3 ── Wall section chips */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>WALL SECTION</Text>
+          <View style={styles.chipRow}>
+            {WALL_SECTIONS.map(ws => {
+              const active = wallSection === ws;
+              return (
+                <TouchableOpacity
+                  key={ws}
+                  style={[styles.wallChip, active ? styles.wallChipActive : styles.wallChipInactive]}
+                  onPress={() => setWallSection(ws)}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.chipText, { color: active ? '#ffffff' : INK2 }]}>{ws}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 4 ── Grade */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>DIFFICULTY</Text>
           <View style={styles.sliderCard}>
@@ -208,9 +298,7 @@ export default function LogScreen() {
             </View>
             <View style={styles.stepLabels}>
               {GRADES.map((grade, i) => (
-                <Text
-                  key={grade}
-                  style={[styles.stepLabelText, i === gradeIndex && styles.stepLabelTextActive]}>
+                <Text key={grade} style={[styles.stepLabelText, i === gradeIndex && styles.stepLabelTextActive]}>
                   {grade}
                 </Text>
               ))}
@@ -218,7 +306,7 @@ export default function LogScreen() {
           </View>
         </View>
 
-        {/* 3 ── Gym */}
+        {/* 5 ── Gym picker */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>GYM</Text>
           <TouchableOpacity
@@ -241,7 +329,7 @@ export default function LogScreen() {
                     onPress={() => { setSelectedGym(gym); setGymDropdownOpen(false); }}
                     activeOpacity={0.7}>
                     <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>{gym.name}</Text>
-                    {active && <Text style={styles.dropdownItemCheck}>✓</Text>}
+                    {active && <Text style={styles.dropdownCheck}>✓</Text>}
                   </TouchableOpacity>
                 );
               })}
@@ -249,70 +337,58 @@ export default function LogScreen() {
           )}
         </View>
 
-        {/* 4 ── Notes */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>NOTES</Text>
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Describe the climb, beta, or how it felt..."
-            placeholderTextColor={INK3}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
+        {/* 5 ── CTA */}
+        <TouchableOpacity
+          style={[styles.ctaBtn, (!canContinue || querying) && styles.ctaBtnDisabled]}
+          onPress={() => queryAndNavigate(false)}
+          activeOpacity={0.85}
+          disabled={!canContinue || querying}>
+          {querying ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.ctaLabel}>IDENTIFY CLIMB</Text>}
+        </TouchableOpacity>
+
+        <View style={styles.skipRow}>
+          <Text style={styles.skipStatic}>No photo? </Text>
+          <TouchableOpacity onPress={() => queryAndNavigate(true)} disabled={!canContinue || querying} activeOpacity={0.7}>
+            <Text style={[styles.skipLink, (!canContinue || querying) && { opacity: 0.4 }]}>
+              Skip — log by attributes only
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* 5 ── Submit */}
-        <TouchableOpacity
-          style={[styles.submitBtn, (!canSubmit || submitting) && styles.submitBtnDisabled]}
-          onPress={handleSubmit}
-          activeOpacity={0.85}
-          disabled={!canSubmit || submitting}>
-          {submitting ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.submitLabel}>Submit Session</Text>
-          )}
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BG,
-  },
+  container: { flex: 1, backgroundColor: BG },
+
   header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 28,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 18,
   },
   heading: {
-    fontSize: 42,
+    fontSize: 26,
     fontFamily: 'Syne_800ExtraBold',
     color: INK,
-    letterSpacing: -1.5,
-    lineHeight: 46,
+    letterSpacing: -1,
+    lineHeight: 30,
   },
   subheading: {
-    fontSize: 16,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK2,
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
     marginTop: 6,
-    letterSpacing: 0.1,
+    lineHeight: 18,
   },
+
   scroll: {
-    padding: 20,
-    gap: 28,
+    paddingHorizontal: 16,
     paddingBottom: 40,
+    gap: 14,
   },
-  section: {
-    gap: 12,
-  },
+  section: { gap: 8 },
   sectionLabel: {
     fontSize: 9,
     fontFamily: 'SpaceGrotesk_600SemiBold',
@@ -321,68 +397,115 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // ── Media ─────────────────────────────────────────────────────
-  mediaPickerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
+  // ── Photo area ─────────────────────────────────────────────────
+  photoArea: {
+    height: 180,
     backgroundColor: CARD,
-    borderRadius: 14,
-    paddingVertical: 22,
+    borderRadius: 16,
     borderWidth: 0.5,
     borderColor: DIVIDER,
-  },
-  mediaPickerIcon: { fontSize: 22 },
-  mediaPickerLabel: {
-    fontSize: 15,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    color: INK2,
-    letterSpacing: -0.1,
-  },
-  mediaPreviewWrapper: {
-    position: 'relative',
-    borderRadius: 16,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  mediaPreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 16,
+  photoEmpty: {
+    alignItems: 'center',
+    gap: 6,
   },
-  videoPreview: {
-    width: '100%',
-    height: 200,
-    backgroundColor: CARD,
-    borderRadius: 14,
+  cameraIcon: { fontSize: 28, color: INK3 },
+  photoEmptyLabel: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+  },
+  detectionPill: {
+    marginTop: 4,
+    backgroundColor: 'rgba(200,168,74,0.12)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(200,168,74,0.4)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  detectionPillText: {
+    fontSize: 10,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND,
+  },
+  darkOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  holdBox: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: SAND,
+    borderRadius: 6,
+    backgroundColor: 'rgba(200,168,74,0.15)',
+  },
+  detectingOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  videoIcon: { fontSize: 36, color: INK },
-  videoLabel: {
-    fontSize: 14,
+  detectingLabel: {
+    fontSize: 12,
     fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK2,
-  },
-  mediaRemoveBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mediaRemoveText: {
-    fontSize: 13,
     color: '#ffffff',
-    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  noHoldsLabel: {
+    position: 'absolute',
+    bottom: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  noHoldsText: {
+    fontSize: 10,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: 'rgba(255,255,255,0.7)',
   },
 
-  // ── Grade step slider ─────────────────────────────────────────
+  // ── Chips ──────────────────────────────────────────────────────
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  colorChip: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  colorChipInactive: {
+    backgroundColor: SURFACE,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  wallChip: {
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+  },
+  wallChipActive: {
+    backgroundColor: SAND,
+    borderWidth: 0,
+  },
+  wallChipInactive: {
+    backgroundColor: SURFACE,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  chipText: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+  },
+
+  // ── Grade slider ───────────────────────────────────────────────
   sliderCard: {
     backgroundColor: CARD,
     borderRadius: 14,
@@ -394,74 +517,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sliderValue: {
-    fontSize: 64,
+    fontSize: 56,
     fontFamily: 'Syne_800ExtraBold',
     color: SAND,
     letterSpacing: -3,
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  stepTrack: {
-    width: '100%',
-    height: 32,
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  stepTrackLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1.5,
-    backgroundColor: DIVIDER,
-    borderRadius: 2,
-  },
-  stepTrackLineFilled: {
-    position: 'absolute',
-    left: 0,
-    height: 1.5,
-    backgroundColor: INK,
-    borderRadius: 2,
-  },
-  stepHitArea: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    marginLeft: -16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: SURFACE,
-    borderWidth: 0.5,
-    borderColor: 'rgba(26,20,8,0.1)',
-  },
-  stepDotActive: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: INK,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-  },
-  stepLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  stepLabelText: {
-    fontSize: 10,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK3,
-    textAlign: 'center',
-  },
-  stepLabelTextActive: {
-    color: SAND,
-    fontFamily: 'SpaceGrotesk_700Bold',
-  },
+  stepTrack: { width: '100%', height: 32, justifyContent: 'center', marginBottom: 8 },
+  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 1.5, backgroundColor: DIVIDER, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 1.5, backgroundColor: INK, borderRadius: 2 },
+  stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
+  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: SURFACE, borderWidth: 0.5, borderColor: 'rgba(26,20,8,0.1)' },
+  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: INK, borderWidth: 3, borderColor: '#ffffff' },
+  stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  stepLabelText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
+  stepLabelTextActive: { color: SAND, fontFamily: 'SpaceGrotesk_700Bold' },
 
-  // ── Gym dropdown ──────────────────────────────────────────────
+  // ── Gym dropdown ───────────────────────────────────────────────
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -470,102 +542,75 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: DIVIDER,
-    padding: 16,
+    padding: 14,
   },
   dropdownTriggerText: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'SpaceGrotesk_700Bold',
     color: INK,
     letterSpacing: -0.2,
   },
-  dropdownPlaceholder: {
-    color: INK3,
-  },
-  dropdownChevron: {
-    fontSize: 10,
-    color: INK3,
-  },
+  dropdownPlaceholder: { color: INK3 },
+  dropdownChevron: { fontSize: 10, color: INK3 },
   dropdownList: {
     backgroundColor: CARD,
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: DIVIDER,
-    marginTop: 6,
+    marginTop: 4,
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 14,
   },
   dropdownItemBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DIVIDER,
   },
   dropdownItemText: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'SpaceGrotesk_600SemiBold',
     color: INK,
-    letterSpacing: -0.2,
   },
   dropdownItemTextActive: {
     color: SAND,
     fontFamily: 'SpaceGrotesk_700Bold',
   },
-  dropdownItemCheck: {
-    fontSize: 16,
-    color: SAND,
-    fontFamily: 'Syne_800ExtraBold',
-  },
+  dropdownCheck: { fontSize: 14, color: SAND },
 
-  // ── Notes ─────────────────────────────────────────────────────
-  notesInput: {
-    backgroundColor: CARD,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: DIVIDER,
-    padding: 14,
-    fontSize: 15,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    color: INK,
-    minHeight: 100,
-  },
-
-  // ── Submit ────────────────────────────────────────────────────
-  submitBtn: {
+  // ── CTA ────────────────────────────────────────────────────────
+  ctaBtn: {
     backgroundColor: SAND,
     borderRadius: 12,
-    paddingVertical: 18,
+    paddingVertical: 15,
     alignItems: 'center',
+    marginTop: 4,
   },
-  submitBtnDisabled: {
-    opacity: 0.35,
-  },
-  submitLabel: {
-    fontSize: 15,
+  ctaBtnDisabled: { opacity: 0.35 },
+  ctaLabel: {
+    fontSize: 14,
     fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: -0.3,
   },
-
-  // ── Success ───────────────────────────────────────────────────
-  successScreen: {
-    flex: 1,
-    alignItems: 'center',
+  skipRow: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
+    alignItems: 'center',
+    paddingBottom: 8,
   },
-  successEmoji: { fontSize: 64 },
-  successTitle: {
-    fontSize: 52,
-    fontFamily: 'Syne_800ExtraBold',
-    color: SAND,
-    letterSpacing: -2,
-  },
-  successSub: {
-    fontSize: 16,
+  skipStatic: {
+    fontSize: 11,
     fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK2,
-    letterSpacing: 0.1,
+    color: INK3,
+  },
+  skipLink: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND,
+    textDecorationLine: 'underline',
+    textDecorationStyle: 'solid',
   },
 });
