@@ -892,7 +892,7 @@ const card = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 80,   // clear the action rail
-    gap: 9,
+    gap: 2,
     zIndex: 10,
   },
   username: {
