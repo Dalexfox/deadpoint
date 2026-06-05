@@ -409,7 +409,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
   3. `◎` + comment count → `onComment` (opens comment sheet)
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
-- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`. Shows `@username` (Syne_800ExtraBold, white) — tappable, navigates to that user's profile. Below username: `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set; then `climbNotes` (white 75% opacity, SpaceGrotesk_400Regular, 12px, max 2 lines) if set.
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`, `gap: 2`. Shows `@username` (Syne_800ExtraBold, white) — tappable, navigates to that user's profile. Below username: `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set; then `climbNotes` (white 75% opacity, SpaceGrotesk_400Regular, 12px, max 2 lines) if set.
 - **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px SpaceGrotesk_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
@@ -485,6 +485,7 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 - Shows matched `ProblemCard` list. Tap a card to select it (SAND border + glow). "YES — LOG MY SEND" (disabled until card selected) → Screen 3 with problemId. "NO — IT'S A NEW CLIMB" → Screen 3 with newProblem=true.
 
 **Screen 3 — Log Your Send** (`log-flow/send.tsx`):
+- Grade slider is pre-filled from `problemGrade` (Screen 2 match) OR `grade` (Screen 1 identify flow) — both params are read, with `problemGrade` taking priority. Without this fallback the slider would always default to V0 when coming from Screen 1.
 - Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
 - Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) show "CLIMB LOGGED" for 2.5s → navigate to feed.
 
@@ -501,6 +502,8 @@ Three chart cards, all data derived from the existing sessions+climbs fetch (zer
 ### Session Detail Screen (`/session/[id]`)
 - Route: `src/app/session/[id].tsx` — presented as `fullScreenModal` (slides up over profile).
 - Looks **exactly like a feed card**: full-bleed media background (or `#2a2010 → #1a1408` dark gradient if no media), bottom vignette, right action rail, bottom stats bar, @username overlay.
+- **Bottom-left info** — `@username`, then `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set, then `climbNotes` (white 75%, SpaceGrotesk_400Regular, 12px, max 2 lines) if set. Identical to the feed card layout. `gap: 2` between elements.
+- Data fetched independently from Supabase on load: session + climbs (grade, problem_id) + profile + problems (custom_name) + likes + comment count. This is intentional — My Climbs can show sessions not in the feed's top-50 window.
 - **Close** — × button top-left (Ionicons, white, safe-area offset). Tap to go back.
 - **Right action rail** — avatar, ♥ like (ACCENT, optimistic), ◎ comment count, ↗ share, ⬡ gym.
 - **Stats bar** — grade (SAND_LT, Syne_800ExtraBold 28px) + gym name, pinned to bottom.
@@ -640,7 +643,7 @@ Therefore:
 - **3-screen log flow** — Screen 1 (Identify: photo + hold detection + color/wall/grade chips + gym), Screen 2 (match ProblemCard list), Screen 3 (send media + grade + notes + submit). Lives in `src/app/log-flow/`. Route: `/log-flow/match` and `/log-flow/send`.
 - **On-device hold detection** — `src/lib/holdDetection.ts` using `expo-image-manipulator` + `pako`; PNG parsing + HSL color range matching + flood-fill clustering; returns bounding boxes rendered as SAND overlays on the recognition photo
 - **`problems` table** — community-created climb records (gym_id, hold_color, grade, wall_section, name, custom_name, media_url). `climbs.problem_id` links each logged climb to a problem. `problems.media_url` auto-updated to the most-liked session photo on each send.
-- **Feed shows climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on feed cards when set
+- **Feed + session detail show climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on both feed cards and the session detail modal when set. `gap: 2` keeps them tight.
 - **"You're the first!" alert** — shown when no matching problem exists; confirms before navigating to Screen 3
 - "CLIMB LOGGED" success screen (centered) after submitting a send
 - Supabase database connection
