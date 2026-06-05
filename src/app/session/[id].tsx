@@ -61,13 +61,15 @@ function timeAgo(dateStr: string) {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SessionData = {
-  id:       string;
-  userId:   string;
-  gymId:    string;
-  gymName:  string;
-  grade:    string | null;
-  mediaUrl: string | null;
-  isVideo:  boolean;
+  id:            string;
+  userId:        string;
+  gymId:         string;
+  gymName:       string;
+  grade:         string | null;
+  mediaUrl:      string | null;
+  isVideo:       boolean;
+  climbNickname: string | null;
+  climbNotes:    string | null;
 };
 
 type CommentItem = {
@@ -116,7 +118,7 @@ export default function SessionDetailScreen() {
       const [sessionRes, likesRes, commentCountRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, user_id, gym_id, media_url, climbs(grade)')
+          .select('id, user_id, gym_id, media_url, notes, climbs(grade, problem_id)')
           .eq('id', id)
           .single(),
         supabase.from('likes').select('user_id').eq('session_id', id),
@@ -126,25 +128,32 @@ export default function SessionDetailScreen() {
       const s = sessionRes.data;
       if (!s) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, username, avatar_url')
-        .eq('id', s.user_id)
-        .single();
+      const climb     = ((s.climbs ?? []) as { grade: string; problem_id: string | null }[])[0];
+      const grade     = climb?.grade ?? null;
+      const problemId = climb?.problem_id ?? null;
+      const mediaUrl  = s.media_url ?? null;
 
-      const grade    = ((s.climbs ?? []) as { grade: string }[])[0]?.grade ?? null;
-      const mediaUrl = s.media_url ?? null;
+      // Fetch profile and problem custom_name in parallel
+      const [profileRes, problemRes] = await Promise.all([
+        supabase.from('profiles').select('full_name, username, avatar_url').eq('id', s.user_id).single(),
+        problemId
+          ? supabase.from('problems').select('custom_name').eq('id', problemId).single()
+          : Promise.resolve({ data: null }),
+      ]);
 
       const gyms = await fetchGyms();
       setSession({
-        id:       s.id,
-        userId:   s.user_id,
-        gymId:    s.gym_id,
-        gymName:  resolveGymName(gyms, s.gym_id),
+        id:            s.id,
+        userId:        s.user_id,
+        gymId:         s.gym_id,
+        gymName:       resolveGymName(gyms, s.gym_id),
         grade,
         mediaUrl,
-        isVideo:  !!mediaUrl && /\.(mp4|mov|m4v|avi)$/i.test(mediaUrl),
+        isVideo:       !!mediaUrl && /\.(mp4|mov|m4v|avi)$/i.test(mediaUrl),
+        climbNickname: problemRes.data?.custom_name ?? null,
+        climbNotes:    (s as any).notes ?? null,
       });
+      const profile = profileRes.data;
       setPosterName(profile?.full_name ?? 'Climber');
       setPosterUsername(profile?.username ?? null);
       setPosterAvatar(profile?.avatar_url ?? null);
@@ -348,9 +357,15 @@ export default function SessionDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Bottom-left username ──────────────────────────────────────────── */}
+      {/* ── Bottom-left username + nickname + notes ──────────────────────── */}
       <View style={[st.bottomInfo, { bottom: STATS_BAR_H + 16 }]}>
         <Text style={st.username}>{displayName}</Text>
+        {session.climbNickname ? (
+          <Text style={st.climbNickname}>{session.climbNickname}</Text>
+        ) : null}
+        {session.climbNotes ? (
+          <Text style={st.climbNotes} numberOfLines={2}>{session.climbNotes}</Text>
+        ) : null}
       </View>
 
       {/* ── Stats bar ────────────────────────────────────────────────────── */}
@@ -556,6 +571,24 @@ const st = StyleSheet.create({
     fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: -0.3,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  climbNickname: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND_LT,
+    letterSpacing: 0.1,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  climbNotes: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
