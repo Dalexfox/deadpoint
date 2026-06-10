@@ -4,18 +4,43 @@ import pako from 'pako';
 
 export type BoundingBox = { x: number; y: number; width: number; height: number };
 
-// HSL ranges for each hold color
-const COLOR_RANGES: Record<string, { hMin: number; hMax: number; sMin: number; lMin: number; lMax: number; hWrap?: boolean }> = {
-  red:    { hMin: 350, hMax: 10,  sMin: 50, lMin: 28, lMax: 72, hWrap: true },
-  orange: { hMin: 15,  hMax: 40,  sMin: 55, lMin: 38, lMax: 72 },
-  yellow: { hMin: 40,  hMax: 70,  sMin: 50, lMin: 48, lMax: 82 },
-  green:  { hMin: 88,  hMax: 152, sMin: 38, lMin: 22, lMax: 66 },
-  blue:   { hMin: 195, hMax: 248, sMin: 38, lMin: 28, lMax: 72 },
-  purple: { hMin: 262, hMax: 312, sMin: 28, lMin: 28, lMax: 66 },
-  pink:   { hMin: 312, hMax: 352, sMin: 38, lMin: 52, lMax: 86 },
-  black:  { hMin: 0,   hMax: 360, sMin: 0,  lMin: 0,  lMax: 18 },
+type ColorRange = {
+  hMin: number;
+  hMax: number;
+  sMin: number;
+  lMin: number;
+  lMax: number;
+  hWrap?: boolean;
+};
+
+// HSL ranges per spec: red wraps 345–15, others as defined
+const BASE_RANGES: Record<string, ColorRange> = {
+  red:    { hMin: 345, hMax: 15,  sMin: 50, lMin: 28, lMax: 72, hWrap: true },
+  orange: { hMin: 16,  hMax: 44,  sMin: 55, lMin: 38, lMax: 72 },
+  yellow: { hMin: 45,  hMax: 70,  sMin: 50, lMin: 48, lMax: 82 },
+  green:  { hMin: 90,  hMax: 160, sMin: 38, lMin: 22, lMax: 66 },
+  blue:   { hMin: 200, hMax: 245, sMin: 38, lMin: 28, lMax: 72 },
+  purple: { hMin: 255, hMax: 290, sMin: 28, lMin: 28, lMax: 66 },
+  pink:   { hMin: 300, hMax: 344, sMin: 38, lMin: 52, lMax: 86 },
+  black:  { hMin: 0,   hMax: 360, sMin: 0,  lMin: 0,  lMax: 16 },
   white:  { hMin: 0,   hMax: 360, sMin: 0,  lMin: 78, lMax: 100 },
 };
+
+function relaxRange(color: string, r: ColorRange): ColorRange {
+  if (color === 'black') return { ...r, lMax: Math.min(100, r.lMax + 5) };
+  if (color === 'white') return { ...r, lMin: Math.max(0, r.lMin - 8), sMin: Math.max(0, r.sMin - 5) };
+  const d = 8;
+  const newHMin = r.hWrap ? ((r.hMin - d + 360) % 360) : Math.max(0, r.hMin - d);
+  const newHMax = r.hWrap ? ((r.hMax + d) % 360)       : Math.min(360, r.hMax + d);
+  return {
+    ...r,
+    hMin: newHMin,
+    hMax: newHMax,
+    sMin: Math.max(0, r.sMin - 15),
+    lMin: Math.max(0, r.lMin - 10),
+    lMax: Math.min(100, r.lMax + 10),
+  };
+}
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   const rn = r / 255, gn = g / 255, bn = b / 255;
@@ -31,13 +56,10 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   return [h * 360, s * 100, l * 100];
 }
 
-function matchesColor(h: number, s: number, l: number, color: string): boolean {
-  const range = COLOR_RANGES[color];
-  if (!range) return false;
-  if (s < range.sMin || l < range.lMin || l > range.lMax) return false;
-  // Special case: black/white ignore saturation bounds
+function matchesRange(h: number, s: number, l: number, color: string, range: ColorRange): boolean {
   if (color === 'black') return l <= range.lMax;
-  if (color === 'white') return l >= range.lMin && s <= 20;
+  if (color === 'white') return l >= range.lMin && s <= (range.sMin > 0 ? range.sMin : 20);
+  if (s < range.sMin || l < range.lMin || l > range.lMax) return false;
   if (range.hWrap) return h >= range.hMin || h <= range.hMax;
   return h >= range.hMin && h <= range.hMax;
 }
@@ -56,8 +78,8 @@ function paethPredictor(a: number, b: number, c: number): number {
 
 function parsePNGPixels(buffer: ArrayBuffer): { width: number; height: number; rgb: Uint8Array } | null {
   const bytes = new Uint8Array(buffer);
-  let pos = 8; // skip PNG signature
-  let width = 0, height = 0, colorType = 2, bitDepth = 8;
+  let pos = 8;
+  let width = 0, height = 0, colorType = 2;
   const idatChunks: Uint8Array[] = [];
 
   while (pos < bytes.length - 8) {
@@ -66,26 +88,23 @@ function parsePNGPixels(buffer: ArrayBuffer): { width: number; height: number; r
     if (type === 'IHDR') {
       width     = readUint32BE(bytes, pos);
       height    = readUint32BE(bytes, pos + 4);
-      bitDepth  = bytes[pos + 8];
       colorType = bytes[pos + 9];
     } else if (type === 'IDAT') {
       idatChunks.push(new Uint8Array(buffer, pos, length));
     } else if (type === 'IEND') {
       break;
     }
-    pos += length + 4; // data + CRC
+    pos += length + 4;
   }
 
   if (width === 0 || height === 0) return null;
 
-  // Concatenate and inflate IDAT
   const totalLen = idatChunks.reduce((n, c) => n + c.length, 0);
   const compressed = new Uint8Array(totalLen);
   let off = 0;
   for (const c of idatChunks) { compressed.set(c, off); off += c.length; }
   const raw = pako.inflate(compressed);
 
-  // channels: 2=RGB(3), 6=RGBA(4), 0=Gray(1), 4=GrayA(2)
   const channels = [1, 0, 3, 0, 2, 0, 4][colorType] ?? 3;
   const stride = width * channels;
   const reconstructed = new Uint8Array(height * stride);
@@ -113,7 +132,6 @@ function parsePNGPixels(buffer: ArrayBuffer): { width: number; height: number; r
     }
   }
 
-  // Extract RGB only
   const rgb = new Uint8Array(width * height * 3);
   for (let i = 0; i < width * height; i++) {
     if (channels === 3) {
@@ -131,21 +149,14 @@ function parsePNGPixels(buffer: ArrayBuffer): { width: number; height: number; r
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
-export async function detectHolds(imageUri: string, color: string): Promise<BoundingBox[]> {
-  // Resize to 100×100 PNG, export as base64
-  const result = await ImageManipulator.manipulateAsync(
-    imageUri,
-    [{ resize: { width: 100, height: 100 } }],
-    { format: ImageManipulator.SaveFormat.PNG, base64: true },
-  );
-  if (!result.base64) return [];
-
-  const buffer   = decodeBase64(result.base64);
-  const parsed   = parsePNGPixels(buffer);
-  if (!parsed) return [];
-
-  const { width, height, rgb } = parsed;
-  const CELL = 5; // 5×5 pixel cells → 20×20 grid
+function scanForClusters(
+  rgb: Uint8Array,
+  width: number,
+  height: number,
+  color: string,
+  range: ColorRange,
+): BoundingBox[] {
+  const CELL = 5;
   const gridW = Math.ceil(width  / CELL);
   const gridH = Math.ceil(height / CELL);
   const cellCounts = new Array(gridW * gridH).fill(0);
@@ -154,7 +165,7 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
     for (let px = 0; px < width; px++) {
       const idx = (py * width + px) * 3;
       const [h, s, l] = rgbToHsl(rgb[idx], rgb[idx+1], rgb[idx+2]);
-      if (matchesColor(h, s, l, color)) {
+      if (matchesRange(h, s, l, color, range)) {
         const cx = Math.floor(px / CELL);
         const cy = Math.floor(py / CELL);
         cellCounts[cy * gridW + cx]++;
@@ -162,11 +173,9 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
     }
   }
 
-  // Mark cells that are mostly matching (>40% of CELL² pixels)
-  const threshold = (CELL * CELL) * 0.4;
-  const active = cellCounts.map(c => c >= threshold);
+  const cellThreshold = (CELL * CELL) * 0.4;
+  const active = cellCounts.map(c => c >= cellThreshold);
 
-  // Flood-fill to find connected clusters of active cells
   const visited = new Array(gridW * gridH).fill(false);
   const clusters: number[][] = [];
 
@@ -189,8 +198,9 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
     clusters.push(cluster);
   }
 
-  // Convert clusters to bounding boxes, filtering noise (< 400px² ≈ 16 cells at 5px each)
-  const MIN_CELLS = Math.ceil(400 / (CELL * CELL));
+  // Relative threshold: cluster must cover ≥0.15% of total image pixels
+  const totalPixels = width * height;
+  const MIN_CELLS = Math.max(1, Math.ceil((totalPixels * 0.0015) / (CELL * CELL)));
   const boxes: BoundingBox[] = [];
 
   for (const cluster of clusters) {
@@ -201,7 +211,6 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
       if (cx < minCx) minCx = cx; if (cx > maxCx) maxCx = cx;
       if (cy < minCy) minCy = cy; if (cy > maxCy) maxCy = cy;
     }
-    // Convert cell coords → proportional 0–1 (relative to original image)
     boxes.push({
       x:      clamp(minCx * CELL / width,  0, 1),
       y:      clamp(minCy * CELL / height, 0, 1),
@@ -211,4 +220,41 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
   }
 
   return boxes;
+}
+
+async function detectPipeline(imageUri: string, color: string): Promise<BoundingBox[]> {
+  // Downscale to max 480px wide — bounds scan time, keeps thresholds predictable
+  const resized = await ImageManipulator.manipulateAsync(
+    imageUri,
+    [{ resize: { width: 480 } }],
+    { format: ImageManipulator.SaveFormat.PNG, base64: true },
+  );
+  if (!resized.base64) return [];
+
+  const buffer = decodeBase64(resized.base64);
+  const parsed = parsePNGPixels(buffer);
+  if (!parsed) return [];
+
+  const { width, height, rgb } = parsed;
+  const baseRange = BASE_RANGES[color];
+  if (!baseRange) return [];
+
+  let boxes = scanForClusters(rgb, width, height, color, baseRange);
+
+  // One adaptive retry with relaxed bounds for difficult lighting
+  if (boxes.length === 0) {
+    boxes = scanForClusters(rgb, width, height, color, relaxRange(color, baseRange));
+  }
+
+  return boxes;
+}
+
+export async function detectHolds(imageUri: string, color: string): Promise<BoundingBox[]> {
+  const timeout = new Promise<BoundingBox[]>(resolve => setTimeout(() => resolve([]), 4000));
+  try {
+    return await Promise.race([detectPipeline(imageUri, color), timeout]);
+  } catch (err) {
+    console.warn('[holdDetection] pipeline error:', err);
+    return [];
+  }
 }

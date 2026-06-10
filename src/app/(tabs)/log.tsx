@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName, type Gym } from '../../lib/gyms';
 import { detectHolds, type BoundingBox } from '../../lib/holdDetection';
 
@@ -78,8 +77,6 @@ export default function LogScreen() {
   const [boxes, setBoxes]                   = useState<BoundingBox[]>([]);
   const [detecting, setDetecting]           = useState(false);
   const [photoLayout, setPhotoLayout]       = useState({ width: 1, height: 1 });
-  const [querying, setQuerying]             = useState(false);
-
   useFocusEffect(useCallback(() => {
     fetchGyms().then(setGyms);
   }, []));
@@ -131,43 +128,20 @@ export default function LogScreen() {
 
   // ── Query & navigate ────────────────────────────────────────────
 
-  const queryAndNavigate = async (skip: boolean) => {
-    if (!canContinue || querying) return;
-    setQuerying(true);
-    try {
-      const params = new URLSearchParams({
-        gymId:       selectedGym!.id,
-        gymName:     selectedGym!.name,
-        holdColor:   holdColor!,
-        wallSection: wallSection!,
-        grade:       selectedGrade,
-      });
-
-      if (!skip) {
-        const { data } = await supabase
-          .from('problems')
-          .select('*')
-          .eq('gym_id', selectedGym!.id)
-          .eq('hold_color', holdColor!)
-          .eq('wall_section', wallSection!)
-          .eq('grade', selectedGrade);
-
-        if (data && data.length > 0) {
-          router.push(`/log-flow/match?${params.toString()}`);
-          return;
-        }
-        params.set('newProblem', 'true');
-        Alert.alert("You're the first! 🧗", "No one has logged this climb yet. You're breaking new ground.", [
-          { text: 'Log It', onPress: () => router.push(`/log-flow/send?${params.toString()}`) },
-        ]);
-        return;
-      }
+  const queryAndNavigate = (skip: boolean) => {
+    if (!canContinue) return;
+    const params = new URLSearchParams({
+      gymId:       selectedGym!.id,
+      gymName:     selectedGym!.name,
+      holdColor:   holdColor!,
+      wallSection: wallSection!,
+      grade:       selectedGrade,
+    });
+    if (skip) {
       params.set('newProblem', 'true');
       router.push(`/log-flow/send?${params.toString()}`);
-    } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Could not search problems.');
-    } finally {
-      setQuerying(false);
+    } else {
+      router.push(`/log-flow/match?${params.toString()}`);
     }
   };
 
@@ -339,17 +313,17 @@ export default function LogScreen() {
 
         {/* 5 ── CTA */}
         <TouchableOpacity
-          style={[styles.ctaBtn, (!canContinue || querying) && styles.ctaBtnDisabled]}
+          style={[styles.ctaBtn, !canContinue && styles.ctaBtnDisabled]}
           onPress={() => queryAndNavigate(false)}
           activeOpacity={0.85}
-          disabled={!canContinue || querying}>
-          {querying ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.ctaLabel}>IDENTIFY CLIMB</Text>}
+          disabled={!canContinue}>
+          <Text style={styles.ctaLabel}>IDENTIFY CLIMB</Text>
         </TouchableOpacity>
 
         <View style={styles.skipRow}>
           <Text style={styles.skipStatic}>No photo? </Text>
-          <TouchableOpacity onPress={() => queryAndNavigate(true)} disabled={!canContinue || querying} activeOpacity={0.7}>
-            <Text style={[styles.skipLink, (!canContinue || querying) && { opacity: 0.4 }]}>
+          <TouchableOpacity onPress={() => queryAndNavigate(true)} disabled={!canContinue} activeOpacity={0.7}>
+            <Text style={[styles.skipLink, !canContinue && { opacity: 0.4 }]}>
               Skip — log by attributes only
             </Text>
           </TouchableOpacity>
