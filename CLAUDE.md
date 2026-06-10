@@ -375,7 +375,7 @@ src/lib/
   supabase.ts          — Supabase client (import this everywhere)
   store.ts             — AsyncStorage helpers, media upload, avatar upload. Post type includes climbNickname (problems.custom_name) and climbNotes (sessions.notes)
   gyms.ts              — fetchGyms() + gymName() helper; in-process cache; SINGLE SOURCE OF TRUTH for gym data
-  holdDetection.ts     — On-device hold color detection: resize to 100×100 PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching, flood-fill cluster detection, returns BoundingBox[] as 0–1 proportional coords
+  holdDetection.ts     — On-device hold color detection: downscale to max 480px wide PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching (red hue wraps 345–15), flood-fill cluster detection with a relative threshold (≥0.15% of pixels), one adaptive relaxed-bounds retry, 4s hard timeout, returns BoundingBox[] as 0–1 proportional coords
 src/components/
   ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
 ```
@@ -400,7 +400,7 @@ src/components/
 ### Feed Card Layout (TikTok-style full-screen)
 Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with all overlays `position: 'absolute'`:
 
-- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2E7A96 → #0d2b36'` for sessions without media.
+- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2E7A96 → #0d2b36'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
 - **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
@@ -457,7 +457,7 @@ The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
 
 **Log form** (`gym/[id]/log.tsx`) — Screen 1 of the 3-screen log flow with gymId pre-filled:
 - Recognition photo (for hold detection only — never uploaded), hold color chips, wall section chips, grade slider, IDENTIFY CLIMB button
-- Queries `problems` by gym_id + hold_color + wall_section + grade; navigates to `/log-flow/match` if matches found, `/log-flow/send?newProblem=true` if not (with "You're the first!" alert)
+- Navigates to `/log-flow/match` (passing gym_id + hold_color + wall_section + grade); the match screen runs the two-pass query and decides matches / close / celebration. The "Skip" link goes straight to `/log-flow/send?newProblem=true`.
 - No gym picker — gymId comes from the route param
 
 ### 3-Screen Log Flow (`/log-flow/`)
@@ -466,11 +466,11 @@ Logging a climb is split across three screens. Both `(tabs)/log.tsx` (tab entry)
 
 **Route params flow:**
 ```
-Screen 1 → matches found:   router.push('/log-flow/match?gymId=&gymName=&holdColor=&wallSection=&grade=')
-Screen 1 → no matches:      Alert "You're the first! 🧗" → router.push('/log-flow/send?...&newProblem=true')
-Screen 1 → skip link:       same as no matches but skips detection query
+Screen 1 → always:          router.push('/log-flow/match?gymId=&gymName=&holdColor=&wallSection=&grade=')
+Screen 1 → skip link:       router.push('/log-flow/send?...&newProblem=true')  (bypasses match)
 Screen 2 "YES LOG MY SEND": router.push('/log-flow/send?...&problemId=&problemName=&problemGrade=')
 Screen 2 "NO NEW CLIMB":    router.push('/log-flow/send?...&newProblem=true')
+Screen 2 "NAME YOUR CLIMB": router.push('/log-flow/send?...&newProblem=true&focusNickname=true')  (celebration)
 Screen 3 success (2.5s):    router.navigate('/(tabs)')
 ```
 
@@ -482,16 +482,24 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 - "Skip — log by attributes only" link does the same query without detection
 
 **Screen 2 — Is This Your Climb** (`log-flow/match.tsx`):
-- Shows matched `ProblemCard` list. Tap a card to select it (SAND border + glow). "YES — LOG MY SEND" (disabled until card selected) → Screen 3 with problemId. "NO — IT'S A NEW CLIMB" → Screen 3 with newProblem=true.
+- Both Screen-1 entries route here **unconditionally** (when not skipping) — `match.tsx` owns all the match/celebration logic; Screen 1 no longer pre-queries.
+- **Two-pass query** runs in parallel via `Promise.all`: (1) **exact** = `gym_id + hold_color + grade + wall_section`; (2) **broad** = `gym_id + hold_color + grade` (any wall section). Close matches = broad minus exact. Both ordered `created_at` desc.
+- **Four states** (`queryState`): `loading` (SAND spinner) · `matches` (exact found) · `close` (no exact, but same color+grade on other walls) · `none` (nothing → celebration) · `error` (query threw/failed → quiet retry).
+- **matches / close** — shows matched `ProblemCard` list (reuses `ProblemCard`, never forked). Close matches render under a `CLOSE MATCHES` 9px section label. Tap a card to select it (SAND border + glow). "YES — LOG MY SEND" (disabled until selected) → Screen 3 with problemId. "NO — IT'S A NEW CLIMB" → Screen 3 with newProblem=true.
+- **none → "You're the first." celebration** — full-card centered state: subtle SAND `DotGrid` (3×3 dots, brand motif), `NEW PROBLEM` section label, `You're the first.` headline (Syne_800ExtraBold 34px INK), subline pulling the gym name via `gymName()`. Primary `NAME YOUR CLIMB` button (SAND bg, INK text) → Screen 3 with `focusNickname=true` (auto-focuses the nickname input). Secondary `Log without naming` link → Screen 3 normally. No ACCENT red anywhere.
+- **error → quiet retry** — "Couldn't check the catalog — try again" + retry button calling `runQuery()`. Never shows the celebration on a network error (would create duplicate problems).
 
 **Screen 3 — Log Your Send** (`log-flow/send.tsx`):
 - Grade slider is pre-filled from `problemGrade` (Screen 2 match) OR `grade` (Screen 1 identify flow) — both params are read, with `problemGrade` taking priority. Without this fallback the slider would always default to V0 when coming from Screen 1.
 - Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
+- **Nickname auto-focus** — when arriving from the "you're the first" celebration (Screen 2 passes `focusNickname=true`), the nickname `TextInput` is focused via a `ref` after a 450ms delay (lets the screen-slide animation settle before the keyboard opens). Only fires when `isNew && focusNickname === 'true'`.
 - Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) show "CLIMB LOGGED" for 2.5s → navigate to feed.
 
 **Hold detection** (`src/lib/holdDetection.ts`):
-- `detectHolds(imageUri, color)` → `BoundingBox[]`
-- Resize to 100×100 PNG via `expo-image-manipulator`; decode base64 → ArrayBuffer via `base64-arraybuffer`; parse PNG chunks; decompress IDAT with `pako.inflate`; reconstruct PNG filter bytes (None/Sub/Up/Average/Paeth); convert each pixel RGB→HSL; match against `COLOR_RANGES` table; flood-fill connected cells into clusters; discard clusters < 400px²; return proportional 0–1 bounding boxes.
+- `detectHolds(imageUri, color)` → `BoundingBox[]`. Detection is an **enhancement, never a dependency** — every failure mode (throw, timeout, zero clusters) resolves to `[]` and the flow continues to metadata matching as if Skip was used. Wrapped in `Promise.race` against a **4s timeout**.
+- Pipeline: downscale to **max 480px wide** PNG via `expo-image-manipulator`; decode base64 → ArrayBuffer via `base64-arraybuffer`; parse PNG chunks; decompress IDAT with `pako.inflate`; reconstruct PNG filter bytes (None/Sub/Up/Average/Paeth); convert each pixel RGB→HSL; match against `COLOR_RANGES`; flood-fill connected cells into clusters; **discard clusters smaller than 0.15% of total pixels** (relative, so it survives dimension changes); return proportional 0–1 bounding boxes.
+- **Red hue wraparound** — red spans both ends of the hue circle, so its range is `h >= 345 OR h <= 15` (`hWrap: true`). All other colors use a simple `hMin..hMax` between-test.
+- **One adaptive retry** — if the first pass finds zero clusters for the selected color, it retries once with relaxed bounds (`relaxRange`: hue window ±8°, sMin −15, lightness ±10 each end) for hard colored-LED gym lighting. Still nothing → continue silently (no error surfaced).
 
 ### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
@@ -644,7 +652,8 @@ Therefore:
 - **On-device hold detection** — `src/lib/holdDetection.ts` using `expo-image-manipulator` + `pako`; PNG parsing + HSL color range matching + flood-fill clustering; returns bounding boxes rendered as SAND overlays on the recognition photo
 - **`problems` table** — community-created climb records (gym_id, hold_color, grade, wall_section, name, custom_name, media_url). `climbs.problem_id` links each logged climb to a problem. `problems.media_url` auto-updated to the most-liked session photo on each send.
 - **Feed + session detail show climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on both feed cards and the session detail modal when set. `gap: 2` keeps them tight.
-- **"You're the first!" alert** — shown when no matching problem exists; confirms before navigating to Screen 3
+- **"You're the first." celebration** (Screen 2) — when both match passes return zero, Screen 2 shows a full-card first-logger celebration (SAND dot-grid motif, `NEW PROBLEM` label, headline + gym-name subline, `NAME YOUR CLIMB` / `Log without naming` CTAs) instead of a dead-end empty state. A Supabase query failure shows a quiet retry state instead — never the celebration.
+- **Close-matches pass** — before declaring "first", Screen 2 runs a broadened query (same gym + color + grade, any wall section) and surfaces those under a `CLOSE MATCHES` label above the YES/NO actions.
 - "CLIMB LOGGED" success screen (centered) after submitting a send
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
