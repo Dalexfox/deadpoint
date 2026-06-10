@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -67,6 +67,7 @@ export default function SendScreen() {
     problemName?: string;
     problemGrade?: string; // from Screen 2 (matched problem)
     newProblem?:  string;
+    focusNickname?: string; // from the "first to log" celebration → auto-focus nickname
   }>();
 
   const {
@@ -79,6 +80,7 @@ export default function SendScreen() {
     problemName,
     problemGrade,
     newProblem,
+    focusNickname,
   } = params;
 
   // Grade comes from Screen 2 (problemGrade) if a match was selected,
@@ -106,6 +108,7 @@ export default function SendScreen() {
   const [sendMedia, setSendMedia]     = useState<SendMedia | null>(null);
   const [submitting, setSubmitting]   = useState(false);
   const [submitted, setSubmitted]     = useState(false);
+  const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
     fetchGyms().then(gyms => {
@@ -114,6 +117,15 @@ export default function SendScreen() {
       if (match) setSelectedGym(match);
     });
   }, [gymId]);
+
+  // Auto-focus the nickname field when arriving from the "you're the first" celebration.
+  // Delayed so the screen-transition animation settles before the keyboard opens.
+  useEffect(() => {
+    if (isNew && focusNickname === 'true') {
+      const t = setTimeout(() => nicknameRef.current?.focus(), 450);
+      return () => clearTimeout(t);
+    }
+  }, [isNew, focusNickname]);
 
   // ── Send media picker (completely separate from recognition photo) ──
 
@@ -216,11 +228,6 @@ export default function SendScreen() {
 
       // 5. Recompute problems.media_url = best-liked session photo for this problem
       if (finalProblemId) {
-        const { data: linkedSessions } = await supabase
-          .from('sessions')
-          .select('id, media_url')
-          .eq('id', session.id); // simple: use this session for now; a full recompute would join likes
-
         // Find all sessions for this problem via climbs
         const { data: climbRows } = await supabase
           .from('climbs')
@@ -317,6 +324,7 @@ export default function SendScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>NICKNAME (OPTIONAL)</Text>
             <TextInput
+              ref={nicknameRef}
               style={styles.textInput}
               value={customName}
               onChangeText={setCustomName}

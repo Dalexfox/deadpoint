@@ -183,7 +183,10 @@ async function fetchSessionPosts(
     };
 
     if (session.media_url) {
-      post.media = [{ type: 'image', uri: session.media_url }];
+      // sessions has no media_type column — sniff the extension to tell videos
+      // from photos (matches the logic in session/[id].tsx).
+      const isVideo = /\.(mp4|mov|m4v|avi)$/i.test(session.media_url);
+      post.media = [{ type: isVideo ? 'video' : 'image', uri: session.media_url }];
     }
 
     return post;
