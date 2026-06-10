@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia } from '../../lib/store';
+import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
 import { fetchGyms, type Gym } from '../../lib/gyms';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
@@ -263,6 +264,9 @@ export default function SendScreen() {
           }
         }
       }
+
+      // Silent home-gym inference — best-effort, never blocks the success flow.
+      await syncHomeGymAfterSubmit(user.id, gymId);
 
       setSubmitted(true);
       setTimeout(() => router.navigate('/(tabs)'), 2500);

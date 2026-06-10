@@ -28,7 +28,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
-import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
+import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
+
+// ─── Session-only dismissal flags ───────────────────────────────────────────────
+// Module-level (not component state) so a dismissal survives tab switches and feed
+// refreshes but resets on next app launch — exactly the spec'd "app session only"
+// lifetime. The picker/suggestion cards reappear next launch until resolved.
+let gymPickerDismissedThisSession = false;
+let suggestionsDismissedThisSession = false;
 
 // ─── expo-av dynamic load ─────────────────────────────────────────────────────
 // expo-av requires a development build. In Expo Go the native ExponentAV module
@@ -79,6 +86,22 @@ type CommentItem = {
   content: string;
   createdAt: string;
 };
+
+type SuggestedClimber = {
+  id: string;
+  fullName: string;
+  username: string;
+  avatarUrl: string | null;
+};
+
+// The feed is a single vertical-snap list. Posts and the first-run cards are all
+// full-height items in the same list so snap behaviour is never broken.
+type FeedItem =
+  | { key: string; kind: 'post'; post: Post }
+  | { key: 'gymPicker'; kind: 'gymPicker' }
+  | { key: 'gymConfirm'; kind: 'gymConfirm'; gymId: string; gymName: string }
+  | { key: 'suggestions'; kind: 'suggestions'; gymId: string }
+  | { key: 'empty'; kind: 'empty' };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -424,6 +447,173 @@ function FullScreenCard({
   );
 }
 
+// ─── First-run feed cards ───────────────────────────────────────────────────────
+
+// Gym picker — shown as the first feed item while home_gym_id is null.
+function GymPickerCard({
+  height, gyms, onSelect, onDismiss,
+}: {
+  height: number;
+  gyms: Gym[];
+  onSelect: (gym: Gym) => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={[fc.card, { height }]}>
+      <TouchableOpacity style={fc.dismiss} onPress={onDismiss} activeOpacity={0.7}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <Text style={fc.dismissText}>✕</Text>
+      </TouchableOpacity>
+
+      <View style={fc.inner}>
+        <Text style={fc.label}>YOUR GYM</Text>
+        <Text style={fc.pickerHeadline}>Where do you climb?</Text>
+        <Text style={fc.pickerSub}>Tap your home gym to see what&apos;s on the wall.</Text>
+
+        <View style={fc.chipWrap}>
+          {gyms.map(gym => (
+            <TouchableOpacity key={gym.id} style={fc.chip} activeOpacity={0.8}
+              onPress={() => onSelect(gym)}>
+              <Text style={fc.chipName}>{gym.name}</Text>
+              {gym.neighborhood ? (
+                <Text style={fc.chipNeighborhood}>{gym.neighborhood}</Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// One-time confirmation shown in place of the picker right after a gym is chosen.
+function GymConfirmCard({
+  height, gymName, onPress,
+}: {
+  height: number;
+  gymName: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={[fc.card, { height }]} activeOpacity={0.9} onPress={onPress}>
+      <View style={fc.inner}>
+        <Text style={fc.label}>YOUR GYM</Text>
+        <Text style={fc.confirmHeadline}>
+          <Text style={fc.confirmGym}>{gymName}</Text> set as your gym
+        </Text>
+        <Text style={fc.confirmSub}>Tap to see what&apos;s on the wall →</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// In-feed climber suggestions — injected after the 3rd post. Reuses the feed's
+// own follow mutation (onFollowToggle) so the follow logic is never duplicated.
+function SuggestionsCard({
+  height, gymName, climbers, followingSet, onFollowToggle, onPressUser, onDismiss,
+}: {
+  height: number;
+  gymName: string;
+  climbers: SuggestedClimber[];
+  followingSet: Set<string>;
+  onFollowToggle: (userId: string) => void;
+  onPressUser: (userId: string) => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={[fc.card, { height }]}>
+      <TouchableOpacity style={fc.dismiss} onPress={onDismiss} activeOpacity={0.7}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <Text style={fc.dismissText}>✕</Text>
+      </TouchableOpacity>
+
+      <View style={fc.inner}>
+        <Text style={fc.label}>CLIMBERS AT {gymName.toUpperCase()}</Text>
+        <Text style={fc.suggestHeadline}>Find your people.</Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={fc.suggestRow}>
+          {climbers.map(c => {
+            const following = followingSet.has(c.id);
+            return (
+              <View key={c.id} style={fc.suggestItem}>
+                <TouchableOpacity activeOpacity={0.8} onPress={() => onPressUser(c.id)}>
+                  {c.avatarUrl ? (
+                    <Image source={{ uri: c.avatarUrl }} style={fc.suggestAvatar} />
+                  ) : (
+                    <View style={[fc.suggestAvatar, fc.suggestAvatarFallback]}>
+                      <Text style={fc.suggestAvatarText}>{toInitials(c.fullName)}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <Text style={fc.suggestName} numberOfLines={1}>@{c.username}</Text>
+                <TouchableOpacity
+                  style={[fc.suggestFollowBtn, following && fc.suggestFollowingBtn]}
+                  onPress={() => onFollowToggle(c.id)}
+                  activeOpacity={0.8}>
+                  <Text style={[fc.suggestFollowText, following && fc.suggestFollowingText]}>
+                    {following ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+// Empty feed — never a blank screen. Always points at real content.
+function EmptyFeedCard({
+  height, hasHomeGym, homeGymName, homeGymHasProblems, onLogSend, onGoToGym,
+}: {
+  height: number;
+  hasHomeGym: boolean;
+  homeGymName: string;
+  homeGymHasProblems: boolean;
+  onLogSend: () => void;
+  onGoToGym: () => void;
+}) {
+  return (
+    <View style={[fc.card, { height }]}>
+      <View style={fc.inner}>
+        <Text style={fc.label}>QUIET IN HERE</Text>
+        <Text style={fc.emptyHeadline}>No sends yet.</Text>
+        <Text style={fc.emptySub}>
+          Log a climb and yours will be the first thing climbers see.
+        </Text>
+
+        <TouchableOpacity style={fc.emptyCta} onPress={onLogSend} activeOpacity={0.85}>
+          <Text style={fc.emptyCtaText}>LOG A SEND</Text>
+        </TouchableOpacity>
+
+        {hasHomeGym && homeGymHasProblems ? (
+          <TouchableOpacity onPress={onGoToGym} activeOpacity={0.7} style={fc.emptyLink}>
+            <Text style={fc.emptyLinkText}>Meanwhile, on the wall at {homeGymName} →</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+// Quiet inline retry — shown when the feed query fails. Never a dead screen.
+function FeedErrorCard({ height, onRetry }: { height: number; onRetry: () => void }) {
+  return (
+    <View style={[fc.card, { height }]}>
+      <View style={fc.inner}>
+        <Text style={fc.label}>HMM</Text>
+        <Text style={fc.emptyHeadline}>Couldn&apos;t load the feed.</Text>
+        <Text style={fc.emptySub}>Check your connection and try again.</Text>
+        <TouchableOpacity style={fc.emptyCta} onPress={onRetry} activeOpacity={0.85}>
+          <Text style={fc.emptyCtaText}>RETRY</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
@@ -434,6 +624,15 @@ export default function FeedScreen() {
   const [activeIndex,   setActiveIndex]   = useState(0);
   const [cardHeight,    setCardHeight]    = useState(0);
   const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
+
+  // First-run / personalization state
+  const [gyms,               setGyms]               = useState<Gym[]>([]);
+  const [homeGymId,          setHomeGymId]          = useState<string | null>(null);
+  const [suggestedClimbers,  setSuggestedClimbers]  = useState<SuggestedClimber[]>([]);
+  const [homeGymHasProblems, setHomeGymHasProblems] = useState(false);
+  const [gymJustSet,         setGymJustSet]         = useState<{ gymId: string; gymName: string } | null>(null);
+  const [loadError,          setLoadError]          = useState(false);
+  const [, setDismissTick] = useState(0); // bump to re-render after a session-only dismissal
 
   // Comment sheet
   const [commentSheetVisible,   setCommentSheetVisible]   = useState(false);
@@ -454,27 +653,85 @@ export default function FeedScreen() {
   );
   const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 60 });
 
+  // Single shared loader — used by focus and by the inline retry. Any failure
+  // sets loadError so the feed shows a quiet retry card, never a dead screen.
+  const runLoad = useCallback(async (isActive: () => boolean) => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id ?? null;
+      if (!isActive()) return;
+      setCurrentUserId(userId);
+
+      const gymsData = await fetchGyms();
+
+      // Current user's home gym (null → show the picker card)
+      let hgid: string | null = null;
+      if (userId) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('home_gym_id')
+          .eq('id', userId)
+          .single();
+        hgid = prof?.home_gym_id ?? null;
+      }
+
+      const { posts: sessionPosts, followingSet: fs } = await fetchSessionPosts(userId);
+
+      // Suggested climbers — only when a home gym is set and the user follows < 3.
+      let suggested: SuggestedClimber[] = [];
+      if (userId && hgid && fs.size < 3) {
+        const { data: sharers } = await supabase
+          .from('profiles')
+          .select('id,full_name,username,avatar_url')
+          .eq('home_gym_id', hgid)
+          .neq('id', userId)
+          .limit(12);
+        suggested = (sharers ?? [])
+          .filter(p => !fs.has(p.id))
+          .slice(0, 8)
+          .map(p => ({
+            id: p.id,
+            fullName: p.full_name ?? 'Climber',
+            username: p.username ?? 'climber',
+            avatarUrl: p.avatar_url ?? null,
+          }));
+      }
+
+      // Does the home gym have catalog problems? (drives the empty-state link.)
+      let hgHasProblems = false;
+      if (hgid) {
+        const { count } = await supabase
+          .from('problems')
+          .select('id', { count: 'exact', head: true })
+          .eq('gym_id', hgid);
+        hgHasProblems = (count ?? 0) > 0;
+      }
+
+      if (!isActive()) return;
+      setGyms(gymsData);
+      setHomeGymId(hgid);
+      setSuggestedClimbers(suggested);
+      setHomeGymHasProblems(hgHasProblems);
+      setGymJustSet(null); // confirmation card never survives a refresh
+      setPosts(sessionPosts);
+      setFollowingSet(fs);
+      setLoading(false);
+    } catch {
+      if (!isActive()) return;
+      setLoadError(true);
+      setLoading(false);
+    }
+  }, []);
+
   // Load feed on every focus
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      setLoading(true);
-
-      (async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id ?? null;
-        if (!active) return;
-        setCurrentUserId(userId);
-
-        const { posts: sessionPosts, followingSet: fs } = await fetchSessionPosts(userId);
-        if (!active) return;
-        setPosts(sessionPosts);
-        setFollowingSet(fs);
-        setLoading(false);
-      })();
-
+      runLoad(() => active);
       return () => { active = false; };
-    }, [])
+    }, [runLoad])
   );
 
   // Navigate to profile — own → tab, other → /user/[id]
@@ -518,6 +775,30 @@ export default function FeedScreen() {
       // user dismissed
     }
   }, []);
+
+  // Pick a home gym from the picker card → write to profile, show confirmation.
+  const handleSelectHomeGym = useCallback(async (gym: Gym) => {
+    setGymJustSet({ gymId: gym.id, gymName: gym.name });
+    setHomeGymId(gym.id);
+    if (!currentUserId) return;
+    try {
+      await supabase.from('profiles').update({ home_gym_id: gym.id }).eq('id', currentUserId);
+    } catch {
+      // Optimistic — if the write fails the picker simply returns next launch.
+    }
+  }, [currentUserId]);
+
+  const dismissPicker = useCallback(() => {
+    gymPickerDismissedThisSession = true;
+    setDismissTick(t => t + 1);
+  }, []);
+
+  const dismissSuggestions = useCallback(() => {
+    suggestionsDismissedThisSession = true;
+    setDismissTick(t => t + 1);
+  }, []);
+
+  const handleRetry = useCallback(() => { runLoad(() => true); }, [runLoad]);
 
   // Optimistic like toggle
   const handleLike = async (id: string) => {
@@ -626,6 +907,36 @@ export default function FeedScreen() {
     setSendingComment(false);
   };
 
+  // Build the feed item list — posts plus the first-run cards, all full-height so
+  // the vertical snap behaviour is identical for every item.
+  const showPicker = homeGymId === null && !gymPickerDismissedThisSession;
+  const homeGymNameResolved = homeGymId ? resolveGymName(gyms, homeGymId) : '';
+
+  const feedItems: FeedItem[] = [];
+  if (gymJustSet) {
+    // Confirmation replaces the picker in place after a gym is chosen.
+    feedItems.push({ key: 'gymConfirm', kind: 'gymConfirm', gymId: gymJustSet.gymId, gymName: gymJustSet.gymName });
+  } else if (showPicker) {
+    feedItems.push({ key: 'gymPicker', kind: 'gymPicker' });
+  }
+
+  if (posts.length === 0) {
+    feedItems.push({ key: 'empty', kind: 'empty' });
+  } else {
+    const postItems: FeedItem[] = posts.map((p): FeedItem => ({ key: p.id, kind: 'post', post: p }));
+    const showSuggestions =
+      homeGymId !== null &&
+      !suggestionsDismissedThisSession &&
+      followingSet.size < 3 &&
+      suggestedClimbers.length > 0;
+    if (showSuggestions) {
+      // After the 3rd post (or appended if there are fewer than 3).
+      const at = Math.min(3, postItems.length);
+      postItems.splice(at, 0, { key: 'suggestions', kind: 'suggestions', gymId: homeGymId! });
+    }
+    feedItems.push(...postItems);
+  }
+
   return (
     <SafeAreaView style={screen.container} edges={['top']}>
       {/* Measure the exact content height (window minus status bar minus tab bar) */}
@@ -640,30 +951,74 @@ export default function FeedScreen() {
           <View style={screen.center}>
             <ActivityIndicator size="large" color="#ffffff" />
           </View>
-        ) : posts.length === 0 ? (
-          <View style={screen.center}>
-            <Text style={screen.emptyTitle}>No sessions yet</Text>
-            <Text style={screen.emptyText}>Log a climb to see it here.</Text>
-          </View>
+        ) : loadError ? (
+          <FeedErrorCard height={cardHeight} onRetry={handleRetry} />
         ) : (
           <FlatList
-            data={posts}
-            keyExtractor={item => item.id}
-            renderItem={({ item, index }) => (
-              <FullScreenCard
-                post={item}
-                height={cardHeight}
-                isActive={index === activeIndex}
-                isOwnPost={item.userId === currentUserId}
-                isFollowing={!!item.userId && followingSet.has(item.userId)}
-                onLike={handleLike}
-                onComment={openCommentSheet}
-                onFollowToggle={handleFollowToggle}
-                onPressUser={handlePressUser}
-                onShare={handleShare}
-                onGym={gymId => router.push(`/gym/${gymId}`)}
-              />
-            )}
+            data={feedItems}
+            keyExtractor={item => item.key}
+            renderItem={({ item, index }) => {
+              switch (item.kind) {
+                case 'post':
+                  return (
+                    <FullScreenCard
+                      post={item.post}
+                      height={cardHeight}
+                      isActive={index === activeIndex}
+                      isOwnPost={item.post.userId === currentUserId}
+                      isFollowing={!!item.post.userId && followingSet.has(item.post.userId)}
+                      onLike={handleLike}
+                      onComment={openCommentSheet}
+                      onFollowToggle={handleFollowToggle}
+                      onPressUser={handlePressUser}
+                      onShare={handleShare}
+                      onGym={gymId => router.push(`/gym/${gymId}`)}
+                    />
+                  );
+                case 'gymPicker':
+                  return (
+                    <GymPickerCard
+                      height={cardHeight}
+                      gyms={gyms}
+                      onSelect={handleSelectHomeGym}
+                      onDismiss={dismissPicker}
+                    />
+                  );
+                case 'gymConfirm':
+                  return (
+                    <GymConfirmCard
+                      height={cardHeight}
+                      gymName={item.gymName}
+                      onPress={() => router.push(`/gym/${item.gymId}`)}
+                    />
+                  );
+                case 'suggestions':
+                  return (
+                    <SuggestionsCard
+                      height={cardHeight}
+                      gymName={resolveGymName(gyms, item.gymId)}
+                      climbers={suggestedClimbers}
+                      followingSet={followingSet}
+                      onFollowToggle={handleFollowToggle}
+                      onPressUser={handlePressUser}
+                      onDismiss={dismissSuggestions}
+                    />
+                  );
+                case 'empty':
+                  return (
+                    <EmptyFeedCard
+                      height={cardHeight}
+                      hasHomeGym={homeGymId !== null}
+                      homeGymName={homeGymNameResolved}
+                      homeGymHasProblems={homeGymHasProblems}
+                      onLogSend={() => router.navigate('/(tabs)/log')}
+                      onGoToGym={() => { if (homeGymId) router.push(`/gym/${homeGymId}`); }}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            }}
             pagingEnabled
             showsVerticalScrollIndicator={false}
             snapToInterval={cardHeight}
@@ -1164,5 +1519,201 @@ const comment = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
+  },
+});
+
+// ─── First-run card styles ──────────────────────────────────────────────────────
+
+const fc = StyleSheet.create({
+  card: {
+    width: SCREEN_WIDTH,
+    backgroundColor: INK,
+    justifyContent: 'center',
+  },
+  inner: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 14,
+  },
+  dismiss: {
+    position: 'absolute',
+    top: 56,
+    right: 24,
+    zIndex: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dismissText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  label: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+
+  // Gym picker
+  pickerHeadline: {
+    fontSize: 34,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -1,
+    lineHeight: 38,
+  },
+  pickerSub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  chip: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 2,
+  },
+  chipName: {
+    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+    letterSpacing: -0.2,
+  },
+  chipNeighborhood: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: 'rgba(255,255,255,0.5)',
+  },
+
+  // Gym confirmation
+  confirmHeadline: {
+    fontSize: 26,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.6,
+    lineHeight: 32,
+  },
+  confirmGym: {
+    color: SAND,
+  },
+  confirmSub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND_LT,
+    marginTop: 2,
+  },
+
+  // Suggestions
+  suggestHeadline: {
+    fontSize: 28,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.8,
+    marginBottom: 6,
+  },
+  suggestRow: {
+    gap: 18,
+    paddingVertical: 8,
+    paddingRight: 28,
+  },
+  suggestItem: {
+    width: 96,
+    alignItems: 'center',
+    gap: 8,
+  },
+  suggestAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
+  suggestAvatarFallback: {
+    backgroundColor: '#2a2010',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestAvatarText: {
+    fontSize: 18,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND_LT,
+    letterSpacing: 0.3,
+  },
+  suggestName: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: '#ffffff',
+    maxWidth: 96,
+  },
+  suggestFollowBtn: {
+    backgroundColor: SAND,
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 18,
+  },
+  suggestFollowingBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  suggestFollowText: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+  },
+  suggestFollowingText: {
+    color: 'rgba(255,255,255,0.55)',
+  },
+
+  // Empty / error
+  emptyHeadline: {
+    fontSize: 40,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -1.5,
+    lineHeight: 44,
+  },
+  emptySub: {
+    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  emptyCta: {
+    backgroundColor: SAND,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    alignSelf: 'flex-start',
+  },
+  emptyCtaText: {
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  emptyLink: {
+    marginTop: 18,
+  },
+  emptyLinkText: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND_LT,
   },
 });

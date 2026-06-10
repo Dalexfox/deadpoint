@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { OFFICIAL_ACCOUNT_ID } from '../../lib/constants';
 
 const SAND = '#c8a84a';
 const INK  = '#1a1408';
@@ -67,6 +68,15 @@ export default function SignupScreen() {
 
       if (profileError) {
         console.warn('Profile insert error:', profileError.message);
+      }
+
+      // Auto-follow the official account, if one is configured. While
+      // OFFICIAL_ACCOUNT_ID is null this is a no-op. The resulting follow is
+      // ordinary — the user can unfollow it like any other account.
+      if (OFFICIAL_ACCOUNT_ID) {
+        await supabase
+          .from('follows')
+          .insert({ follower_id: data.user.id, following_id: OFFICIAL_ACCOUNT_ID });
       }
     }
 
