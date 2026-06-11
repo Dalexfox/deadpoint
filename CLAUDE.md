@@ -165,10 +165,12 @@ profiles (
   email text,
   avatar_url text,           -- public Supabase Storage URL for profile photo
   bio text,                  -- optional short bio, shown below @username in profile header
+  home_gym_id text,          -- the user's home gym (gyms.id); null until set by the picker or inferred
   created_at timestamp with time zone default now()
 )
--- ⚠️ bio column must be added manually if not present:
+-- ⚠️ bio + home_gym_id columns must be added manually if not present:
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio text;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS home_gym_id text;
 
 -- Climbing sessions
 sessions (
@@ -369,6 +371,22 @@ src/app/
     [id].tsx           — View-only profile page for other users
 ```
 
+### ⚠️ Register every off-`(tabs)` route in the root Stack
+`src/app/_layout.tsx` renders a `<Stack>` with an explicit `<Stack.Screen>` for
+each off-tab route (`(tabs)`, `auth`, `gym/[id]`, `log-flow`, `user/[id]`,
+`session/[id]`). When you add a NEW dynamic route, you MUST add a matching
+`<Stack.Screen name="..." />` here — otherwise `router.push` to it silently
+no-ops. (This was the cause of the username-tap navigation bug: `user/[id]`
+existed as a file but was never registered, so every push to it did nothing.)
+
+### Canonical profile navigation
+There is exactly ONE other-user profile route: `/user/[id]`. Convention for
+tapping any username/avatar: **own → `/(tabs)/profile`**, **other → `/user/[id]`**.
+Every username/avatar in the app follows this — feed cards, comment rows,
+followers/following sheets, the in-feed CLIMBERS-AT-gym suggestion card, explore
+search/suggestion rows, and the session detail screen. Wrap avatar + name in one
+`Pressable`/`TouchableOpacity` with `hitSlop` so small text is comfortably tappable.
+
 ### Key Source Files
 ```
 src/lib/
@@ -376,17 +394,21 @@ src/lib/
   store.ts             — AsyncStorage helpers, media upload, avatar upload. Post type includes climbNickname (problems.custom_name) and climbNotes (sessions.notes)
   gyms.ts              — fetchGyms() + gymName() helper; in-process cache; SINGLE SOURCE OF TRUTH for gym data
   holdDetection.ts     — On-device hold color detection: downscale to max 480px wide PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching (red hue wraps 345–15), flood-fill cluster detection with a relative threshold (≥0.15% of pixels), one adaptive relaxed-bounds retry, 4s hard timeout, returns BoundingBox[] as 0–1 proportional coords
+  homeGym.ts           — syncHomeGymAfterSubmit(userId, justLoggedGymId): silent home-gym inference. Sets profiles.home_gym_id to the just-logged gym when null; from the 3rd session onward syncs to the most-logged gym (only writes if the leader differs). Best-effort, swallows errors. Called post-submit in send.tsx.
+  stats.ts             — Pure, unit-testable progress helpers: gradeValue, highestGrade, isNewHighPoint, monthStats, weekStreak. All date math is LOCAL time; weekStreak gives the in-progress current week a one-week grace so a streak isn't shown broken mid-week. No Supabase, no React.
+  constants.ts         — OFFICIAL_ACCOUNT_ID (string | null). When non-null, signup creates an auto-follow to it; currently null (no auto-follow). The follow is ordinary and unfollowable.
 src/components/
   ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
 ```
 
 ### 5 Main Tabs
-1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go.
+1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go. The feed also hosts the **zero-onboarding first-run cards** — see "Feed First-Run Cards" below.
 2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(170, screenHeight * 0.26)` — kept compact so the gym list is easy to reach.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — 3-screen flow for identifying and logging a climb. See 3-Screen Log Flow section below.
 5. **Profile** — Fixed title header ("Profile" + `+` share button + gear icon). Fixed 3-tab bar (Overview / My Climbs / Settings) below it. The rest of the page scrolls as one unit.
-   - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
+   - **Overview tab** — Stats bar (Total Climbs · Gyms Visited · Top Grade) pinned directly below the tab bar (white BG, hairline bottom border), then a **PROGRESS** card (between Weekly Intensity and Grade Distribution), then 3 interactive chart cards (Weekly Intensity, Grade Distribution, Monthly Volume) scrolling below. Stats bar is hidden on My Climbs and Settings tabs.
+     - **PROGRESS section** (own profile only — lives in `(tabs)/profile.tsx`, never on `/user/[id]`): a single row of 3 stat blocks — **This month** (sends + distinct days climbed), **High point** (hardest grade in the reused grade-chip style), **Streak** (consecutive Mon–Sun weeks; shows "Log a climb every week to build a streak" when 0–1 instead of a sad zero). All derived client-side from the user's sessions via pure helpers in `src/lib/stats.ts` — no schema, no extra query.
    - **My Climbs tab** — grade-grouped 3-column grid with a grade step-slider and sort dropdown. See My Climbs section below for full detail.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
@@ -423,6 +445,15 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - **Bottom-left `@username`** — always tappable; own post → `/(tabs)/profile`, other → `/user/[id]`.
 - Follow state is fetched on feed load in parallel with likes/comments (queries `follows` where `follower_id = currentUserId`); stored as `followingSet: Set<string>` in screen state.
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
+
+### Feed First-Run Cards (zero-onboarding personalization)
+There is NO onboarding flow — a new user lands directly in the feed. The feed renders a single `FeedItem[]` list (a discriminated union: `post` | `gymPicker` | `gymConfirm` | `suggestions` | `empty`). All first-run cards are **full-height items in the same snap FlatList**, so vertical snap behaviour is identical for every item. The whole load is wrapped so any failed query shows a quiet inline retry card (`FeedErrorCard`), never a blank/crashed screen.
+- **Gym picker** (`gymPicker`) — first item while `home_gym_id` is null: "YOUR GYM" label + "Where do you climb?" (SAND on INK) + gym chips (name + neighborhood) from `fetchGyms()`. Tapping a chip writes `profiles.home_gym_id`.
+- **Confirmation** (`gymConfirm`) — replaces the picker in place after a selection ("{gym} set as your gym…", taps to `/gym/[id]`). Driven by transient `gymJustSet` state; cleared on the next feed refresh and never returns.
+- **Suggestions** (`suggestions`) — injected after the 3rd post ONLY when `home_gym_id` is set AND the user follows < 3 people AND another profile shares their home gym. Horizontal row of avatar + @username + Follow button; reuses the feed's own `handleFollowToggle` mutation (never duplicated). Dismissible ✕.
+- **Empty** (`empty`) — when there are no public sessions: "QUIET IN HERE / No sends yet." + SAND "LOG A SEND" CTA → Log tab, plus a "Meanwhile, on the wall at {gym}" link when the home gym has catalog problems. Picker shows above it when applicable.
+- **Dismissals** (picker ✕, suggestions ✕) persist **for the app session only** via module-level flags in `index.tsx` (not state) — they survive tab switches/refreshes but reset on next launch, reappearing until a gym is set/inferred.
+- Home gym is also inferred silently on log submit — see `src/lib/homeGym.ts`.
 
 ### Explore Tab (`/explore`)
 - "EXPLORE" header (Syne_800ExtraBold), SURFACE search bar with Ionicons `search-outline` icon
@@ -493,7 +524,8 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 - Grade slider is pre-filled from `problemGrade` (Screen 2 match) OR `grade` (Screen 1 identify flow) — both params are read, with `problemGrade` taking priority. Without this fallback the slider would always default to V0 when coming from Screen 1.
 - Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
 - **Nickname auto-focus** — when arriving from the "you're the first" celebration (Screen 2 passes `focusNickname=true`), the nickname `TextInput` is focused via a `ref` after a 450ms delay (lets the screen-slide animation settle before the keyboard opens). Only fires when `isNew && focusNickname === 'true'`.
-- Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) show "CLIMB LOGGED" for 2.5s → navigate to feed.
+- Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) silent home-gym inference via `syncHomeGymAfterSubmit`; (7) show "CLIMB LOGGED" for 2.5s → navigate to feed.
+- **New high point celebration** — after the "CLIMB LOGGED" success, the grade is compared on read against the user's previous hardest send (query their other sessions' climbs via `isNewHighPoint` from `stats.ts`; no denormalized max stored). A strictly-harder grade — or the first-ever log — shows a full-screen celebration: "NEW HIGH POINT" label, the grade huge (104px Syne, **SAND on INK**), "Your hardest send yet." Auto-dismiss on tap → feed. Ties and below-max do NOT trigger it; a query error never falsely celebrates and never blocks submit. SAND only — no ACCENT red.
 
 **Hold detection** (`src/lib/holdDetection.ts`):
 - `detectHolds(imageUri, color)` → `BoundingBox[]`. Detection is an **enhancement, never a dependency** — every failure mode (throw, timeout, zero clusters) resolves to `[]` and the flow continues to metadata matching as if Skip was used. Wrapped in `Promise.race` against a **4s timeout**.
@@ -655,6 +687,10 @@ Therefore:
 - **"You're the first." celebration** (Screen 2) — when both match passes return zero, Screen 2 shows a full-card first-logger celebration (SAND dot-grid motif, `NEW PROBLEM` label, headline + gym-name subline, `NAME YOUR CLIMB` / `Log without naming` CTAs) instead of a dead-end empty state. A Supabase query failure shows a quiet retry state instead — never the celebration.
 - **Close-matches pass** — before declaring "first", Screen 2 runs a broadened query (same gym + color + grade, any wall section) and surfaces those under a `CLOSE MATCHES` label above the YES/NO actions.
 - "CLIMB LOGGED" success screen (centered) after submitting a send
+- **Zero-onboarding first-run experience** — signup lands straight in the feed; in-feed gym picker → confirmation cards (sets `profiles.home_gym_id`); silent home-gym inference on submit (`src/lib/homeGym.ts`); in-feed CLIMBERS-AT-gym suggestion card; "QUIET IN HERE" empty state; `OFFICIAL_ACCOUNT_ID` auto-follow scaffolding (off). See "Feed First-Run Cards".
+- **New high point celebration** — first-ever / new-hardest send shows a full-screen SAND-on-INK grade celebration after submit (computed on read; `src/lib/stats.ts`)
+- **Profile PROGRESS section** — own-profile-only row: This month (sends + days), High point (grade chip), Streak (consecutive weeks). Pure helpers in `src/lib/stats.ts`.
+- **Canonical profile navigation** — every username/avatar (feed, comments, followers/following, suggestion card, explore rows, session detail) routes to `/user/[id]` (other) or `/(tabs)/profile` (own). `user/[id]` is registered in the root Stack.
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
 - Sign up / log in screens (white background, Syne ExtraBold, premium minimal)
@@ -692,6 +728,8 @@ Therefore:
 
 ## Important Rules for Claude Code
 - Always use **expo-router** for navigation, NEVER react-navigation
+- **Register every off-`(tabs)` route** with a `<Stack.Screen name="..." />` in `src/app/_layout.tsx` — an unregistered file route makes `router.push` to it silently no-op (this caused the username-tap navigation bug)
+- **Profile navigation convention:** own → `/(tabs)/profile`, other → `/user/[id]`. Wire every username/avatar this way; wrap avatar + name in one `Pressable` with `hitSlop`
 - Always keep compatibility with **Expo SDK 56**
 - Use the **ink/sand/cream palette** defined above — BG white, CARD `#f4f1eb`, SURFACE `#ece8df`, INK `#1a1408`, SAND `#c8a84a`, ACCENT `#e8383c`
 - ACCENT (`#e8383c`) is ONLY for: like buttons (heart) + Grade Distribution peak bar — nowhere else
