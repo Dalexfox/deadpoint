@@ -252,6 +252,16 @@ export default function SessionDetailScreen() {
     });
   }
 
+  // ── Open the poster's profile (own → tab, other → /user/[id]) ───────────────
+  function openPosterProfile() {
+    if (!session) return;
+    if (session.userId === currentUserId) {
+      router.navigate('/(tabs)/profile');
+    } else {
+      router.push(`/user/${session.userId}`);
+    }
+  }
+
   // ─── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -314,8 +324,8 @@ export default function SessionDetailScreen() {
       {/* ── Right action rail ─────────────────────────────────────────────── */}
       <View style={[st.rail, { bottom: STATS_BAR_H + 20 }]}>
 
-        {/* Avatar */}
-        <View style={st.railItem}>
+        {/* Avatar → poster's profile */}
+        <TouchableOpacity style={st.railItem} activeOpacity={0.8} onPress={openPosterProfile}>
           <View style={st.avatarRing}>
             {posterAvatar ? (
               <Image source={{ uri: posterAvatar }} style={st.railAvatar} />
@@ -325,7 +335,7 @@ export default function SessionDetailScreen() {
               </View>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Like */}
         <TouchableOpacity style={st.railItem} activeOpacity={0.8} onPress={handleLike}>
@@ -359,7 +369,12 @@ export default function SessionDetailScreen() {
 
       {/* ── Bottom-left username + nickname + notes ──────────────────────── */}
       <View style={[st.bottomInfo, { bottom: STATS_BAR_H + 16 }]}>
-        <Text style={st.username}>{displayName}</Text>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={openPosterProfile}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <Text style={st.username}>{displayName}</Text>
+        </TouchableOpacity>
         {session.climbNickname ? (
           <Text style={st.climbNickname}>{session.climbNickname}</Text>
         ) : null}

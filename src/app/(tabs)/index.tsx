@@ -418,6 +418,7 @@ function FullScreenCard({
       <TouchableOpacity
         style={[card.bottomInfo, { bottom: STATS_BAR_H + 16 }]}
         activeOpacity={0.75}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         onPress={() => post.userId && onPressUser(post.userId)}>
         <Text style={card.username}>{displayName}</Text>
         {post.climbNickname ? (
@@ -537,7 +538,11 @@ function SuggestionsCard({
             const following = followingSet.has(c.id);
             return (
               <View key={c.id} style={fc.suggestItem}>
-                <TouchableOpacity activeOpacity={0.8} onPress={() => onPressUser(c.id)}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => onPressUser(c.id)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  style={fc.suggestTap}>
                   {c.avatarUrl ? (
                     <Image source={{ uri: c.avatarUrl }} style={fc.suggestAvatar} />
                   ) : (
@@ -545,8 +550,8 @@ function SuggestionsCard({
                       <Text style={fc.suggestAvatarText}>{toInitials(c.fullName)}</Text>
                     </View>
                   )}
+                  <Text style={fc.suggestName} numberOfLines={1}>@{c.username}</Text>
                 </TouchableOpacity>
-                <Text style={fc.suggestName} numberOfLines={1}>@{c.username}</Text>
                 <TouchableOpacity
                   style={[fc.suggestFollowBtn, following && fc.suggestFollowingBtn]}
                   onPress={() => onFollowToggle(c.id)}
@@ -1635,6 +1640,10 @@ const fc = StyleSheet.create({
   },
   suggestItem: {
     width: 96,
+    alignItems: 'center',
+    gap: 8,
+  },
+  suggestTap: {
     alignItems: 'center',
     gap: 8,
   },

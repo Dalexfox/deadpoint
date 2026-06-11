@@ -112,17 +112,25 @@ function UserRowItem({
   isToggling: boolean;
   onToggle: (id: string) => void;
 }) {
+  const router = useRouter();
   return (
     <View style={styles.userRow}>
-      <UserAvatar user={user} size={48} />
-      <View style={styles.userMeta}>
-        <Text style={styles.userName} numberOfLines={1}>
-          {user.fullName || user.username}
-        </Text>
-        <Text style={styles.userHandle} numberOfLines={1}>
-          @{user.username}
-        </Text>
-      </View>
+      {/* Avatar + name tap → that climber's profile. Follow button stays separate. */}
+      <TouchableOpacity
+        style={styles.userRowTap}
+        activeOpacity={0.7}
+        onPress={() => router.push(`/user/${user.id}`)}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+        <UserAvatar user={user} size={48} />
+        <View style={styles.userMeta}>
+          <Text style={styles.userName} numberOfLines={1}>
+            {user.fullName || user.username}
+          </Text>
+          <Text style={styles.userHandle} numberOfLines={1}>
+            @{user.username}
+          </Text>
+        </View>
+      </TouchableOpacity>
       <FollowButton
         userId={user.id}
         isFollowing={isFollowing}
@@ -563,6 +571,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DIVIDER,
+  },
+  userRowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   userMeta: {
     flex: 1,
