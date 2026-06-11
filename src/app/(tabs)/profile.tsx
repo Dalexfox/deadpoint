@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,6 +28,7 @@ import {
 } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
+import { monthStats, highestGrade, weekStreak } from '../../lib/stats';
 
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
@@ -223,6 +224,17 @@ export default function ProfileScreen() {
   const [sessions,  setSessions]    = useState<SupabaseSession[]>([]);
   const [chartData, setChartData]   = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
+
+  // Progress stats — all derived client-side from the user's own sessions via
+  // pure helpers in src/lib/stats.ts (no schema, no extra query).
+  const progress = useMemo(() => {
+    const stat = sessions.map(s => ({ createdAt: s.createdAt, grade: s.grade }));
+    return {
+      month:     monthStats(stat),
+      highPoint: highestGrade(stat),
+      streak:    weekStreak(stat),
+    };
+  }, [sessions]);
   const [selectedWeekDay, setSelectedWeekDay] = useState<number | null>(null);
   const [climbEntries, setClimbEntries]       = useState<ClimbEntry[]>([]);
   const [selectedGrade, setSelectedGrade]     = useState<string | null>(null);
@@ -871,6 +883,54 @@ export default function ProfileScreen() {
                     </View>
                   );
                 })()}
+              </View>
+
+              {/* Progress — single-player stats. Own profile only (this screen is
+                  always the owner's; /user/[id] never renders this section). */}
+              <View style={styles.chartCard}>
+                <Text style={styles.progressLabel}>PROGRESS</Text>
+                <View style={styles.progressRow}>
+
+                  {/* This month */}
+                  <View style={styles.progressBlock}>
+                    <Text style={styles.progressValue}>{progress.month.sends}</Text>
+                    <Text style={styles.progressBlockLabel}>
+                      {progress.month.sends === 1 ? 'send' : 'sends'} this month
+                    </Text>
+                    <Text style={styles.progressSub}>
+                      {progress.month.daysClimbed} {progress.month.daysClimbed === 1 ? 'day' : 'days'} climbed
+                    </Text>
+                  </View>
+
+                  <View style={styles.progressDivider} />
+
+                  {/* High point — reuses the existing grade chip style */}
+                  <View style={styles.progressBlock}>
+                    <View style={[styles.gradeChip, styles.gradeChipActive]}>
+                      <Text style={[styles.gradeChipLabel, styles.gradeChipLabelActive]}>
+                        {progress.highPoint ?? '—'}
+                      </Text>
+                    </View>
+                    <Text style={styles.progressBlockLabel}>high point</Text>
+                  </View>
+
+                  <View style={styles.progressDivider} />
+
+                  {/* Streak */}
+                  <View style={styles.progressBlock}>
+                    {progress.streak >= 2 ? (
+                      <>
+                        <Text style={styles.progressValue}>{progress.streak}</Text>
+                        <Text style={styles.progressBlockLabel}>week streak</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.progressStreakHint}>
+                        Log a climb every week to build a streak
+                      </Text>
+                    )}
+                  </View>
+
+                </View>
               </View>
 
               {/* Grade Distribution — inline expand/collapse, no Modal */}
@@ -1774,6 +1834,59 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: DIVIDER,
     marginVertical: 4,
+  },
+
+  // ─── Progress section ─────────────────────────────────────────
+  progressLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    marginBottom: 14,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBlock: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  progressValue: {
+    fontSize: 30,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1,
+  },
+  progressBlockLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  progressSub: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+    textAlign: 'center',
+  },
+  progressDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: DIVIDER,
+    marginVertical: 4,
+  },
+  progressStreakHint: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+    textAlign: 'center',
+    lineHeight: 16,
   },
 
   // ─── Tab bar ──────────────────────────────────────────────────

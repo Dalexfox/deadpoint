@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia } from '../../lib/store';
 import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
+import { isNewHighPoint } from '../../lib/stats';
 import { fetchGyms, type Gym } from '../../lib/gyms';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
@@ -109,6 +110,8 @@ export default function SendScreen() {
   const [sendMedia, setSendMedia]     = useState<SendMedia | null>(null);
   const [submitting, setSubmitting]   = useState(false);
   const [submitted, setSubmitted]     = useState(false);
+  const [showHighPoint, setShowHighPoint] = useState(false);
+  const [highPointGrade, setHighPointGrade] = useState('');
   const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -268,8 +271,39 @@ export default function SendScreen() {
       // Silent home-gym inference — best-effort, never blocks the success flow.
       await syncHomeGymAfterSubmit(user.id, gymId);
 
+      // New high point? Compare this grade against the user's previous hardest
+      // send, computed on read (no denormalized max stored). First-ever log
+      // counts as a high point. Best-effort: never block submit on this.
+      let isHigh = false;
+      try {
+        const { data: userSessions } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('user_id', user.id);
+        const otherIds = (userSessions ?? [])
+          .map(s => s.id)
+          .filter((id: string) => id !== session.id);
+        if (otherIds.length === 0) {
+          isHigh = true; // first-ever log
+        } else {
+          const { data: prevClimbs } = await supabase
+            .from('climbs')
+            .select('grade')
+            .in('session_id', otherIds);
+          isHigh = isNewHighPoint(grade, (prevClimbs ?? []).map(c => c.grade));
+        }
+      } catch {
+        isHigh = false; // never celebrate on an error — avoids a false high point
+      }
+
+      setHighPointGrade(grade);
       setSubmitted(true);
-      setTimeout(() => router.navigate('/(tabs)'), 2500);
+      if (isHigh) {
+        // Show the existing success path first, then the celebration overlay.
+        setTimeout(() => setShowHighPoint(true), 1400);
+      } else {
+        setTimeout(() => router.navigate('/(tabs)'), 2500);
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
     } finally {
@@ -278,6 +312,20 @@ export default function SendScreen() {
   };
 
   // ── Success screen ──────────────────────────────────────────────
+
+  // New-high-point celebration — full-screen, SAND on INK, auto-dismiss on tap.
+  if (submitted && showHighPoint) {
+    return (
+      <TouchableOpacity
+        style={styles.highPointScreen}
+        activeOpacity={1}
+        onPress={() => router.navigate('/(tabs)')}>
+        <Text style={styles.highPointLabel}>NEW HIGH POINT</Text>
+        <Text style={styles.highPointGrade}>{highPointGrade}</Text>
+        <Text style={styles.highPointSub}>Your hardest send yet.</Text>
+      </TouchableOpacity>
+    );
+  }
 
   if (submitted) {
     return (
@@ -676,6 +724,35 @@ const styles = StyleSheet.create({
     fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: -0.3,
+  },
+
+  // ── New high point celebration ─────────────────────────────────
+  highPointScreen: {
+    flex: 1,
+    backgroundColor: INK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  highPointLabel: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: SAND,
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+  highPointGrade: {
+    fontSize: 104,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -4,
+    lineHeight: 112,
+  },
+  highPointSub: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: 'rgba(255,255,255,0.7)',
   },
 
   // ── Success ────────────────────────────────────────────────────
