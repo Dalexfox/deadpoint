@@ -402,7 +402,7 @@ src/components/
 ```
 
 ### 5 Main Tabs
-1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a teal→dark gradient (`#2E7A96 → #0d2b36`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go. The feed also hosts the **zero-onboarding first-run cards** — see "Feed First-Run Cards" below.
+1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a warm dark gradient (`#2a2010 → #1a1408`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go. The feed also hosts the **zero-onboarding first-run cards** — see "Feed First-Run Cards" below.
 2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(170, screenHeight * 0.26)` — kept compact so the gym list is easy to reach.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — 3-screen flow for identifying and logging a climb. See 3-Screen Log Flow section below.
@@ -412,9 +412,9 @@ src/components/
    - **My Climbs tab** — grade-grouped 3-column grid with a grade step-slider and sort dropdown. See My Climbs section below for full detail.
    - **Settings tab** — Edit Profile form (Full Name, Username, Bio inputs pre-filled from Supabase; Save Changes button in ACCENT pink; bio display in header only updates after a successful save). Log Out button (outlined red `#e53935`, confirmation alert before signing out).
    - Banner (tappable, persisted via AsyncStorage) + square avatar (tappable, uploads to Supabase Storage + updates `profiles.avatar_url`) scroll with the page above the tab bar.
-   - Bio displayed below `@username` in the identity row (TEXT_MUTED, 14px, DMSans_400Regular) — only rendered when non-empty.
+   - Bio displayed below `@username` in the identity row (INK3, 14px, SpaceGrotesk_400Regular) — only rendered when non-empty.
    - Stats bar fetched live from Supabase on every focus; rendered conditionally (`activeTab === 'overview'`).
-   - **Invite Friends** button (PRIMARY teal outline) on the identity row — triggers `Share.share()` with an invite message.
+   - **Invite Friends** button (SAND outline) on the identity row — triggers `Share.share()` with an invite message.
    - **Follower / following counts** row below the identity block — tapping "followers" or "following" opens a bottom-sheet Modal listing those users.
    - **Followers sheet** — avatar + name/username list; no action buttons. Each row is tappable: closes the sheet and navigates to that user's profile (`/(tabs)/profile` for self, `/user/[id]` for others).
    - **Following sheet** — same list with an "Unfollow" button per row; optimistic: removes row and decrements count immediately. Each row is also tappable (same nav logic as followers sheet); Unfollow button tap does not bubble to the row.
@@ -422,7 +422,7 @@ src/components/
 ### Feed Card Layout (TikTok-style full-screen)
 Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with all overlays `position: 'absolute'`:
 
-- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2E7A96 → #0d2b36'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
+- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2a2010 → #1a1408'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
 - **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
@@ -535,9 +535,9 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 
 ### Profile Stats Dashboard (Overview tab)
 Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
-1. **Weekly Intensity** — `react-native-chart-kit` BarChart of problems per day Mon–Sun. Uses `withCustomBarColorFromData` + `flatColor`: selected day bar is solid `#2E7A96`, others `rgba(46,122,150,0.3)`. Tap a day chip to drill into sessions for that day.
+1. **Weekly Intensity** — `react-native-chart-kit` BarChart of problems per day Mon–Sun. Uses `withCustomBarColorFromData` + `flatColor`: selected day bar is solid `#1a1408` (INK), others `#ece8df` (SURFACE). Tap a day chip to drill into sessions for that day.
 2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit — it clipped V10). Collapsed card: compact 130px bars + grade chips + drill-down list. Tap `↗` to expand inline (no Modal — avoids iOS touch-blocking bugs): expanded shows 180px bars + grade chips + tappable session rows. Tap `×` to collapse. State: `selectedGrade` (collapsed) and `modalSelectedGrade` (expanded) are separate. **Tapping any climb row** (collapsed or expanded) opens the full-screen media viewer.
-3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. ACCENT line color, bezier curve.
+3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. SAND line color (`rgba(200,168,74)` — note the config var is named `ACCENT_CHART_CONFIG` but resolves to SAND), bezier curve.
 
 ### Session Detail Screen (`/session/[id]`)
 - Route: `src/app/session/[id].tsx` — presented as `fullScreenModal` (slides up over profile).
@@ -559,14 +559,14 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 
 ### App Tab Bar (bottom nav)
 - `src/app/(tabs)/_layout.tsx` uses `usePathname()` to detect the active tab.
-- **Feed tab (`/`)** — dark theme: `backgroundColor: #0d2b36`, `borderTopColor: #1a3d4f`, active tint `#ffffff`, inactive tint `rgba(255,255,255,0.38)`. Matches the full-screen dark feed background.
-- **All other tabs** — light theme: `backgroundColor: #ffffff`, `borderTopColor: #c8dde8`, active tint `PRIMARY`, inactive tint `INACTIVE`. Normal app style.
+- **Feed tab (`/`)** — dark theme: `backgroundColor: #0d0d0b`, active tint `#ffffff`, inactive tint `rgba(255,255,255,0.38)`. Matches the full-screen dark feed background.
+- **All other tabs** — light theme: `backgroundColor: #ffffff`, active tint `INK`, inactive tint `rgba(26,20,8,0.3)`. Normal app style.
 - The three computed values (`tabBarStyle`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`) are passed to `screenOptions` and update automatically on every tab switch.
 
 ### Profile Tab Bar
 - Three equal-width tabs: **Overview · My Climbs · Settings**
-- Active tab: `DMSans_800ExtraBold` label in `PRIMARY`, 2px `PRIMARY` underline indicator pinned to bottom
-- Inactive tabs: same label style in `TEXT_MUTED`
+- Active tab: `Syne_800ExtraBold` label in `INK`, 2px `SAND` underline indicator pinned to bottom
+- Inactive tabs: same label style in `INK3`
 - Background `BG` white, `hairlineWidth` bottom border in `DIVIDER`
 - Tab bar is fixed (outside the ScrollView); profile header + tab content scroll as one page
 
@@ -593,10 +593,10 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 
 ### User Profile Page (`/user/[id]`)
 - Route: `src/app/user/[id].tsx` — pushed via `router.push(\`/user/${userId}\`)` from the comment sheet name tap.
-- Header with `‹` back chevron (DMSans_300Light) and centred "PROFILE" title (BebasNeue).
-- Square avatar (`width: 100, height: 100, borderRadius: 16`) — real photo or PRIMARY initials fallback.
-- Full name (DMSans_800ExtraBold), `@username` (DMSans_600SemiBold, TEXT_SUB), bio (DMSans_400Regular, TEXT_MUTED) — each only renders if set.
-- **Follow / Following toggle button** — PRIMARY solid + white label when not following; SURFACE background + DIVIDER border + TEXT label when following. Hidden if viewing own profile (`currentUserId === id`). Optimistic: updates `isFollowing` and `followerCount` immediately, then writes to/deletes from `follows` table.
+- Header with `‹` back chevron (SpaceGrotesk_300Light) and centred "PROFILE" title (Syne_800ExtraBold).
+- Square avatar (`width: 100, height: 100, borderRadius: 16`) — real photo or SAND_LT initials fallback.
+- Full name (Syne_800ExtraBold), `@username` (SpaceGrotesk_600SemiBold, INK2), bio (SpaceGrotesk_400Regular, INK3) — each only renders if set.
+- **Follow / Following toggle button** — SAND solid + white label when not following; SURFACE background + DIVIDER border + INK3 label when following. Hidden if viewing own profile (`currentUserId === id`). Optimistic: updates `isFollowing` and `followerCount` immediately, then writes to/deletes from `follows` table.
 - **Follower / following counts** — tappable `X followers · Y following` row; opens bottom-sheet Modals listing those users (avatar + name/username, no action buttons since this is not your own profile).
 - Stats bar (SURFACE background, borderRadius: 20): **Total Climbs · Top Grade · Gyms Visited** — computed live from the user's sessions+climbs in Supabase, same logic as the self-profile.
 - All follow data is fetched inside a `try/catch` so the screen renders correctly even if the `follows` table doesn't exist.
