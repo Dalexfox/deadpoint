@@ -492,6 +492,7 @@ export default function SessionDetailScreen() {
                           <View style={cm.rowMeta}>
                             <TouchableOpacity
                               activeOpacity={0.7}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               onPress={() => {
                                 setCommentSheetVisible(false);
                                 if (c.userId === currentUserId) {

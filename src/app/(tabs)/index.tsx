@@ -548,6 +548,7 @@ function GroupedCard({
       <TouchableOpacity
         style={grp.header}
         activeOpacity={0.8}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         onPress={() => head.userId && onPressUser(head.userId)}>
         <Text style={grp.headerUser} numberOfLines={1}>@{head.username ?? head.name}</Text>
         <Text style={grp.headerMeta} numberOfLines={1}>{n} climbs at {head.gym ?? 'the gym'}</Text>
@@ -1318,6 +1319,7 @@ export default function FeedScreen() {
                           <View style={comment.rowMeta}>
                             <TouchableOpacity
                               activeOpacity={0.7}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               onPress={() => {
                                 setCommentSheetVisible(false);
                                 if (c.userId === currentUserId) {
