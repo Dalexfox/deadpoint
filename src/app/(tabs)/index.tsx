@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
@@ -128,11 +129,18 @@ async function fetchSessionPosts(
   currentUserId: string | null,
 ): Promise<{ posts: Post[]; followingSet: Set<string> }> {
   const gyms = await fetchGyms();
-  const { data: sessions, error } = await supabase
+  // Visibility filter lives in the QUERY (never the render layer): public posts,
+  // plus the current user's own quiet posts. RLS enforces the same rule server-side;
+  // this keeps it explicit and correct even if RLS ever changes.
+  let query = supabase
     .from('sessions')
-    .select('id, user_id, gym_id, media_url, notes, created_at, climbs(grade, problem_id)')
+    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, climbs(grade, problem_id)')
     .order('created_at', { ascending: false })
     .limit(50);
+  query = currentUserId
+    ? query.or(`visibility.eq.public,user_id.eq.${currentUserId}`)
+    : query.eq('visibility', 'public');
+  const { data: sessions, error } = await query;
 
   if (error || !sessions || sessions.length === 0) return { posts: [], followingSet: new Set() };
 
@@ -195,7 +203,11 @@ async function fetchSessionPosts(
       postType:   'session',
       gym:        resolveGymName(gyms, session.gym_id),
       gymId:      session.gym_id,
+      createdAt:  session.created_at,
+      visibility: ((session as any).visibility ?? 'public') as 'public' | 'quiet',
+      feedRank:   (session as any).feed_rank ?? null,
       topGrade:   (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.grade,
+      problemId:  (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id ?? undefined,
       climbNotes: (session as any).notes ?? undefined,
       climbNickname: (() => {
         const pid = (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id;
@@ -241,6 +253,7 @@ function FullScreenCard({
   onPressUser,
   onShare,
   onGym,
+  onOverflow,
 }: {
   post:            Post;
   height:          number;
@@ -253,6 +266,7 @@ function FullScreenCard({
   onPressUser:     (userId: string) => void;
   onShare:         (post: Post) => void;
   onGym:           (gymId: string) => void;
+  onOverflow:      (post: Post) => void;
 }) {
   const hasMedia  = !!(post.media && post.media.length > 0);
   const mediaItem = hasMedia ? post.media![0] : null;
@@ -346,6 +360,25 @@ function FullScreenCard({
           <Text style={card.tabInactive}>Nearby</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── Overflow menu (own posts only) ──────────────────────────────────── */}
+      {isOwnPost && (
+        <TouchableOpacity
+          style={card.overflowBtn}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={() => onOverflow(post)}>
+          <Ionicons name="ellipsis-vertical" size={20} color="#ffffff" />
+        </TouchableOpacity>
+      )}
+
+      {/* ── Quiet badge (own quiet posts) ───────────────────────────────────── */}
+      {isOwnPost && post.visibility === 'quiet' && (
+        <View style={card.quietBadge}>
+          <Ionicons name="eye-off-outline" size={13} color="#ffffff" />
+          <Text style={card.quietBadgeText}>ONLY YOU</Text>
+        </View>
+      )}
 
       {/* ── Right action rail ───────────────────────────────────────────────── */}
       <View style={[card.rail, { bottom: STATS_BAR_H + 20 }]}>
@@ -639,6 +672,11 @@ export default function FeedScreen() {
   const [loadError,          setLoadError]          = useState(false);
   const [, setDismissTick] = useState(0); // bump to re-render after a session-only dismissal
 
+  // Overflow / visibility sheet (own posts)
+  const [overflowPost,    setOverflowPost]    = useState<Post | null>(null);
+  const [overflowConfirm, setOverflowConfirm] = useState(false);
+  const [overflowBusy,    setOverflowBusy]    = useState(false);
+
   // Comment sheet
   const [commentSheetVisible,   setCommentSheetVisible]   = useState(false);
   const [commentSheetSessionId, setCommentSheetSessionId] = useState<string | null>(null);
@@ -804,6 +842,35 @@ export default function FeedScreen() {
   }, []);
 
   const handleRetry = useCallback(() => { runLoad(() => true); }, [runLoad]);
+
+  // ── After-the-fact visibility toggle (own posts) ──────────────────────────
+  const handleOverflow = useCallback((post: Post) => {
+    setOverflowPost(post);
+    setOverflowConfirm(false);
+  }, []);
+
+  const handleToggleVisibility = useCallback(async () => {
+    if (!overflowPost || overflowBusy) return;
+    setOverflowBusy(true);
+    const target: 'public' | 'quiet' = overflowPost.visibility === 'quiet' ? 'public' : 'quiet';
+    const { error } = await supabase
+      .from('sessions')
+      .update({ visibility: target })
+      .eq('id', overflowPost.id);
+    if (!error) {
+      // Cover may change (a newly-quiet session can no longer be a cover; a
+      // newly-public one may become one). The RPC re-derives it server-side.
+      if (overflowPost.problemId) {
+        await supabase.rpc('recompute_problem_cover', { problem_id: overflowPost.problemId });
+      }
+      // Optimistic: flip visibility in place. created_at is untouched, so a
+      // re-publicised post slots back at its original feed position (no bump).
+      setPosts(prev => prev.map(p => (p.id === overflowPost.id ? { ...p, visibility: target } : p)));
+    }
+    setOverflowBusy(false);
+    setOverflowPost(null);
+    setOverflowConfirm(false);
+  }, [overflowPost, overflowBusy]);
 
   // Optimistic like toggle
   const handleLike = async (id: string) => {
@@ -978,6 +1045,7 @@ export default function FeedScreen() {
                       onPressUser={handlePressUser}
                       onShare={handleShare}
                       onGym={gymId => router.push(`/gym/${gymId}`)}
+                      onOverflow={handleOverflow}
                     />
                   );
                 case 'gymPicker':
@@ -1137,6 +1205,74 @@ export default function FeedScreen() {
           </View>
         </Modal>
       )}
+
+      {/* ── Overflow sheet: make quiet / make public (own posts) ─────────────── */}
+      {overflowPost && (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setOverflowPost(null)}>
+          <View style={overflow.backdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOverflowPost(null)} />
+            <View style={overflow.sheet}>
+              <View style={overflow.handle} />
+              {!overflowConfirm ? (
+                <>
+                  <TouchableOpacity
+                    style={overflow.row}
+                    activeOpacity={0.7}
+                    onPress={() => setOverflowConfirm(true)}>
+                    <Ionicons
+                      name={overflowPost.visibility === 'quiet' ? 'eye-outline' : 'eye-off-outline'}
+                      size={22}
+                      color={INK}
+                    />
+                    <Text style={overflow.rowLabel}>
+                      {overflowPost.visibility === 'quiet' ? 'Make public' : 'Make quiet'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={overflow.hint}>
+                    {overflowPost.visibility === 'quiet'
+                      ? 'Everyone will be able to see this climb.'
+                      : 'Only you will see this climb. It still counts in your stats.'}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={overflow.confirmTitle}>
+                    {overflowPost.visibility === 'quiet' ? 'Make this public?' : 'Make this quiet?'}
+                  </Text>
+                  <Text style={overflow.confirmSub}>
+                    {overflowPost.visibility === 'quiet'
+                      ? 'Everyone will be able to see it.'
+                      : 'Only you will see it from now on. Likes and comments are kept.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={overflow.confirmBtn}
+                    activeOpacity={0.85}
+                    disabled={overflowBusy}
+                    onPress={handleToggleVisibility}>
+                    {overflowBusy ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text style={overflow.confirmBtnText}>
+                        {overflowPost.visibility === 'quiet' ? 'MAKE PUBLIC' : 'MAKE QUIET'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={overflow.cancelBtn}
+                    activeOpacity={0.7}
+                    onPress={() => setOverflowPost(null)}>
+                    <Text style={overflow.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -1178,6 +1314,32 @@ const card = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_500Medium',
     color: 'rgba(255,255,255,0.55)',
     letterSpacing: -0.1,
+  },
+  overflowBtn: {
+    position: 'absolute',
+    top: 30,
+    right: 14,
+    zIndex: 11,
+    padding: 4,
+  },
+  quietBadge: {
+    position: 'absolute',
+    top: 64,
+    right: 14,
+    zIndex: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  quietBadgeText: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+    letterSpacing: 1,
   },
 
   // Right action rail
@@ -1524,6 +1686,85 @@ const comment = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
+  },
+});
+
+// ─── Overflow / visibility sheet styles ─────────────────────────────────────────
+
+const overflow = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  sheet: {
+    backgroundColor: BG,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(26,20,8,0.15)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  rowLabel: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+  },
+  hint: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    lineHeight: 18,
+    paddingBottom: 8,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
+    marginBottom: 6,
+  },
+  confirmSub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+  confirmBtn: {
+    backgroundColor: SAND,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    fontSize: 14,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  cancelBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  cancelText: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
 });
 

@@ -82,6 +82,7 @@ type ClimbEntry = {
   gymName:   string;
   date:      string;
   mediaUrl:  string | null;
+  visibility: 'public' | 'quiet';
 };
 
 // Shape of a session card built from Supabase data
@@ -169,6 +170,11 @@ function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
       ) : (
         <View style={styles.gridCardThumbEmpty}>
           <Text style={styles.gridCardEmptyIcon}>🧗</Text>
+        </View>
+      )}
+      {entry.visibility === 'quiet' && (
+        <View style={styles.gridCardQuiet}>
+          <Ionicons name="eye-off-outline" size={12} color="#ffffff" />
         </View>
       )}
       <View style={styles.gridCardBody}>
@@ -349,7 +355,7 @@ export default function ProfileScreen() {
             fetchGyms(),
             supabase
             .from('sessions')
-              .select('id, gym_id, created_at, media_url, notes')
+              .select('id, gym_id, created_at, media_url, notes, visibility')
               .eq('user_id', user.id)
               .order('created_at', { ascending: false }),
           ]);
@@ -448,7 +454,7 @@ export default function ProfileScreen() {
           setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels });
 
           // ── 6. Climb entries for grade drill-down ───────────────
-          const sessionMetaById: Record<string, { gymName: string; date: string; mediaUrl: string | null }> = {};
+          const sessionMetaById: Record<string, { gymName: string; date: string; mediaUrl: string | null; visibility: 'public' | 'quiet' }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
               gymName: resolveGymName(gyms, s.gym_id),
@@ -456,6 +462,7 @@ export default function ProfileScreen() {
                 month: 'short', day: 'numeric', year: 'numeric',
               }),
               mediaUrl: s.media_url ?? null,
+              visibility: ((s as any).visibility ?? 'public') as 'public' | 'quiet',
             };
           });
           setClimbEntries(
@@ -468,6 +475,7 @@ export default function ProfileScreen() {
                 gymName:   sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
                 date:      sessionMetaById[c.session_id]?.date ?? '',
                 mediaUrl:  sessionMetaById[c.session_id]?.mediaUrl ?? null,
+                visibility: sessionMetaById[c.session_id]?.visibility ?? 'public',
               }))
           );
 
@@ -2330,6 +2338,14 @@ const styles = StyleSheet.create({
   gridCardThumb: {
     width: '100%',
     height: 80,
+  },
+  gridCardQuiet: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 10,
+    padding: 4,
   },
   gridCardThumbEmpty: {
     width: '100%',

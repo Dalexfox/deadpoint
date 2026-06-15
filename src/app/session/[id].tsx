@@ -70,6 +70,8 @@ type SessionData = {
   isVideo:       boolean;
   climbNickname: string | null;
   climbNotes:    string | null;
+  problemId:     string | null;
+  visibility:    'public' | 'quiet';
 };
 
 type CommentItem = {
@@ -99,6 +101,11 @@ export default function SessionDetailScreen() {
   const [commentCount,   setCommentCount]   = useState(0);
   const [currentUserId,  setCurrentUserId]  = useState<string | null>(null);
 
+  // Overflow / visibility sheet (own session only)
+  const [overflowOpen,    setOverflowOpen]    = useState(false);
+  const [overflowConfirm, setOverflowConfirm] = useState(false);
+  const [overflowBusy,    setOverflowBusy]    = useState(false);
+
   // Comment sheet state
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
   const [commentsList,        setCommentsList]        = useState<CommentItem[]>([]);
@@ -118,7 +125,7 @@ export default function SessionDetailScreen() {
       const [sessionRes, likesRes, commentCountRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, user_id, gym_id, media_url, notes, climbs(grade, problem_id)')
+          .select('id, user_id, gym_id, media_url, notes, visibility, climbs(grade, problem_id)')
           .eq('id', id)
           .single(),
         supabase.from('likes').select('user_id').eq('session_id', id),
@@ -152,6 +159,8 @@ export default function SessionDetailScreen() {
         isVideo:       !!mediaUrl && /\.(mp4|mov|m4v|avi)$/i.test(mediaUrl),
         climbNickname: problemRes.data?.custom_name ?? null,
         climbNotes:    (s as any).notes ?? null,
+        problemId,
+        visibility:    ((s as any).visibility ?? 'public') as 'public' | 'quiet',
       });
       const profile = profileRes.data;
       setPosterName(profile?.full_name ?? 'Climber');
@@ -244,6 +253,26 @@ export default function SessionDetailScreen() {
     setSendingComment(false);
   }
 
+  // ── Visibility toggle (own session) ─────────────────────────────────────────
+  async function handleToggleVisibility() {
+    if (!session || overflowBusy) return;
+    setOverflowBusy(true);
+    const target: 'public' | 'quiet' = session.visibility === 'quiet' ? 'public' : 'quiet';
+    const { error } = await supabase
+      .from('sessions')
+      .update({ visibility: target })
+      .eq('id', session.id);
+    if (!error) {
+      if (session.problemId) {
+        await supabase.rpc('recompute_problem_cover', { problem_id: session.problemId });
+      }
+      setSession({ ...session, visibility: target });
+    }
+    setOverflowBusy(false);
+    setOverflowOpen(false);
+    setOverflowConfirm(false);
+  }
+
   // ── Share ──────────────────────────────────────────────────────────────────
   function handleShare() {
     const name = posterUsername ? `@${posterUsername}` : posterName;
@@ -320,6 +349,23 @@ export default function SessionDetailScreen() {
         activeOpacity={0.7}>
         <Ionicons name="close" size={24} color="#ffffff" />
       </TouchableOpacity>
+
+      {/* Overflow (own session only) + quiet badge */}
+      {currentUserId === session.userId && (
+        <TouchableOpacity
+          style={[st.overflowBtn, { top: insets.top + 12 }]}
+          onPress={() => { setOverflowOpen(true); setOverflowConfirm(false); }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}>
+          <Ionicons name="ellipsis-vertical" size={22} color="#ffffff" />
+        </TouchableOpacity>
+      )}
+      {currentUserId === session.userId && session.visibility === 'quiet' && (
+        <View style={[st.quietBadge, { top: insets.top + 16 }]}>
+          <Ionicons name="eye-off-outline" size={13} color="#ffffff" />
+          <Text style={st.quietBadgeText}>ONLY YOU</Text>
+        </View>
+      )}
 
       {/* ── Right action rail ─────────────────────────────────────────────── */}
       <View style={[st.rail, { bottom: STATS_BAR_H + 20 }]}>
@@ -493,6 +539,68 @@ export default function SessionDetailScreen() {
           </View>
         </Modal>
       )}
+
+      {/* ── Overflow sheet: make quiet / make public ────────────────────────── */}
+      {overflowOpen && (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setOverflowOpen(false)}>
+          <View style={ov.backdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOverflowOpen(false)} />
+            <View style={ov.sheet}>
+              <View style={ov.handle} />
+              {!overflowConfirm ? (
+                <>
+                  <TouchableOpacity style={ov.row} activeOpacity={0.7} onPress={() => setOverflowConfirm(true)}>
+                    <Ionicons
+                      name={session.visibility === 'quiet' ? 'eye-outline' : 'eye-off-outline'}
+                      size={22}
+                      color={INK}
+                    />
+                    <Text style={ov.rowLabel}>
+                      {session.visibility === 'quiet' ? 'Make public' : 'Make quiet'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={ov.hint}>
+                    {session.visibility === 'quiet'
+                      ? 'Everyone will be able to see this climb.'
+                      : 'Only you will see this climb. It still counts in your stats.'}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={ov.confirmTitle}>
+                    {session.visibility === 'quiet' ? 'Make this public?' : 'Make this quiet?'}
+                  </Text>
+                  <Text style={ov.confirmSub}>
+                    {session.visibility === 'quiet'
+                      ? 'Everyone will be able to see it.'
+                      : 'Only you will see it from now on. Likes and comments are kept.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={ov.confirmBtn}
+                    activeOpacity={0.85}
+                    disabled={overflowBusy}
+                    onPress={handleToggleVisibility}>
+                    {overflowBusy ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text style={ov.confirmBtnText}>
+                        {session.visibility === 'quiet' ? 'MAKE PUBLIC' : 'MAKE QUIET'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity style={ov.cancelBtn} activeOpacity={0.7} onPress={() => setOverflowOpen(false)}>
+                    <Text style={ov.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -515,6 +623,35 @@ const st = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,
+  },
+  overflowBtn: {
+    position: 'absolute',
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  quietBadge: {
+    position: 'absolute',
+    right: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    zIndex: 20,
+  },
+  quietBadgeText: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+    letterSpacing: 1,
   },
 
   // Right action rail
@@ -805,4 +942,31 @@ const cm = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_700Bold',
     color: '#ffffff',
   },
+});
+
+// ─── Overflow / visibility sheet styles ─────────────────────────────────────────
+
+const ov = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet: {
+    backgroundColor: BG,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+  },
+  handle: {
+    width: 40, height: 4, backgroundColor: 'rgba(26,20,8,0.15)',
+    borderRadius: 2, alignSelf: 'center', marginBottom: 16,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  rowLabel: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
+  hint: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK3, lineHeight: 18, paddingBottom: 8 },
+  confirmTitle: { fontSize: 20, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: -0.5, marginBottom: 6 },
+  confirmSub: { fontSize: 14, fontFamily: 'SpaceGrotesk_400Regular', color: INK3, lineHeight: 20, marginBottom: 18 },
+  confirmBtn: { backgroundColor: SAND, borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
+  confirmBtnText: { fontSize: 14, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: -0.3 },
+  cancelBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  cancelText: { fontSize: 14, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3 },
 });

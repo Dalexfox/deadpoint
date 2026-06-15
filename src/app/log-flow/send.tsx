@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia } from '../../lib/store';
@@ -112,6 +113,8 @@ export default function SendScreen() {
   const [submitted, setSubmitted]     = useState(false);
   const [showHighPoint, setShowHighPoint] = useState(false);
   const [highPointGrade, setHighPointGrade] = useState('');
+  // Visibility — defaults to Public on every launch (useState default handles the reset).
+  const [isPublic, setIsPublic] = useState(true);
   const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -197,13 +200,15 @@ export default function SendScreen() {
         finalProblemId = newP.id;
       }
 
-      // 2. Insert session
+      // 2. Insert session (with visibility; feed_rank starts null = system order)
       const { data: session, error: sErr } = await supabase
         .from('sessions')
         .insert({
           user_id:        user.id,
           gym_id:         gymId,
           total_problems: 1,
+          visibility:     isPublic ? 'public' : 'quiet',
+          feed_rank:      null,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
         })
         .select('id')
@@ -230,42 +235,11 @@ export default function SendScreen() {
         }
       }
 
-      // 5. Recompute problems.media_url = best-liked session photo for this problem
+      // 5. Recompute the problem cover via RPC. SECURITY DEFINER + visibility
+      //    filter live in the DB function — quiet sessions can never become a
+      //    cover. Best-effort: a failure here must not block the success flow.
       if (finalProblemId) {
-        // Find all sessions for this problem via climbs
-        const { data: climbRows } = await supabase
-          .from('climbs')
-          .select('session_id')
-          .eq('problem_id', finalProblemId);
-
-        if (climbRows && climbRows.length > 0) {
-          const sessionIds = climbRows.map(r => r.session_id);
-          const { data: candidateSessions } = await supabase
-            .from('sessions')
-            .select('id, media_url')
-            .in('id', sessionIds)
-            .not('media_url', 'is', null);
-
-          if (candidateSessions && candidateSessions.length > 0) {
-            // Pick session with most likes
-            const { data: likeCounts } = await supabase
-              .from('likes')
-              .select('session_id')
-              .in('session_id', candidateSessions.map(s => s.id));
-
-            const countMap: Record<string, number> = {};
-            for (const l of likeCounts ?? []) {
-              countMap[l.session_id] = (countMap[l.session_id] ?? 0) + 1;
-            }
-            const best = candidateSessions.reduce((a, b) =>
-              (countMap[a.id] ?? 0) >= (countMap[b.id] ?? 0) ? a : b
-            );
-            await supabase
-              .from('problems')
-              .update({ media_url: best.media_url })
-              .eq('id', finalProblemId);
-          }
-        }
+        await supabase.rpc('recompute_problem_cover', { problem_id: finalProblemId });
       }
 
       // Silent home-gym inference — best-effort, never blocks the success flow.
@@ -490,6 +464,23 @@ export default function SendScreen() {
           />
         </View>
 
+        {/* Visibility — Public (eye, SAND) ↔ Quiet (eye-off, INK3). Defaults Public. */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.visibilityRow}
+            onPress={() => setIsPublic(v => !v)}
+            activeOpacity={0.7}>
+            <Text style={styles.visibilityLabel}>
+              {isPublic ? 'WHO CAN SEE THIS' : 'ONLY YOU'}
+            </Text>
+            <Ionicons
+              name={isPublic ? 'eye-outline' : 'eye-off-outline'}
+              size={22}
+              color={isPublic ? SAND : INK3}
+            />
+          </TouchableOpacity>
+        </View>
+
         {/* Submit */}
         <TouchableOpacity
           style={[styles.submitBtn, (!selectedGym || submitting) && styles.submitBtnDisabled]}
@@ -696,6 +687,26 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 15, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK },
   dropdownItemTextActive: { color: SAND, fontFamily: 'SpaceGrotesk_700Bold' },
   dropdownCheck: { fontSize: 14, color: SAND },
+
+  // ── Visibility toggle ──────────────────────────────────────────
+  visibilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  visibilityLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
 
   // ── Notes ──────────────────────────────────────────────────────
   notesInput: {
