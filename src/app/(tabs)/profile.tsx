@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { monthStats, highestGrade, weekStreak } from '../../lib/stats';
+import { ClimbDatePicker, climbDayKey } from '../../components/ClimbDatePicker';
 
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
@@ -85,24 +86,6 @@ type ClimbEntry = {
   mediaUrl:  string | null;
   visibility: 'public' | 'quiet';
 };
-
-// Match a climb against a free-text date query — accepts "Jun 15", "6/15",
-// "06/15/2026", "2026-06-15", "2026", etc.
-function dateMatches(createdAt: string, displayDate: string, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const d = new Date(createdAt);
-  const mm = d.getMonth() + 1;
-  const dd = d.getDate();
-  const yy = d.getFullYear();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return [
-    displayDate.toLowerCase(),
-    `${mm}/${dd}/${yy}`,
-    `${pad(mm)}/${pad(dd)}/${yy}`,
-    `${yy}-${pad(mm)}-${pad(dd)}`,
-  ].join('  ').includes(q);
-}
 
 // Shape of a session card built from Supabase data
 type SupabaseSession = {
@@ -270,15 +253,19 @@ export default function ProfileScreen() {
   const [myClimbsFilter,   setMyClimbsFilter]   = useState<string | null>(null); // null = show all
   const [myClimbsSort,     setMyClimbsSort]     = useState<MyClimbsSort>('date');
   const [myClimbsDropdown, setMyClimbsDropdown] = useState(false);
-  const [myClimbsDateQuery, setMyClimbsDateQuery] = useState('');
+  const [myClimbsSelectedDay, setMyClimbsSelectedDay] = useState<Date | null>(null);
+  const [myClimbsDatePickerOpen, setMyClimbsDatePickerOpen] = useState(false);
+
+  const myClimbsMarkedDays = new Set(climbEntries.map((e) => climbDayKey(new Date(e.createdAt))));
 
   // Grade-grouped sections for My Climbs — filtered by active grade + date, sorted within each group
   const filteredGroups = (() => {
     let source = myClimbsFilter
       ? climbEntries.filter((e) => e.grade === myClimbsFilter)
       : climbEntries;
-    if (myClimbsDateQuery.trim()) {
-      source = source.filter((e) => dateMatches(e.createdAt, e.date, myClimbsDateQuery));
+    if (myClimbsSelectedDay) {
+      const key = climbDayKey(myClimbsSelectedDay);
+      source = source.filter((e) => climbDayKey(new Date(e.createdAt)) === key);
     }
     const byGrade: Record<string, ClimbEntry[]> = {};
     source.forEach((e) => {
@@ -1267,24 +1254,23 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
-              {/* ── Date search ── */}
-              <View style={styles.myClimbsSearchWrap}>
-                <Ionicons name="search-outline" size={16} color={INK3} />
-                <TextInput
-                  style={styles.myClimbsSearchInput}
-                  value={myClimbsDateQuery}
-                  onChangeText={setMyClimbsDateQuery}
-                  placeholder="Search by date (e.g. Jun 15)"
-                  placeholderTextColor={INK3}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {myClimbsDateQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setMyClimbsDateQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              {/* ── Date picker trigger ── */}
+              <TouchableOpacity
+                style={styles.myClimbsSearchWrap}
+                onPress={() => setMyClimbsDatePickerOpen(true)}
+                activeOpacity={0.7}>
+                <Ionicons name="calendar-outline" size={16} color={myClimbsSelectedDay ? SAND : INK3} />
+                <Text style={[styles.myClimbsSearchText, myClimbsSelectedDay && styles.myClimbsSearchTextActive]}>
+                  {myClimbsSelectedDay
+                    ? myClimbsSelectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Pick a date'}
+                </Text>
+                {myClimbsSelectedDay && (
+                  <TouchableOpacity onPress={() => setMyClimbsSelectedDay(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="close-circle" size={16} color={INK3} />
                   </TouchableOpacity>
                 )}
-              </View>
+              </TouchableOpacity>
 
               {/* ── Header row: slider left, clear/all + sort right ── */}
               <View style={styles.myClimbsHeader}>
@@ -1388,8 +1374,8 @@ export default function ProfileScreen() {
 
                 {filteredGroups.length === 0 ? (
                   <Text style={styles.myClimbsEmpty}>
-                    {myClimbsDateQuery.trim()
-                      ? 'No climbs found for that date'
+                    {myClimbsSelectedDay
+                      ? 'No climbs on that date'
                       : myClimbsFilter
                         ? `No ${myClimbsFilter} climbs logged yet`
                         : 'No climbs logged yet'}
@@ -1675,6 +1661,17 @@ export default function ProfileScreen() {
             </View>
           </View>
         </Modal>
+      )}
+
+      {/* ── My Climbs date picker ── */}
+      {myClimbsDatePickerOpen && (
+        <ClimbDatePicker
+          onClose={() => setMyClimbsDatePickerOpen(false)}
+          selected={myClimbsSelectedDay}
+          markedDays={myClimbsMarkedDays}
+          initialMonth={climbEntries[0] ? new Date(climbEntries[0].createdAt) : undefined}
+          onSelect={setMyClimbsSelectedDay}
+        />
       )}
 
     </SafeAreaView>
@@ -2214,12 +2211,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  myClimbsSearchInput: {
+  myClimbsSearchText: {
     flex: 1,
     fontSize: 14,
     fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+  },
+  myClimbsSearchTextActive: {
     color: INK,
-    padding: 0,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   myClimbsHeader: {
     flexDirection: 'row',

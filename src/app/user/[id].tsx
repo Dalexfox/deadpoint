@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
+import { ClimbDatePicker, climbDayKey } from '../../components/ClimbDatePicker';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -68,26 +68,6 @@ function toRows<T>(items: T[]): T[][] {
   return rows;
 }
 
-// Match a climb against a free-text date query. Accepts the displayed form
-// ("Jun 15, 2026"), numeric m/d/y ("6/15/2026", "06/15/2026"), and ISO-ish
-// ("2026-06-15") — so "Jun 15", "6/15", "2026", etc. all work.
-function dateMatches(createdAt: string, displayDate: string, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const d = new Date(createdAt);
-  const mm = d.getMonth() + 1;
-  const dd = d.getDate();
-  const yy = d.getFullYear();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const haystack = [
-    displayDate.toLowerCase(),
-    `${mm}/${dd}/${yy}`,
-    `${pad(mm)}/${pad(dd)}/${yy}`,
-    `${yy}-${pad(mm)}-${pad(dd)}`,
-  ].join('  ');
-  return haystack.includes(q);
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toInitials(name: string): string {
@@ -115,7 +95,8 @@ export default function UserProfileScreen() {
   const [gradeFilter, setGradeFilter] = useState<string | null>(null);
   const [sortBy,      setSortBy]      = useState<'date' | 'gym'>('date');
   const [sortOpen,    setSortOpen]    = useState(false);
-  const [dateQuery,   setDateQuery]   = useState('');
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   const handleGradeSlider = (i: number) => {
     if (gradeSlider === i) { setGradeSlider(null); setGradeFilter(null); } // tap again to clear
@@ -296,9 +277,14 @@ export default function UserProfileScreen() {
 
   // Apply grade filter + sort. 'date' keeps the fetch order (newest first);
   // 'gym' sorts alphabetically by gym name.
+  const markedDays = new Set(climbs.map((c) => climbDayKey(new Date(c.createdAt))));
+
   const visibleClimbs = (() => {
     let list = gradeFilter ? climbs.filter((c) => c.grade === gradeFilter) : climbs;
-    if (dateQuery.trim()) list = list.filter((c) => dateMatches(c.createdAt, c.date, dateQuery));
+    if (selectedDay) {
+      const key = climbDayKey(selectedDay);
+      list = list.filter((c) => climbDayKey(new Date(c.createdAt)) === key);
+    }
     return sortBy === 'gym'
       ? [...list].sort((a, b) => a.gymName.localeCompare(b.gymName))
       : list;
@@ -404,25 +390,24 @@ export default function UserProfileScreen() {
           <View style={styles.climbsSection}>
             <Text style={styles.climbsLabel}>CLIMBS</Text>
 
-            {/* Date search */}
+            {/* Date picker trigger */}
             {climbs.length > 0 && (
-              <View style={styles.dateSearchWrap}>
-                <Ionicons name="search-outline" size={16} color={INK3} />
-                <TextInput
-                  style={styles.dateSearchInput}
-                  value={dateQuery}
-                  onChangeText={setDateQuery}
-                  placeholder="Search by date (e.g. Jun 15)"
-                  placeholderTextColor={INK3}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {dateQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setDateQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                style={styles.dateSearchWrap}
+                onPress={() => setDatePickerOpen(true)}
+                activeOpacity={0.7}>
+                <Ionicons name="calendar-outline" size={16} color={selectedDay ? SAND : INK3} />
+                <Text style={[styles.dateSearchText, selectedDay && styles.dateSearchTextActive]}>
+                  {selectedDay
+                    ? selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Pick a date'}
+                </Text>
+                {selectedDay && (
+                  <TouchableOpacity onPress={() => setSelectedDay(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name="close-circle" size={16} color={INK3} />
                   </TouchableOpacity>
                 )}
-              </View>
+              </TouchableOpacity>
             )}
 
             {/* Filter (grade slider) + sort (Date / Gym) — only when there are climbs */}
@@ -503,8 +488,8 @@ export default function UserProfileScreen() {
               <Text style={styles.climbsEmpty}>No public climbs yet.</Text>
             ) : visibleClimbs.length === 0 ? (
               <Text style={styles.climbsEmpty}>
-                {dateQuery.trim()
-                  ? 'No climbs found for that date.'
+                {selectedDay
+                  ? 'No climbs on that date.'
                   : `No ${gradeFilter} climbs yet.`}
               </Text>
             ) : (
@@ -629,6 +614,17 @@ export default function UserProfileScreen() {
             </View>
           </View>
         </Modal>
+      )}
+
+      {/* ── Date picker ── */}
+      {datePickerOpen && (
+        <ClimbDatePicker
+          onClose={() => setDatePickerOpen(false)}
+          selected={selectedDay}
+          markedDays={markedDays}
+          initialMonth={climbs[0] ? new Date(climbs[0].createdAt) : undefined}
+          onSelect={setSelectedDay}
+        />
       )}
 
     </SafeAreaView>
@@ -845,12 +841,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  dateSearchInput: {
+  dateSearchText: {
     flex: 1,
     fontSize: 14,
     fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+  },
+  dateSearchTextActive: {
     color: INK,
-    padding: 0,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
 
   // ── Filter + sort controls ───────────────────────────────────
