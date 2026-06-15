@@ -30,6 +30,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
+import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPosts';
 
 // ─── Session-only dismissal flags ───────────────────────────────────────────────
 // Module-level (not component state) so a dismissal survives tab switches and feed
@@ -99,6 +100,7 @@ type SuggestedClimber = {
 // full-height items in the same list so snap behaviour is never broken.
 type FeedItem =
   | { key: string; kind: 'post'; post: Post }
+  | { key: string; kind: 'group'; group: GroupedPost }
   | { key: 'gymPicker'; kind: 'gymPicker' }
   | { key: 'gymConfirm'; kind: 'gymConfirm'; gymId: string; gymName: string }
   | { key: 'suggestions'; kind: 'suggestions'; gymId: string }
@@ -254,12 +256,14 @@ function FullScreenCard({
   onShare,
   onGym,
   onOverflow,
+  inGroup,
 }: {
   post:            Post;
   height:          number;
   isActive:        boolean;
   isOwnPost:       boolean;
   isFollowing:     boolean;
+  inGroup?:        boolean;
   onLike:          (id: string) => void;
   onComment:       (id: string) => void;
   onFollowToggle:  (userId: string) => void;
@@ -346,20 +350,23 @@ function FullScreenCard({
       />
 
       {/* ── Top tab row: Following | FOR YOU | Nearby ───────────────────────── */}
-      <View style={card.tabRow}>
-        <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
-          <Text style={card.tabInactive}>Following</Text>
-        </TouchableOpacity>
+      {/* Hidden inside a group carousel — the group header takes the top slot. */}
+      {!inGroup && (
+        <View style={card.tabRow}>
+          <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
+            <Text style={card.tabInactive}>Following</Text>
+          </TouchableOpacity>
 
-        <View style={card.tabItem}>
-          <Text style={card.tabActiveText}>For You</Text>
-          <View style={card.tabIndicator} />
+          <View style={card.tabItem}>
+            <Text style={card.tabActiveText}>For You</Text>
+            <View style={card.tabIndicator} />
+          </View>
+
+          <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
+            <Text style={card.tabInactive}>Nearby</Text>
+          </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
-          <Text style={card.tabInactive}>Nearby</Text>
-        </TouchableOpacity>
-      </View>
+      )}
 
       {/* ── Overflow menu (own posts only) ──────────────────────────────────── */}
       {isOwnPost && (
@@ -453,7 +460,7 @@ function FullScreenCard({
         activeOpacity={0.75}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         onPress={() => post.userId && onPressUser(post.userId)}>
-        <Text style={card.username}>{displayName}</Text>
+        {!inGroup && <Text style={card.username}>{displayName}</Text>}
         {post.climbNickname ? (
           <Text style={card.climbNickname}>{post.climbNickname}</Text>
         ) : null}
@@ -476,6 +483,89 @@ function FullScreenCard({
             {'📍  '}{post.gym ?? '—'}
           </Text>
         </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Grouped card (same-day same-gym carousel) ──────────────────────────────────
+
+function GroupedCard({
+  group, height, isActive, currentUserId, followingSet,
+  onLike, onComment, onFollowToggle, onPressUser, onShare, onGym, onOverflow,
+}: {
+  group:          GroupedPost;
+  height:         number;
+  isActive:       boolean;
+  currentUserId:  string | null;
+  followingSet:   Set<string>;
+  onLike:         (id: string) => void;
+  onComment:      (id: string) => void;
+  onFollowToggle: (userId: string) => void;
+  onPressUser:    (userId: string) => void;
+  onShare:        (post: Post) => void;
+  onGym:          (gymId: string) => void;
+  onOverflow:     (post: Post, group: GroupedPost) => void;
+}) {
+  const [activePage, setActivePage] = useState(0);
+  const pages = group.pages;
+  const n     = pages.length;
+  const head  = pages[0]; // username + gym are identical across members
+
+  return (
+    <View style={{ width: SCREEN_WIDTH, height, backgroundColor: '#000' }}>
+      {/* Horizontal paged carousel — one full session card per page */}
+      <FlatList
+        data={pages}
+        keyExtractor={(p) => p.id}
+        horizontal
+        pagingEnabled
+        directionalLockEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) =>
+          setActivePage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH))
+        }
+        renderItem={({ item, index }) => (
+          <FullScreenCard
+            post={item}
+            height={height}
+            isActive={isActive && index === activePage}
+            isOwnPost={item.userId === currentUserId}
+            isFollowing={!!item.userId && followingSet.has(item.userId)}
+            inGroup
+            onLike={onLike}
+            onComment={onComment}
+            onFollowToggle={onFollowToggle}
+            onPressUser={onPressUser}
+            onShare={onShare}
+            onGym={onGym}
+            onOverflow={(post) => onOverflow(post, group)}
+          />
+        )}
+      />
+
+      {/* Group header (top-left) — username + "N climbs at gym" */}
+      <TouchableOpacity
+        style={grp.header}
+        activeOpacity={0.8}
+        onPress={() => head.userId && onPressUser(head.userId)}>
+        <Text style={grp.headerUser} numberOfLines={1}>@{head.username ?? head.name}</Text>
+        <Text style={grp.headerMeta} numberOfLines={1}>{n} climbs at {head.gym ?? 'the gym'}</Text>
+      </TouchableOpacity>
+
+      {/* "+N more" cue — cover page only */}
+      {activePage === 0 && (
+        <View style={grp.moreCue} pointerEvents="none">
+          <Ionicons name="layers-outline" size={13} color="#ffffff" />
+          <Text style={grp.moreText}>+{n - 1} more</Text>
+        </View>
+      )}
+
+      {/* Page dots */}
+      <View style={grp.dots} pointerEvents="none">
+        {pages.map((_, i) => (
+          <View key={i} style={[grp.dot, i === activePage ? grp.dotActive : grp.dotInactive]} />
+        ))}
       </View>
     </View>
   );
@@ -674,8 +764,14 @@ export default function FeedScreen() {
 
   // Overflow / visibility sheet (own posts)
   const [overflowPost,    setOverflowPost]    = useState<Post | null>(null);
+  const [overflowGroup,   setOverflowGroup]   = useState<GroupedPost | null>(null);
   const [overflowConfirm, setOverflowConfirm] = useState(false);
   const [overflowBusy,    setOverflowBusy]    = useState(false);
+
+  // Arrange-climbs sheet (own grouped cards)
+  const [arrangeGroup, setArrangeGroup] = useState<GroupedPost | null>(null);
+  const [arrangeOrder, setArrangeOrder] = useState<Post[]>([]);
+  const [arrangeBusy,  setArrangeBusy]  = useState(false);
 
   // Comment sheet
   const [commentSheetVisible,   setCommentSheetVisible]   = useState(false);
@@ -844,10 +940,52 @@ export default function FeedScreen() {
   const handleRetry = useCallback(() => { runLoad(() => true); }, [runLoad]);
 
   // ── After-the-fact visibility toggle (own posts) ──────────────────────────
-  const handleOverflow = useCallback((post: Post) => {
+  const handleOverflow = useCallback((post: Post, group?: GroupedPost) => {
     setOverflowPost(post);
+    setOverflowGroup(group ?? null);
     setOverflowConfirm(false);
   }, []);
+
+  // ── Arrange climbs (own grouped cards) → writes feed_rank ─────────────────
+  const openArrange = useCallback((group: GroupedPost) => {
+    setArrangeGroup(group);
+    setArrangeOrder(group.pages);
+    setOverflowPost(null);
+    setOverflowGroup(null);
+  }, []);
+
+  const moveArrange = useCallback((from: number, to: number) => {
+    setArrangeOrder(prev => {
+      if (to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      const [m] = next.splice(from, 1);
+      next.splice(to, 0, m);
+      return next;
+    });
+  }, []);
+
+  const saveArrange = useCallback(async () => {
+    if (!arrangeGroup || arrangeBusy) return;
+    setArrangeBusy(true);
+    // feed_rank 0..n-1 in the new order; groupPosts then honours it on reload.
+    await Promise.all(arrangeOrder.map((p, i) =>
+      supabase.from('sessions').update({ feed_rank: i }).eq('id', p.id),
+    ));
+    setArrangeBusy(false);
+    setArrangeGroup(null);
+    runLoad(() => true);
+  }, [arrangeGroup, arrangeOrder, arrangeBusy, runLoad]);
+
+  const resetArrange = useCallback(async () => {
+    if (!arrangeGroup || arrangeBusy) return;
+    setArrangeBusy(true);
+    await Promise.all(arrangeGroup.members.map(p =>
+      supabase.from('sessions').update({ feed_rank: null }).eq('id', p.id),
+    ));
+    setArrangeBusy(false);
+    setArrangeGroup(null);
+    runLoad(() => true);
+  }, [arrangeGroup, arrangeBusy, runLoad]);
 
   const handleToggleVisibility = useCallback(async () => {
     if (!overflowPost || overflowBusy) return;
@@ -869,6 +1007,7 @@ export default function FeedScreen() {
     }
     setOverflowBusy(false);
     setOverflowPost(null);
+    setOverflowGroup(null);
     setOverflowConfirm(false);
   }, [overflowPost, overflowBusy]);
 
@@ -995,7 +1134,14 @@ export default function FeedScreen() {
   if (posts.length === 0) {
     feedItems.push({ key: 'empty', kind: 'empty' });
   } else {
-    const postItems: FeedItem[] = posts.map((p): FeedItem => ({ key: p.id, kind: 'post', post: p }));
+    // Fold same-day/same-gym/same-user runs into grouped carousels (singles pass
+    // through unchanged). Grouping runs on the already-ordered list and can't
+    // cross segments, so feed ordering is untouched.
+    const postItems: FeedItem[] = groupPosts(posts).map((g): FeedItem =>
+      isGroupedPost(g)
+        ? { key: `group-${g.groupKey}`, kind: 'group', group: g }
+        : { key: g.id, kind: 'post', post: g }
+    );
     const showSuggestions =
       homeGymId !== null &&
       !suggestionsDismissedThisSession &&
@@ -1039,6 +1185,23 @@ export default function FeedScreen() {
                       isActive={index === activeIndex}
                       isOwnPost={item.post.userId === currentUserId}
                       isFollowing={!!item.post.userId && followingSet.has(item.post.userId)}
+                      onLike={handleLike}
+                      onComment={openCommentSheet}
+                      onFollowToggle={handleFollowToggle}
+                      onPressUser={handlePressUser}
+                      onShare={handleShare}
+                      onGym={gymId => router.push(`/gym/${gymId}`)}
+                      onOverflow={(post) => handleOverflow(post)}
+                    />
+                  );
+                case 'group':
+                  return (
+                    <GroupedCard
+                      group={item.group}
+                      height={cardHeight}
+                      isActive={index === activeIndex}
+                      currentUserId={currentUserId}
+                      followingSet={followingSet}
                       onLike={handleLike}
                       onComment={openCommentSheet}
                       onFollowToggle={handleFollowToggle}
@@ -1237,6 +1400,15 @@ export default function FeedScreen() {
                       ? 'Everyone will be able to see this climb.'
                       : 'Only you will see this climb. It still counts in your stats.'}
                   </Text>
+                  {overflowGroup && (
+                    <TouchableOpacity
+                      style={[overflow.row, overflow.rowBordered]}
+                      activeOpacity={0.7}
+                      onPress={() => overflowGroup && openArrange(overflowGroup)}>
+                      <Ionicons name="swap-vertical" size={22} color={INK} />
+                      <Text style={overflow.rowLabel}>Arrange climbs</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               ) : (
                 <>
@@ -1269,6 +1441,64 @@ export default function FeedScreen() {
                   </TouchableOpacity>
                 </>
               )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ── Arrange climbs sheet (own grouped cards) ──────────────────────────── */}
+      {arrangeGroup && (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setArrangeGroup(null)}>
+          <View style={overflow.backdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setArrangeGroup(null)} />
+            <View style={overflow.sheet}>
+              <View style={overflow.handle} />
+              <Text style={arrange.title}>Arrange climbs</Text>
+              <Text style={arrange.sub}>Set the order climbers swipe through this day.</Text>
+              <ScrollView style={arrange.list} showsVerticalScrollIndicator={false}>
+                {arrangeOrder.map((p, i) => (
+                  <View key={p.id} style={arrange.row}>
+                    <Text style={arrange.rowGrade}>{p.topGrade ?? '—'}</Text>
+                    <Text style={arrange.rowName} numberOfLines={1}>
+                      {p.climbNickname ?? p.gym ?? 'Climb'}
+                    </Text>
+                    <View style={arrange.rowBtns}>
+                      <TouchableOpacity
+                        style={[arrange.moveBtn, i === 0 && arrange.moveBtnDisabled]}
+                        disabled={i === 0}
+                        onPress={() => moveArrange(i, i - 1)}
+                        activeOpacity={0.7}>
+                        <Ionicons name="chevron-up" size={18} color={i === 0 ? INK3 : INK} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[arrange.moveBtn, i === arrangeOrder.length - 1 && arrange.moveBtnDisabled]}
+                        disabled={i === arrangeOrder.length - 1}
+                        onPress={() => moveArrange(i, i + 1)}
+                        activeOpacity={0.7}>
+                        <Ionicons name="chevron-down" size={18} color={i === arrangeOrder.length - 1 ? INK3 : INK} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+              <TouchableOpacity
+                style={overflow.confirmBtn}
+                activeOpacity={0.85}
+                disabled={arrangeBusy}
+                onPress={saveArrange}>
+                {arrangeBusy ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={overflow.confirmBtnText}>SAVE ORDER</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={overflow.cancelBtn} activeOpacity={0.7} onPress={resetArrange} disabled={arrangeBusy}>
+                <Text style={overflow.cancelText}>Reset to default order</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -1718,6 +1948,11 @@ const overflow = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
   },
+  rowBordered: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: DIVIDER,
+    marginTop: 6,
+  },
   rowLabel: {
     fontSize: 16,
     fontFamily: 'SpaceGrotesk_700Bold',
@@ -1765,6 +2000,134 @@ const overflow = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'SpaceGrotesk_600SemiBold',
     color: INK3,
+  },
+});
+
+// ─── Grouped card styles ────────────────────────────────────────────────────────
+
+const grp = StyleSheet.create({
+  header: {
+    position: 'absolute',
+    top: 30,
+    left: 16,
+    right: 60,        // clear the overflow button
+    zIndex: 11,
+  },
+  headerUser: {
+    fontSize: 16,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  headerMeta: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 1,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  moreCue: {
+    position: 'absolute',
+    bottom: STATS_BAR_H + 100,
+    right: 14,
+    zIndex: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  moreText: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  },
+  dots: {
+    position: 'absolute',
+    bottom: STATS_BAR_H + 80,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    zIndex: 11,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  dotActive: {
+    backgroundColor: SAND,
+  },
+  dotInactive: {
+    backgroundColor: INK3,
+  },
+});
+
+// ─── Arrange-climbs sheet styles ────────────────────────────────────────────────
+
+const arrange = StyleSheet.create({
+  title: {
+    fontSize: 20,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  sub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    marginBottom: 12,
+  },
+  list: {
+    maxHeight: SCREEN_HEIGHT * 0.4,
+    marginBottom: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+  },
+  rowGrade: {
+    width: 40,
+    fontSize: 16,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -0.5,
+  },
+  rowName: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK,
+  },
+  rowBtns: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  moveBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveBtnDisabled: {
+    opacity: 0.4,
   },
 });
 
