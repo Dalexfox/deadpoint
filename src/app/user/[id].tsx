@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 
@@ -86,6 +87,17 @@ export default function UserProfileScreen() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [climbs, setClimbs] = useState<ClimbCard[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Climb grid filter (grade slider) + sort (Date / Gym)
+  const [gradeSlider, setGradeSlider] = useState<number | null>(null);
+  const [gradeFilter, setGradeFilter] = useState<string | null>(null);
+  const [sortBy,      setSortBy]      = useState<'date' | 'gym'>('date');
+  const [sortOpen,    setSortOpen]    = useState(false);
+
+  const handleGradeSlider = (i: number) => {
+    if (gradeSlider === i) { setGradeSlider(null); setGradeFilter(null); } // tap again to clear
+    else { setGradeSlider(i); setGradeFilter(GRADE_ORDER[i]); }
+  };
 
   const [isFollowing,        setIsFollowing]        = useState(false);
   const [followerCount,      setFollowerCount]       = useState(0);
@@ -258,6 +270,15 @@ export default function UserProfileScreen() {
     }
   };
 
+  // Apply grade filter + sort. 'date' keeps the fetch order (newest first);
+  // 'gym' sorts alphabetically by gym name.
+  const visibleClimbs = (() => {
+    const list = gradeFilter ? climbs.filter((c) => c.grade === gradeFilter) : climbs;
+    return sortBy === 'gym'
+      ? [...list].sort((a, b) => a.gymName.localeCompare(b.gymName))
+      : list;
+  })();
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -357,11 +378,88 @@ export default function UserProfileScreen() {
           {/* ── Climbs grid (public climbs only) ── */}
           <View style={styles.climbsSection}>
             <Text style={styles.climbsLabel}>CLIMBS</Text>
+
+            {/* Filter (grade slider) + sort (Date / Gym) — only when there are climbs */}
+            {climbs.length > 0 && (
+              <>
+                <View style={styles.controlsRow}>
+                  {/* Grade step-slider */}
+                  <View style={styles.sliderWrap}>
+                    {gradeSlider !== null && (
+                      <Text style={styles.sliderValue}>{GRADE_ORDER[gradeSlider]}</Text>
+                    )}
+                    <View style={styles.stepTrack}>
+                      <View style={styles.stepTrackLine} />
+                      {gradeSlider !== null && (
+                        <View style={[styles.stepTrackLineFilled, { width: `${(gradeSlider / (GRADE_ORDER.length - 1)) * 100}%` }]} />
+                      )}
+                      {GRADE_ORDER.map((g, i) => {
+                        const hasData = climbs.some((c) => c.grade === g);
+                        return (
+                          <TouchableOpacity
+                            key={g}
+                            style={[styles.stepHitArea, { left: `${(i / (GRADE_ORDER.length - 1)) * 100}%` }]}
+                            onPress={() => handleGradeSlider(i)}
+                            activeOpacity={0.7}>
+                            <View style={[
+                              styles.stepDot,
+                              i === gradeSlider && styles.stepDotActive,
+                              !hasData && styles.stepDotEmpty,
+                            ]} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.stepLabels}>
+                      {GRADE_ORDER.map((g, i) => (
+                        <Text key={g} style={[styles.stepLabelText, i === gradeSlider && styles.stepLabelActive]}>{g}</Text>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Clear/All + sort menu */}
+                  <View style={styles.rightCol}>
+                    {gradeFilter !== null ? (
+                      <TouchableOpacity
+                        style={styles.clearBtn}
+                        onPress={() => { setGradeFilter(null); setGradeSlider(null); }}
+                        activeOpacity={0.7}>
+                        <Text style={styles.clearBtnText}>✕  Clear</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.allBtn}><Text style={styles.allBtnText}>All</Text></View>
+                    )}
+                    <TouchableOpacity style={styles.menuBtn} onPress={() => setSortOpen((v) => !v)} activeOpacity={0.7}>
+                      <Ionicons name="menu" size={22} color={INK} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Sort options (inline panel) */}
+                {sortOpen && (
+                  <View style={styles.sortPanel}>
+                    {([{ key: 'date', label: 'Date' }, { key: 'gym', label: 'Gym' }] as const).map(({ key, label }) => (
+                      <TouchableOpacity
+                        key={key}
+                        style={styles.sortItem}
+                        onPress={() => { setSortBy(key); setSortOpen(false); }}
+                        activeOpacity={0.7}>
+                        <Text style={[styles.sortLabel, sortBy === key && styles.sortLabelActive]}>{label}</Text>
+                        {sortBy === key && <Ionicons name="checkmark" size={15} color={SAND} />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
             {climbs.length === 0 ? (
               <Text style={styles.climbsEmpty}>No public climbs yet.</Text>
+            ) : visibleClimbs.length === 0 ? (
+              <Text style={styles.climbsEmpty}>No {gradeFilter} climbs yet.</Text>
             ) : (
               <View style={styles.climbsGrid}>
-                {toRows(climbs).map((row, ri) => (
+                {toRows(visibleClimbs).map((row, ri) => (
                   <View key={ri} style={styles.climbsRow}>
                     {row.map((c) => (
                       <TouchableOpacity
@@ -686,6 +784,98 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_500Medium',
     color: INK3,
   },
+
+  // ── Filter + sort controls ───────────────────────────────────
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  sliderWrap: {
+    flex: 1,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  sliderValue: {
+    fontSize: 24,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -1,
+    marginBottom: 10,
+  },
+  stepTrack: { width: '100%', height: 28, justifyContent: 'center', marginBottom: 6 },
+  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 1.5, backgroundColor: DIVIDER, borderRadius: 2 },
+  stepTrackLineFilled: { position: 'absolute', left: 0, height: 1.5, backgroundColor: INK, borderRadius: 2 },
+  stepHitArea: { position: 'absolute', width: 32, height: 32, marginLeft: -16, alignItems: 'center', justifyContent: 'center' },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: SURFACE, borderWidth: 0.5, borderColor: 'rgba(26,20,8,0.1)' },
+  stepDotActive: { width: 18, height: 18, borderRadius: 9, backgroundColor: INK, borderWidth: 3, borderColor: '#ffffff' },
+  stepDotEmpty: { opacity: 0.4 },
+  stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  stepLabelText: { fontSize: 9, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
+  stepLabelActive: { color: SAND, fontFamily: 'Syne_800ExtraBold' },
+  rightCol: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(200,168,74,0.12)',
+    borderWidth: 0.5,
+    borderColor: SAND,
+  },
+  clearBtnText: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: SAND,
+  },
+  allBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  allBtnText: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11,
+    color: 'rgba(26,20,8,0.3)',
+  },
+  menuBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortPanel: {
+    alignSelf: 'flex-end',
+    minWidth: 130,
+    backgroundColor: BG,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  sortItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  sortLabel: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
+    letterSpacing: 0.1,
+  },
+  sortLabelActive: { color: SAND },
 
   // ── Follow button ─────────────────────────────────────────────────────────────
   followBtn: {
