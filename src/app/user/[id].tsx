@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -48,6 +49,22 @@ type FollowUser = {
   avatarUrl: string | null;
 };
 
+// A single public climb shown in the profile grid.
+type ClimbCard = {
+  sessionId: string;
+  grade:     string | null;
+  gymName:   string;
+  date:      string;
+  mediaUrl:  string | null;
+};
+
+// Chunk a list into rows of 3 for the grid.
+function toRows<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 3) rows.push(items.slice(i, i + 3));
+  return rows;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toInitials(name: string): string {
@@ -67,6 +84,7 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [climbs, setClimbs] = useState<ClimbCard[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isFollowing,        setIsFollowing]        = useState(false);
@@ -94,11 +112,17 @@ export default function UserProfileScreen() {
       .eq('id', userId)
       .single();
 
-    // Fetch this user's sessions + their climbs for stat computation
-    const { data: sessions } = await supabase
-      .from('sessions')
-      .select('gym_id, climbs(grade)')
-      .eq('user_id', userId);
+    // Fetch this user's sessions + their climbs. RLS returns only PUBLIC sessions
+    // for other users (and all of your own), so the grid + stats are public-only
+    // when viewing someone else — quiet climbs never leak here.
+    const [gyms, { data: sessions }] = await Promise.all([
+      fetchGyms(),
+      supabase
+        .from('sessions')
+        .select('id, gym_id, media_url, created_at, climbs(grade)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }),
+    ]);
 
     // Compute stats from sessions
     let totalClimbs = 0;
@@ -117,6 +141,19 @@ export default function UserProfileScreen() {
     // Top grade = highest V-scale grade across all sessions
     const topGrade =
       [...GRADE_ORDER].reverse().find((g) => (gradeCounts[g] ?? 0) > 0) ?? '—';
+
+    // Build the climb grid (already public-only via RLS, newest first).
+    setClimbs(
+      (sessions ?? []).map((s) => ({
+        sessionId: String(s.id),
+        grade:     ((s.climbs ?? []) as { grade: string }[])[0]?.grade ?? null,
+        gymName:   resolveGymName(gyms, s.gym_id),
+        date:      new Date(s.created_at).toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric',
+        }),
+        mediaUrl:  s.media_url ?? null,
+      })),
+    );
 
     setProfile({
       fullName: profileData?.full_name ?? 'Climber',
@@ -315,6 +352,46 @@ export default function UserProfileScreen() {
               <Text style={styles.statValue}>{stats?.gymsVisited ?? 0}</Text>
               <Text style={styles.statLabel}>GYMS VISITED</Text>
             </View>
+          </View>
+
+          {/* ── Climbs grid (public climbs only) ── */}
+          <View style={styles.climbsSection}>
+            <Text style={styles.climbsLabel}>CLIMBS</Text>
+            {climbs.length === 0 ? (
+              <Text style={styles.climbsEmpty}>No public climbs yet.</Text>
+            ) : (
+              <View style={styles.climbsGrid}>
+                {toRows(climbs).map((row, ri) => (
+                  <View key={ri} style={styles.climbsRow}>
+                    {row.map((c) => (
+                      <TouchableOpacity
+                        key={c.sessionId}
+                        style={{ flex: 1 }}
+                        activeOpacity={0.75}
+                        onPress={() => router.push(`/session/${c.sessionId}`)}>
+                        <View style={styles.climbCard}>
+                          {c.mediaUrl ? (
+                            <Image source={{ uri: c.mediaUrl }} style={styles.climbThumb} resizeMode="cover" />
+                          ) : (
+                            <View style={styles.climbThumbEmpty}>
+                              <Text style={styles.climbEmptyIcon}>🧗</Text>
+                            </View>
+                          )}
+                          <View style={styles.climbBody}>
+                            <Text style={styles.climbGrade}>{c.grade ?? '—'}</Text>
+                            <Text style={styles.climbGym} numberOfLines={1}>{c.gymName}</Text>
+                            <Text style={styles.climbDate}>{c.date}</Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                    {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
+                      <View key={`pad-${i}`} style={{ flex: 1 }} />
+                    ))}
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
         </ScrollView>
@@ -540,6 +617,74 @@ const styles = StyleSheet.create({
     height: 36,
     backgroundColor: DIVIDER,
     marginHorizontal: 8,
+  },
+
+  // ── Climbs grid ──────────────────────────────────────────────
+  climbsSection: {
+    marginTop: 28,
+    gap: 12,
+  },
+  climbsLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+  climbsEmpty: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    paddingVertical: 12,
+  },
+  climbsGrid: {
+    gap: 10,
+  },
+  climbsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  climbCard: {
+    flex: 1,
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  climbThumb: {
+    width: '100%',
+    height: 80,
+  },
+  climbThumbEmpty: {
+    width: '100%',
+    height: 80,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  climbEmptyIcon: {
+    fontSize: 22,
+  },
+  climbBody: {
+    padding: 10,
+    gap: 2,
+  },
+  climbGrade: {
+    fontSize: 18,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -0.5,
+  },
+  climbGym: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+  },
+  climbDate: {
+    fontSize: 10,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
   },
 
   // ── Follow button ─────────────────────────────────────────────────────────────
