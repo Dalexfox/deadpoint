@@ -180,10 +180,15 @@ sessions (
   total_problems int,
   media_url text,            -- public Supabase Storage URL for session photo/video
   notes text,                -- optional description/notes entered on the log screen
+  visibility text not null default 'public' check (visibility in ('public','quiet')),
+                             -- 'quiet' = only the owner sees it (feed, others' profiles, gym browser)
+  feed_rank integer,         -- null = system order; set by "Arrange climbs" to pin page order in a group
   created_at timestamp with time zone default now()
 )
--- ⚠️ notes column must be added manually if not present:
+-- ⚠️ notes / visibility / feed_rank columns must be added manually if not present:
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes text;
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','quiet'));
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS feed_rank integer;
 
 -- Individual climbs within a session
 climbs (
@@ -242,6 +247,32 @@ comments (
   created_at timestamp with time zone default now()
 )
 ```
+
+### RLS baseline (deployed and audited 2026-06-15)
+Every table has exactly one policy per (table, command), named with the
+`*_select` / `*_select_public` / `*_insert_own` / `*_update_own` / `*_delete_own`
+convention. The only non-trivial rule is on `sessions` (and `climbs` via a
+subquery): **quiet sessions are visible only to their owner.**
+```sql
+-- sessions
+sessions_select       SELECT  USING (visibility = 'public' OR auth.uid() = user_id)
+sessions_insert_own   INSERT  WITH CHECK (auth.uid() = user_id)
+sessions_update_own   UPDATE  USING (auth.uid() = user_id)
+sessions_delete_own   DELETE  USING (auth.uid() = user_id)
+-- climbs (visibility inherited from the parent session)
+climbs_select         SELECT  USING (EXISTS (SELECT 1 FROM sessions s
+                                WHERE s.id = climbs.session_id
+                                AND (s.visibility = 'public' OR auth.uid() = s.user_id)))
+climbs_insert_own     INSERT  WITH CHECK (EXISTS (SELECT 1 FROM sessions s
+                                WHERE s.id = climbs.session_id AND auth.uid() = s.user_id))
+-- profiles / problems / likes / follows / comments / gyms
+--   *_select_public  SELECT  USING (true)
+--   writes constrained to the owner (auth.uid() = user_id / id / follower_id / created_by)
+```
+⚠️ RLS is the privacy backstop for quiet logging — every "other user's content"
+query (feed, `/user/[id]`, gym Current Climbs) relies on it to exclude quiet
+sessions server-side. The feed *also* filters in the query for clarity, but
+never trust the render layer alone.
 
 ### ⚠️ Critical: sessions.user_id → auth.users (NOT profiles)
 PostgREST embedded joins (`sessions(profiles(*))`) do NOT work because `sessions.user_id` references `auth.users`, not `profiles`. Always fetch profiles separately:
@@ -397,8 +428,10 @@ src/lib/
   homeGym.ts           — syncHomeGymAfterSubmit(userId, justLoggedGymId): silent home-gym inference. Sets profiles.home_gym_id to the just-logged gym when null; from the 3rd session onward syncs to the most-logged gym (only writes if the leader differs). Best-effort, swallows errors. Called post-submit in send.tsx.
   stats.ts             — Pure, unit-testable progress helpers: gradeValue, highestGrade, isNewHighPoint, monthStats, weekStreak. All date math is LOCAL time; weekStreak gives the in-progress current week a one-week grace so a streak isn't shown broken mid-week. No Supabase, no React.
   constants.ts         — OFFICIAL_ACCOUNT_ID (string | null). When non-null, signup creates an auto-follow to it; currently null (no auto-follow). The follow is ordinary and unfollowable.
+  groupPosts.ts        — Pure render-time feed fold: groupPosts(posts) → (Post | GroupedPost)[]. Groups same user_id + gym_id + LOCAL day; cover = hardest grade, pages = cover-first or feed_rank order. See "Feed Session Grouping".
 src/components/
   ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
+  ClimbDatePicker.tsx  — Zero-dependency month-calendar bottom sheet (exports ClimbDatePicker + climbDayKey). Days with climbs are SAND-dotted/tappable; used by My Climbs + /user/[id] date filtering.
 ```
 
 ### 5 Main Tabs
@@ -454,6 +487,51 @@ There is NO onboarding flow — a new user lands directly in the feed. The feed 
 - **Empty** (`empty`) — when there are no public sessions: "QUIET IN HERE / No sends yet." + SAND "LOG A SEND" CTA → Log tab, plus a "Meanwhile, on the wall at {gym}" link when the home gym has catalog problems. Picker shows above it when applicable.
 - **Dismissals** (picker ✕, suggestions ✕) persist **for the app session only** via module-level flags in `index.tsx` (not state) — they survive tab switches/refreshes but reset on next launch, reappearing until a gym is set/inferred.
 - Home gym is also inferred silently on log submit — see `src/lib/homeGym.ts`.
+
+### Quiet Logging (`visibility`)
+A session is `'public'` (everyone) or `'quiet'` (only the owner). Quiet still
+counts in the owner's own stats, charts, streak and high-point — it's hidden
+only from *other* people.
+- **On log** (`log-flow/send.tsx`) — a toggle below Notes: `WHO CAN SEE THIS` +
+  `eye-outline` (SAND) when public, `ONLY YOU` + `eye-off-outline` (INK3) when
+  quiet. Defaults to Public every launch (`useState(true)`). Submit inserts
+  `visibility` + `feed_rank: null`.
+- **After the fact** — own session cards (feed `FullScreenCard`, grouped pages,
+  and `session/[id]`) show an `ellipsis-vertical` overflow → bottom sheet
+  ("Make quiet"/"Make public") → **confirm step** → updates `sessions.visibility`.
+  `created_at` is untouched, so re-publicising never bumps the post; likes and
+  comments are preserved. Own quiet posts show an `ONLY YOU` badge; quiet
+  My-Climbs cards show an `eye-off-outline` badge.
+- **Cover photos** — after every submit AND after every visibility toggle, call
+  `supabase.rpc('recompute_problem_cover', { problem_id })`. The SECURITY DEFINER
+  function picks the most-liked **public** session's media, so a quiet send can
+  never be a problem's cover.
+- **The visibility filter lives in the QUERY, never the render layer.** The feed
+  query adds `.or('visibility.eq.public,user_id.eq.<uid>')`; all other
+  "other-user" reads rely on the RLS baseline above. See "RLS baseline".
+
+### Feed Session Grouping (`src/lib/groupPosts.ts`)
+`groupPosts(posts)` is a **pure render-time fold** — no DB change, no delayed
+posting. Posts hit the feed instantly and are only *visually* clustered.
+- **Group key** = same `user_id` + same `gym_id` + same **LOCAL** calendar day.
+  Members need NOT be adjacent. Grouping can't cross the feed's two ordering
+  segments (followed-first vs. by-likes) because every one of a user's posts is
+  in exactly one segment — so it runs on the concatenated, already-ordered list
+  and leaves ordering untouched. A group sits at its **most-recent member's** slot.
+- **Cover** = hardest grade (`gradeValue` from `stats.ts`); ties → most recent.
+  **Pages** = cover first, then oldest → newest — UNLESS any member has
+  `feed_rank` set, in which case ALL pages order by `feed_rank` asc, nulls last.
+- **Single-member groups render as a normal post** (zero visual change).
+- **Render** (`GroupedCard` in `index.tsx`) — a horizontal `FlatList`
+  (`pagingEnabled`, `directionalLockEnabled`) of full `FullScreenCard` pages
+  (`inGroup` hides the top tabs + duplicate username). Group header
+  (`@user · N climbs at gym`), SAND/INK3 page dots, `+N more` on the cover only.
+  Per-page likes/comments/stats are independent (each page is its own session).
+  Video plays only on the visible page of the active card
+  (`isActive && index === activePage`). First-run cards are never grouped.
+- **Arrange climbs** — own grouped cards' overflow adds "Arrange climbs" → a
+  sheet with up/down chevrons → writes `feed_rank 0..n-1`; "Reset to default"
+  nulls every member's `feed_rank`. The feed reloads so `groupPosts` re-orders.
 
 ### Explore Tab (`/explore`)
 - "EXPLORE" header (Syne_800ExtraBold), SURFACE search bar with Ionicons `search-outline` icon
@@ -571,7 +649,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - Tab bar is fixed (outside the ScrollView); profile header + tab content scroll as one page
 
 ### My Climbs Tab (grade-filtered grid)
-- **Layout** — grade step-slider (left) + Clear/All button + hamburger ☰ sort button (right column). Below: grade-grouped sections ScrollView.
+- **Layout** — a **"Choose a Date:" calendar** picker on top (`src/components/ClimbDatePicker.tsx` — a zero-dependency month grid; days with climbs are SAND-dotted/tappable, empty days dimmed), then grade step-slider (left) + Clear/All button + hamburger ☰ sort button (right column). Below: grade-grouped sections ScrollView. The date filter (exact local day via `climbDayKey`) stacks with the grade + sort filters.
 - **Grade step-slider** — V0–V10 step-track. `myClimbsSlider: number | null` (null = no dot highlighted on load). Tapping a dot sets `myClimbsFilter` to that grade AND highlights the dot. Dimmed dots (0.4 opacity) = grades with no climbs logged.
 - **Filter logic** — `myClimbsFilter: string | null`. When set, `filteredGroups` shows only sections matching that grade. When null, all grade sections show. Computed from `climbEntries` (individual climb rows), NOT from `sessions`.
 - **Clear button** — shown when filter active: SAND gold, `rgba(200,168,74,0.12)` bg, border. Resets both `myClimbsFilter` and `myClimbsSlider` to null. Shows "All" (greyed out) when no filter.
@@ -579,7 +657,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - **Grade sections** — one per grade in `filteredGroups`, ordered V0→V10. Each has a SAND grade pill + `N sends` count. `filteredGroups` is derived from `climbEntries` grouped by `e.grade`, filtered by `myClimbsFilter`.
 - **3-column row grid** — `toRows()` chunks `group.entries` (ClimbEntry[]) into rows of 3. Incomplete last rows padded with invisible filler Views.
 - **ClimbGridCard** — takes a `ClimbEntry` (not SupabaseSession). Shows: photo thumbnail (80px, `mediaUrl`) or 🧗 placeholder; grade in SAND (Syne_800ExtraBold); gym name; date; ▲ VITAL pill. `borderRadius: 14`. **Tapping a card** navigates to `/session/[sessionId]`.
-- **ClimbEntry type** — `{ sessionId, grade, count, gymName, date, mediaUrl }`. Derived from the `climbs` table joined with session metadata. Every session has exactly one ClimbEntry (count always 1).
+- **ClimbEntry type** — `{ sessionId, grade, count, gymName, date, createdAt, mediaUrl, visibility }`. Derived from the `climbs` table joined with session metadata. Every session has exactly one ClimbEntry (count always 1). Quiet entries show an `eye-off-outline` badge.
 - **Empty state** — "No V5 climbs logged yet" centred when filter active but no matches.
 
 ### Feed Likes & Comments (Supabase-backed)
@@ -599,6 +677,7 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 - **Follow / Following toggle button** — SAND solid + white label when not following; SURFACE background + DIVIDER border + INK3 label when following. Hidden if viewing own profile (`currentUserId === id`). Optimistic: updates `isFollowing` and `followerCount` immediately, then writes to/deletes from `follows` table.
 - **Follower / following counts** — tappable `X followers · Y following` row; opens bottom-sheet Modals listing those users (avatar + name/username, no action buttons since this is not your own profile).
 - Stats bar (SURFACE background, borderRadius: 20): **Total Climbs · Top Grade · Gyms Visited** — computed live from the user's sessions+climbs in Supabase, same logic as the self-profile.
+- **Climbs grid** — a 3-column grid of the user's **public** climbs (RLS returns public-only for other users, so quiet never leaks), newest-first, each card → `/session/[id]`. Mirrors the My Climbs controls: a **grade step-slider** filter (tap a dot; dimmed = no climbs), a **Date/Gym sort** menu, and a **"Choose a Date:" calendar** picker (`src/components/ClimbDatePicker.tsx`). Empty/filtered states handled.
 - All follow data is fetched inside a `try/catch` so the screen renders correctly even if the `follows` table doesn't exist.
 
 ## Current Gyms (Phase 1 — NYC)
@@ -690,7 +769,11 @@ Therefore:
 - **Zero-onboarding first-run experience** — signup lands straight in the feed; in-feed gym picker → confirmation cards (sets `profiles.home_gym_id`); silent home-gym inference on submit (`src/lib/homeGym.ts`); in-feed CLIMBERS-AT-gym suggestion card; "QUIET IN HERE" empty state; `OFFICIAL_ACCOUNT_ID` auto-follow scaffolding (off). See "Feed First-Run Cards".
 - **New high point celebration** — first-ever / new-hardest send shows a full-screen SAND-on-INK grade celebration after submit (computed on read; `src/lib/stats.ts`)
 - **Profile PROGRESS section** — own-profile-only row: This month (sends + days), High point (grade chip), Streak (consecutive weeks). Pure helpers in `src/lib/stats.ts`.
-- **Canonical profile navigation** — every username/avatar (feed, comments, followers/following, suggestion card, explore rows, session detail) routes to `/user/[id]` (other) or `/(tabs)/profile` (own). `user/[id]` is registered in the root Stack.
+- **Canonical profile navigation** — every username/avatar (feed, comments, followers/following, suggestion card, explore rows, session detail, group header) routes to `/user/[id]` (other) or `/(tabs)/profile` (own), each with `hitSlop`. `user/[id]` is registered in the root Stack.
+- **Quiet logging** — per-session `visibility` ('public'/'quiet') with a log-screen toggle + after-the-fact overflow toggle on own cards; quiet hidden from others via the RLS baseline + feed query filter; `recompute_problem_cover` RPC keeps quiet sends off problem covers. Counts in the owner's own stats. See "Quiet Logging".
+- **Feed session grouping** — `src/lib/groupPosts.ts` folds same-day/same-gym/same-user runs into one carousel card (horizontal paged FlatList, page dots, +N more, per-page likes/comments/video); "Arrange climbs" writes `feed_rank`. Singles unchanged. See "Feed Session Grouping".
+- **Other users' climbs grid** — `/user/[id]` lists the user's public climbs (RLS-filtered) with the same grade slider, Date/Gym sort, and calendar date picker as My Climbs.
+- **Climb date picker** — `src/components/ClimbDatePicker.tsx`, a zero-dependency calendar used by My Climbs + `/user/[id]` to filter climbs to an exact day.
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
 - Sign up / log in screens (white background, Syne ExtraBold, premium minimal)
@@ -730,6 +813,8 @@ Therefore:
 - Always use **expo-router** for navigation, NEVER react-navigation
 - **Register every off-`(tabs)` route** with a `<Stack.Screen name="..." />` in `src/app/_layout.tsx` — an unregistered file route makes `router.push` to it silently no-op (this caused the username-tap navigation bug)
 - **Profile navigation convention:** own → `/(tabs)/profile`, other → `/user/[id]`. Wire every username/avatar this way; wrap avatar + name in one `Pressable` with `hitSlop`
+- **Quiet visibility:** the public/quiet filter belongs in the QUERY + RLS, never the render layer. Other-user reads rely on the RLS baseline; the feed also adds `.or('visibility.eq.public,user_id.eq.<uid>')`. After any session insert OR visibility change, call `supabase.rpc('recompute_problem_cover', { problem_id })` so quiet sends never become a cover.
+- **Feed grouping:** group with the pure `groupPosts()` fold (`src/lib/groupPosts.ts`) at render time only — never reorder the feed query or persist groups. First-run cards are never grouped.
 - Always keep compatibility with **Expo SDK 56**
 - Use the **ink/sand/cream palette** defined above — BG white, CARD `#f4f1eb`, SURFACE `#ece8df`, INK `#1a1408`, SAND `#c8a84a`, ACCENT `#e8383c`
 - ACCENT (`#e8383c`) is ONLY for: like buttons (heart) + Grade Distribution peak bar — nowhere else
