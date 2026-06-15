@@ -1255,6 +1255,7 @@ export default function ProfileScreen() {
           ) : (
             <>
               {/* ── Date picker trigger ── */}
+              <Text style={styles.myClimbsSearchTitle}>Choose a Date:</Text>
               <TouchableOpacity
                 style={styles.myClimbsSearchWrap}
                 onPress={() => setMyClimbsDatePickerOpen(true)}
@@ -2200,12 +2201,19 @@ const styles = StyleSheet.create({
   // ─── My Climbs grid ──────────────────────────────────────────
 
   // Header row: slider on left, hamburger on right
+  myClimbsSearchTitle: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 6,
+  },
   myClimbsSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginHorizontal: 16,
-    marginTop: 16,
     backgroundColor: SURFACE,
     borderRadius: 12,
     paddingHorizontal: 14,

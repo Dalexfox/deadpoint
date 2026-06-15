@@ -392,6 +392,9 @@ export default function UserProfileScreen() {
 
             {/* Date picker trigger */}
             {climbs.length > 0 && (
+              <Text style={styles.dateSearchTitle}>Choose a Date:</Text>
+            )}
+            {climbs.length > 0 && (
               <TouchableOpacity
                 style={styles.dateSearchWrap}
                 onPress={() => setDatePickerOpen(true)}
@@ -832,6 +835,12 @@ const styles = StyleSheet.create({
   },
 
   // ── Date search ──────────────────────────────────────────────
+  dateSearchTitle: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+    marginBottom: -4,
+  },
   dateSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
