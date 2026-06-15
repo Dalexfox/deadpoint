@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -56,6 +57,7 @@ type ClimbCard = {
   grade:     string | null;
   gymName:   string;
   date:      string;
+  createdAt: string;
   mediaUrl:  string | null;
 };
 
@@ -64,6 +66,26 @@ function toRows<T>(items: T[]): T[][] {
   const rows: T[][] = [];
   for (let i = 0; i < items.length; i += 3) rows.push(items.slice(i, i + 3));
   return rows;
+}
+
+// Match a climb against a free-text date query. Accepts the displayed form
+// ("Jun 15, 2026"), numeric m/d/y ("6/15/2026", "06/15/2026"), and ISO-ish
+// ("2026-06-15") — so "Jun 15", "6/15", "2026", etc. all work.
+function dateMatches(createdAt: string, displayDate: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const d = new Date(createdAt);
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
+  const yy = d.getFullYear();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const haystack = [
+    displayDate.toLowerCase(),
+    `${mm}/${dd}/${yy}`,
+    `${pad(mm)}/${pad(dd)}/${yy}`,
+    `${yy}-${pad(mm)}-${pad(dd)}`,
+  ].join('  ');
+  return haystack.includes(q);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,6 +115,7 @@ export default function UserProfileScreen() {
   const [gradeFilter, setGradeFilter] = useState<string | null>(null);
   const [sortBy,      setSortBy]      = useState<'date' | 'gym'>('date');
   const [sortOpen,    setSortOpen]    = useState(false);
+  const [dateQuery,   setDateQuery]   = useState('');
 
   const handleGradeSlider = (i: number) => {
     if (gradeSlider === i) { setGradeSlider(null); setGradeFilter(null); } // tap again to clear
@@ -163,6 +186,7 @@ export default function UserProfileScreen() {
         date:      new Date(s.created_at).toLocaleDateString('en-US', {
           month: 'short', day: 'numeric', year: 'numeric',
         }),
+        createdAt: s.created_at,
         mediaUrl:  s.media_url ?? null,
       })),
     );
@@ -273,7 +297,8 @@ export default function UserProfileScreen() {
   // Apply grade filter + sort. 'date' keeps the fetch order (newest first);
   // 'gym' sorts alphabetically by gym name.
   const visibleClimbs = (() => {
-    const list = gradeFilter ? climbs.filter((c) => c.grade === gradeFilter) : climbs;
+    let list = gradeFilter ? climbs.filter((c) => c.grade === gradeFilter) : climbs;
+    if (dateQuery.trim()) list = list.filter((c) => dateMatches(c.createdAt, c.date, dateQuery));
     return sortBy === 'gym'
       ? [...list].sort((a, b) => a.gymName.localeCompare(b.gymName))
       : list;
@@ -379,6 +404,27 @@ export default function UserProfileScreen() {
           <View style={styles.climbsSection}>
             <Text style={styles.climbsLabel}>CLIMBS</Text>
 
+            {/* Date search */}
+            {climbs.length > 0 && (
+              <View style={styles.dateSearchWrap}>
+                <Ionicons name="search-outline" size={16} color={INK3} />
+                <TextInput
+                  style={styles.dateSearchInput}
+                  value={dateQuery}
+                  onChangeText={setDateQuery}
+                  placeholder="Search by date (e.g. Jun 15)"
+                  placeholderTextColor={INK3}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {dateQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setDateQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color={INK3} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {/* Filter (grade slider) + sort (Date / Gym) — only when there are climbs */}
             {climbs.length > 0 && (
               <>
@@ -456,7 +502,11 @@ export default function UserProfileScreen() {
             {climbs.length === 0 ? (
               <Text style={styles.climbsEmpty}>No public climbs yet.</Text>
             ) : visibleClimbs.length === 0 ? (
-              <Text style={styles.climbsEmpty}>No {gradeFilter} climbs yet.</Text>
+              <Text style={styles.climbsEmpty}>
+                {dateQuery.trim()
+                  ? 'No climbs found for that date.'
+                  : `No ${gradeFilter} climbs yet.`}
+              </Text>
             ) : (
               <View style={styles.climbsGrid}>
                 {toRows(visibleClimbs).map((row, ri) => (
@@ -783,6 +833,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'SpaceGrotesk_500Medium',
     color: INK3,
+  },
+
+  // ── Date search ──────────────────────────────────────────────
+  dateSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: SURFACE,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dateSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
+    padding: 0,
   },
 
   // ── Filter + sort controls ───────────────────────────────────

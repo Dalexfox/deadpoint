@@ -81,9 +81,28 @@ type ClimbEntry = {
   count:     number;
   gymName:   string;
   date:      string;
+  createdAt: string;
   mediaUrl:  string | null;
   visibility: 'public' | 'quiet';
 };
+
+// Match a climb against a free-text date query — accepts "Jun 15", "6/15",
+// "06/15/2026", "2026-06-15", "2026", etc.
+function dateMatches(createdAt: string, displayDate: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const d = new Date(createdAt);
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
+  const yy = d.getFullYear();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return [
+    displayDate.toLowerCase(),
+    `${mm}/${dd}/${yy}`,
+    `${pad(mm)}/${pad(dd)}/${yy}`,
+    `${yy}-${pad(mm)}-${pad(dd)}`,
+  ].join('  ').includes(q);
+}
 
 // Shape of a session card built from Supabase data
 type SupabaseSession = {
@@ -251,12 +270,16 @@ export default function ProfileScreen() {
   const [myClimbsFilter,   setMyClimbsFilter]   = useState<string | null>(null); // null = show all
   const [myClimbsSort,     setMyClimbsSort]     = useState<MyClimbsSort>('date');
   const [myClimbsDropdown, setMyClimbsDropdown] = useState(false);
+  const [myClimbsDateQuery, setMyClimbsDateQuery] = useState('');
 
-  // Grade-grouped sections for My Climbs — filtered by active grade, sorted within each group
+  // Grade-grouped sections for My Climbs — filtered by active grade + date, sorted within each group
   const filteredGroups = (() => {
-    const source = myClimbsFilter
+    let source = myClimbsFilter
       ? climbEntries.filter((e) => e.grade === myClimbsFilter)
       : climbEntries;
+    if (myClimbsDateQuery.trim()) {
+      source = source.filter((e) => dateMatches(e.createdAt, e.date, myClimbsDateQuery));
+    }
     const byGrade: Record<string, ClimbEntry[]> = {};
     source.forEach((e) => {
       if (!byGrade[e.grade]) byGrade[e.grade] = [];
@@ -454,13 +477,14 @@ export default function ProfileScreen() {
           setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels });
 
           // ── 6. Climb entries for grade drill-down ───────────────
-          const sessionMetaById: Record<string, { gymName: string; date: string; mediaUrl: string | null; visibility: 'public' | 'quiet' }> = {};
+          const sessionMetaById: Record<string, { gymName: string; date: string; createdAt: string; mediaUrl: string | null; visibility: 'public' | 'quiet' }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
               gymName: resolveGymName(gyms, s.gym_id),
               date: new Date(s.created_at).toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric', year: 'numeric',
               }),
+              createdAt: s.created_at,
               mediaUrl: s.media_url ?? null,
               visibility: ((s as any).visibility ?? 'public') as 'public' | 'quiet',
             };
@@ -474,6 +498,7 @@ export default function ProfileScreen() {
                 count:     c.count,
                 gymName:   sessionMetaById[c.session_id]?.gymName ?? 'Unknown Gym',
                 date:      sessionMetaById[c.session_id]?.date ?? '',
+                createdAt: sessionMetaById[c.session_id]?.createdAt ?? '',
                 mediaUrl:  sessionMetaById[c.session_id]?.mediaUrl ?? null,
                 visibility: sessionMetaById[c.session_id]?.visibility ?? 'public',
               }))
@@ -1242,6 +1267,25 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
+              {/* ── Date search ── */}
+              <View style={styles.myClimbsSearchWrap}>
+                <Ionicons name="search-outline" size={16} color={INK3} />
+                <TextInput
+                  style={styles.myClimbsSearchInput}
+                  value={myClimbsDateQuery}
+                  onChangeText={setMyClimbsDateQuery}
+                  placeholder="Search by date (e.g. Jun 15)"
+                  placeholderTextColor={INK3}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {myClimbsDateQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setMyClimbsDateQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color={INK3} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
               {/* ── Header row: slider left, clear/all + sort right ── */}
               <View style={styles.myClimbsHeader}>
 
@@ -1344,9 +1388,11 @@ export default function ProfileScreen() {
 
                 {filteredGroups.length === 0 ? (
                   <Text style={styles.myClimbsEmpty}>
-                    {myClimbsFilter
-                      ? `No ${myClimbsFilter} climbs logged yet`
-                      : 'No climbs logged yet'}
+                    {myClimbsDateQuery.trim()
+                      ? 'No climbs found for that date'
+                      : myClimbsFilter
+                        ? `No ${myClimbsFilter} climbs logged yet`
+                        : 'No climbs logged yet'}
                   </Text>
                 ) : (
                   filteredGroups.map((group) => (
@@ -2157,6 +2203,24 @@ const styles = StyleSheet.create({
   // ─── My Climbs grid ──────────────────────────────────────────
 
   // Header row: slider on left, hamburger on right
+  myClimbsSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: SURFACE,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  myClimbsSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
+    padding: 0,
+  },
   myClimbsHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
