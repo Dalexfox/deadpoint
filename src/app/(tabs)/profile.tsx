@@ -992,7 +992,11 @@ export default function ProfileScreen() {
                         <View key={t.section} style={styles.terrainRow}>
                           <Text style={styles.terrainName} numberOfLines={1}>{t.section}</Text>
                           <View style={styles.terrainTrack}>
-                            <View style={[styles.terrainFill, { width: `${Math.max(t.pct, 3)}%`, opacity: i === 0 ? 1 : 0.45 }]} />
+                            <View style={[styles.terrainFill, {
+                              // scale bars relative to the dominant terrain → punchier, dominant fills the track
+                              width: `${chartData.terrain[0].pct ? Math.max((t.pct / chartData.terrain[0].pct) * 100, 4) : 0}%`,
+                              opacity: i === 0 ? 1 : 0.45,
+                            }]} />
                           </View>
                           <Text style={styles.terrainPct}>{t.pct}%</Text>
                           <Text style={styles.terrainCount}>{t.count}</Text>
