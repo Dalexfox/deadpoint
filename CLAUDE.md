@@ -314,8 +314,12 @@ gyms (
   city text default 'NYC',
   latitude double precision,        -- used by the map on the Gyms tab
   longitude double precision,
+  image_url text,                   -- optional hero/background photo for the gym card (customizable per row)
   created_at timestamp with time zone default now()
 )
+-- ⚠️ image_url is optional; `fetchGyms` uses select('*') so the app works with or
+-- without it. Add it with: ALTER TABLE gyms ADD COLUMN IF NOT EXISTS image_url text;
+-- Gym card photos are data-driven (NEVER hardcode image URLs in code).
 -- RLS: publicly readable (no auth required)
 ```
 

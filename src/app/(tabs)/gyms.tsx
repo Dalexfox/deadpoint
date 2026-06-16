@@ -29,13 +29,6 @@ const MAP_HEIGHT = Math.max(170, Dimensions.get('window').height * 0.26);
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 12) / 2;
 
 // Placeholder images per gym id — no image_url column in DB yet
-const GYM_IMAGES: Record<string, string> = {
-  '1': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-les.jpg',
-  '2': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-bk.jpg',
-  '3': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-ues.jpg',
-  '4': 'https://images.squarespace-cdn.com/content/v1/625bfab4e397erico0e5e2e0/1650294908776-gym-uws.jpg',
-};
-
 const MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f2ea' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#1a1408' }] },
@@ -138,9 +131,13 @@ export default function GymsScreen() {
       onPress={() => handleCardPress(gym)}
       activeOpacity={0.8}>
       <View style={styles.thumbImageWrap}>
-        <Image source={{ uri: GYM_IMAGES[gym.id] }} style={styles.thumbImage} />
+        {gym.image_url ? (
+          <Image source={{ uri: gym.image_url }} style={styles.thumbImage} />
+        ) : null}
         <View style={styles.thumbOverlay}>
-          <Text style={styles.thumbInitial}>{gym.name.split(' ').pop()}</Text>
+          <Text style={styles.thumbInitial} numberOfLines={1} adjustsFontSizeToFit>
+            {gym.name.split(' ').pop()}
+          </Text>
         </View>
       </View>
       <View style={styles.thumbInfo}>
@@ -441,16 +438,19 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   thumbOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(13,43,54,0.45)',
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(26,20,8,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   thumbInitial: {
     fontSize: 28,
     fontFamily: 'Syne_800ExtraBold',
     color: '#ffffff',
     letterSpacing: 1,
+    textAlign: 'center',
   },
   thumbInfo: {
     padding: 12,
