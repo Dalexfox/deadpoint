@@ -42,3 +42,6 @@ example
 # generated native folders
 /ios
 /android
+
+# stray nested clone of this repo (do not track)
+/deadpoint/
