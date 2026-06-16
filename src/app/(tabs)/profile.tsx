@@ -74,6 +74,7 @@ type ChartData = {
   maxGradeIndex:     number;    // index of the most-climbed grade (highlighted pink)
   monthlyVolume:     number[];  // total problems per week for last 12 weeks
   weekLabels:        string[];  // e.g. ['Apr 7', '', 'Apr 21', '', ...]
+  terrain:           { section: string; count: number; pct: number }[]; // climbs by wall section, sorted desc
 };
 
 // A single climb row joined with its session's gym + date — used for grade drill-down
@@ -384,10 +385,30 @@ export default function ProfileScreen() {
           const sessionIds = rawSessions.map((s) => s.id);
           const { data: climbs } = await supabase
             .from('climbs')
-            .select('session_id, grade, count')
+            .select('session_id, grade, count, problem_id')
             .in('session_id', sessionIds);
 
           const allClimbs = climbs ?? [];
+
+          // ── Terrain breakdown — climbs by wall section (via the linked problem) ──
+          const climbProblemIds = [...new Set(allClimbs.map((c) => (c as any).problem_id).filter(Boolean))] as string[];
+          const wallById: Record<string, string | null> = {};
+          if (climbProblemIds.length > 0) {
+            const { data: probs } = await supabase
+              .from('problems')
+              .select('id, wall_section')
+              .in('id', climbProblemIds);
+            (probs ?? []).forEach((p: { id: string; wall_section: string | null }) => { wallById[p.id] = p.wall_section; });
+          }
+          const sectionCounts: Record<string, number> = {};
+          allClimbs.forEach((c) => {
+            const ws = (c as any).problem_id ? wallById[(c as any).problem_id] : null;
+            if (ws) sectionCounts[ws] = (sectionCounts[ws] ?? 0) + c.count;
+          });
+          const terrainTotal = Object.values(sectionCounts).reduce((a, b) => a + b, 0);
+          const terrain = Object.entries(sectionCounts)
+            .map(([section, count]) => ({ section, count, pct: terrainTotal ? Math.round((count / terrainTotal) * 100) : 0 }))
+            .sort((a, b) => b.count - a.count);
 
           const climbsBySession: Record<string, Array<{ grade: string; count: number }>> = {};
           allClimbs.forEach((c) => {
@@ -462,7 +483,7 @@ export default function ProfileScreen() {
             );
           }
 
-          setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels });
+          setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels, terrain });
 
           // ── 6. Climb entries for grade drill-down ───────────────
           const sessionMetaById: Record<string, { gymName: string; date: string; createdAt: string; mediaUrl: string | null; visibility: 'public' | 'quiet' }> = {};
@@ -954,6 +975,32 @@ export default function ProfileScreen() {
                   </View>
 
                 </View>
+              </View>
+
+              {/* Terrain — climbs by wall section (Arc'teryx editorial) */}
+              <View style={styles.chartCard}>
+                <Text style={styles.terrainLabel}>TERRAIN</Text>
+                {chartData.terrain.length === 0 ? (
+                  <Text style={styles.terrainEmpty}>Log climbs with a wall section to see your terrain.</Text>
+                ) : (
+                  <>
+                    <Text style={styles.terrainHero}>{chartData.terrain[0].section}</Text>
+                    <Text style={styles.terrainHeroSub}>your ground · {chartData.terrain[0].pct}% of sends</Text>
+
+                    <View style={styles.terrainList}>
+                      {chartData.terrain.map((t, i) => (
+                        <View key={t.section} style={styles.terrainRow}>
+                          <Text style={styles.terrainName} numberOfLines={1}>{t.section}</Text>
+                          <View style={styles.terrainTrack}>
+                            <View style={[styles.terrainFill, { width: `${Math.max(t.pct, 3)}%`, opacity: i === 0 ? 1 : 0.45 }]} />
+                          </View>
+                          <Text style={styles.terrainPct}>{t.pct}%</Text>
+                          <Text style={styles.terrainCount}>{t.count}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
               </View>
 
               {/* Grade Distribution — inline expand/collapse, no Modal */}
@@ -2008,6 +2055,78 @@ const styles = StyleSheet.create({
     color: INK,
     letterSpacing: -0.5,
     marginBottom: 2,
+  },
+
+  // ─── Terrain (Arc'teryx editorial) ────────────────────────────
+  terrainLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+  terrainHero: {
+    fontSize: 32,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK,
+    letterSpacing: -1.2,
+    marginTop: 8,
+  },
+  terrainHeroSub: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+    marginTop: 2,
+    marginBottom: 20,
+  },
+  terrainList: {
+    gap: 2,
+  },
+  terrainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 7,
+  },
+  terrainName: {
+    width: 86,
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+    letterSpacing: 0.1,
+  },
+  terrainTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: SURFACE,
+    overflow: 'hidden',
+  },
+  terrainFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: SAND,
+  },
+  terrainPct: {
+    width: 40,
+    textAlign: 'right',
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK,
+  },
+  terrainCount: {
+    width: 26,
+    textAlign: 'right',
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+  },
+  terrainEmpty: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    paddingVertical: 12,
+    lineHeight: 19,
   },
   chartSubtitle: {
     fontSize: 12,
