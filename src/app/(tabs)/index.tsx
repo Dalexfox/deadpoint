@@ -85,7 +85,8 @@ type FeedItem =
   | { key: 'gymPicker'; kind: 'gymPicker' }
   | { key: 'gymConfirm'; kind: 'gymConfirm'; gymId: string; gymName: string }
   | { key: 'suggestions'; kind: 'suggestions'; gymId: string }
-  | { key: 'empty'; kind: 'empty' };
+  | { key: 'empty'; kind: 'empty' }
+  | { key: 'followingEmpty'; kind: 'followingEmpty' };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -317,24 +318,7 @@ function FullScreenCard({
         pointerEvents="none"
       />
 
-      {/* ── Top tab row: Following | FOR YOU | Nearby ───────────────────────── */}
-      {/* Hidden inside a group carousel — the group header takes the top slot. */}
-      {!inGroup && (
-        <View style={card.tabRow}>
-          <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
-            <Text style={card.tabInactive}>Following</Text>
-          </TouchableOpacity>
-
-          <View style={card.tabItem}>
-            <Text style={card.tabActiveText}>For You</Text>
-            <View style={card.tabIndicator} />
-          </View>
-
-          <TouchableOpacity style={card.tabItem} activeOpacity={0.7}>
-            <Text style={card.tabInactive}>Nearby</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Top tabs (Following | For You) are a screen-level overlay now — see FeedScreen. */}
 
       {/* ── Overflow menu (own posts only) ──────────────────────────────────── */}
       {isOwnPost && (
@@ -702,6 +686,35 @@ function EmptyFeedCard({
   );
 }
 
+// Following tab with nobody followed yet (or no posts from them) — points back to discovery.
+function FollowingEmptyCard({
+  height, onExplore, onForYou,
+}: {
+  height: number;
+  onExplore: () => void;
+  onForYou: () => void;
+}) {
+  return (
+    <View style={[fc.card, { height }]}>
+      <View style={fc.inner}>
+        <Text style={fc.label}>FOLLOWING</Text>
+        <Text style={fc.emptyHeadline}>Your crew, in one place.</Text>
+        <Text style={fc.emptySub}>
+          Follow climbers and their sends show up here. Find a few to get started.
+        </Text>
+
+        <TouchableOpacity style={fc.emptyCta} onPress={onExplore} activeOpacity={0.85}>
+          <Text style={fc.emptyCtaText}>FIND CLIMBERS</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onForYou} activeOpacity={0.7} style={fc.emptyLink}>
+          <Text style={fc.emptyLinkText}>Browse For You →</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // Quiet inline retry — shown when the feed query fails. Never a dead screen.
 function FeedErrorCard({ height, onRetry }: { height: number; onRetry: () => void }) {
   return (
@@ -728,6 +741,8 @@ export default function FeedScreen() {
   const [activeIndex,   setActiveIndex]   = useState(0);
   const [cardHeight,    setCardHeight]    = useState(0);
   const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
+  const [feedTab,       setFeedTab]       = useState<'forYou' | 'following'>('forYou');
+  const flatListRef = useRef<FlatList>(null);
 
   // First-run / personalization state
   const [gyms,               setGyms]               = useState<Gym[]>([]);
@@ -1115,31 +1130,50 @@ export default function FeedScreen() {
     )
   );
 
+  // Tab switch — reset to the top so the new list starts at its first card.
+  const selectTab = (tab: 'forYou' | 'following') => {
+    if (tab === feedTab) return;
+    setFeedTab(tab);
+    setActiveIndex(0);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  };
+
+  // Following tab shows only followed users' posts; For You shows everything.
+  const visiblePosts = feedTab === 'following'
+    ? posts.filter(p => !!p.userId && followingSet.has(p.userId))
+    : posts;
+
   // Build the feed item list — posts plus the first-run cards, all full-height so
   // the vertical snap behaviour is identical for every item.
   const showPicker = homeGymId === null && !gymPickerDismissedThisSession;
   const homeGymNameResolved = homeGymId ? resolveGymName(gyms, homeGymId) : '';
 
   const feedItems: FeedItem[] = [];
-  if (gymJustSet) {
-    // Confirmation replaces the picker in place after a gym is chosen.
-    feedItems.push({ key: 'gymConfirm', kind: 'gymConfirm', gymId: gymJustSet.gymId, gymName: gymJustSet.gymName });
-  } else if (showPicker) {
-    feedItems.push({ key: 'gymPicker', kind: 'gymPicker' });
+  // First-run cards belong to the For You tab only — Following stays clean.
+  if (feedTab === 'forYou') {
+    if (gymJustSet) {
+      // Confirmation replaces the picker in place after a gym is chosen.
+      feedItems.push({ key: 'gymConfirm', kind: 'gymConfirm', gymId: gymJustSet.gymId, gymName: gymJustSet.gymName });
+    } else if (showPicker) {
+      feedItems.push({ key: 'gymPicker', kind: 'gymPicker' });
+    }
   }
 
-  if (posts.length === 0) {
+  if (feedTab === 'following' && visiblePosts.length === 0) {
+    feedItems.push({ key: 'followingEmpty', kind: 'followingEmpty' });
+  } else if (visiblePosts.length === 0) {
     feedItems.push({ key: 'empty', kind: 'empty' });
   } else {
     // Fold same-day/same-gym/same-user runs into grouped carousels (singles pass
     // through unchanged). Grouping runs on the already-ordered list and can't
     // cross segments, so feed ordering is untouched.
-    const postItems: FeedItem[] = groupPosts(posts).map((g): FeedItem =>
+    const postItems: FeedItem[] = groupPosts(visiblePosts).map((g): FeedItem =>
       isGroupedPost(g)
         ? { key: `group-${g.groupKey}`, kind: 'group', group: g }
         : { key: g.id, kind: 'post', post: g }
     );
     const showSuggestions =
+      feedTab === 'forYou' &&
       homeGymId !== null &&
       !suggestionsDismissedThisSession &&
       followingSet.size < 3 &&
@@ -1169,7 +1203,9 @@ export default function FeedScreen() {
         ) : loadError ? (
           <FeedErrorCard height={cardHeight} onRetry={handleRetry} />
         ) : (
+          <>
           <FlatList
+            ref={flatListRef}
             data={feedItems}
             keyExtractor={item => item.key}
             renderItem={({ item, index }) => {
@@ -1248,6 +1284,14 @@ export default function FeedScreen() {
                       onGoToGym={() => { if (homeGymId) router.push(`/gym/${homeGymId}`); }}
                     />
                   );
+                case 'followingEmpty':
+                  return (
+                    <FollowingEmptyCard
+                      height={cardHeight}
+                      onExplore={() => router.navigate('/(tabs)/explore')}
+                      onForYou={() => selectTab('forYou')}
+                    />
+                  );
                 default:
                   return null;
               }
@@ -1259,6 +1303,29 @@ export default function FeedScreen() {
             onViewableItemsChanged={onViewableItemsChangedRef.current}
             viewabilityConfig={viewabilityConfigRef.current}
           />
+
+          {/* ── Top tabs: Following | For You (screen-level overlay) ──────────── */}
+          {posts.length > 0 && (
+            <View style={card.tabRow} pointerEvents="box-none">
+              <TouchableOpacity
+                style={card.tabItem}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                onPress={() => selectTab('following')}>
+                <Text style={feedTab === 'following' ? card.tabActiveText : card.tabInactive}>Following</Text>
+                {feedTab === 'following' && <View style={card.tabIndicator} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={card.tabItem}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                onPress={() => selectTab('forYou')}>
+                <Text style={feedTab === 'forYou' ? card.tabActiveText : card.tabInactive}>For You</Text>
+                {feedTab === 'forYou' && <View style={card.tabIndicator} />}
+              </TouchableOpacity>
+            </View>
+          )}
+          </>
         )}
       </View>
 
