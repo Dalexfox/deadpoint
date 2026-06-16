@@ -198,8 +198,15 @@ climbs (
   session_id uuid references sessions(id),
   grade text,
   count int,
-  problem_id uuid references problems(id)   -- links to a specific problem; null for pre-problems-table sessions
+  problem_id uuid references problems(id),  -- links to a specific problem; null for pre-problems-table sessions
+  send_style text                           -- optional: 'flash' | 'send' | 'project'; null = not tagged
+    check (send_style in ('flash','send','project'))
 )
+-- ⚠️ send_style must be added manually if not present:
+-- ALTER TABLE climbs ADD COLUMN IF NOT EXISTS send_style text
+--   CHECK (send_style IN ('flash','send','project'));
+-- 'project' = still being worked → NOT a send. Excluded from Top Grade and the
+-- new-high-point celebration everywhere. Flash/Send both count as sends.
 
 -- Climbing problems (community-created, one per distinct climb at a gym)
 problems (
@@ -623,7 +630,8 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 
 **Screen 3 — Log Your Send** (`log-flow/send.tsx`):
 - Grade slider is pre-filled from `problemGrade` (Screen 2 match) OR `grade` (Screen 1 identify flow) — both params are read, with `problemGrade` taking priority. Without this fallback the slider would always default to V0 when coming from Screen 1.
-- Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
+- Context pill (hold color dot + problem name + gym). Optional nickname input (new problems only) → saved to `problems.custom_name`. Send media picker (separate from recognition photo — this IS uploaded to Supabase and posted to feed). Grade slider (pre-filled from match or Screen 1). **Send-style picker** (optional). Gym picker (pre-filled). Notes input. "LOG SESSION" submit button.
+- **Send-style tag** (optional) — three chips **Flash · Send · Project** between Difficulty and Gym; `sendStyle` state defaults to `null` (no tag). Tapping the active chip again clears it. Stored on `climbs.send_style` (omitted from the insert when null). A small tag renders on feed cards / grouped pages / session detail / My Climbs + `/user/[id]` grids (SAND_LT for Flash/Send, muted white for Project). **`'project'` is "still working it", NOT a send** → excluded from Top Grade and never triggers the high-point celebration (the prior-max query filters `send_style !== 'project'`, and a project log skips the celebration entirely).
 - **Nickname auto-focus** — when arriving from the "you're the first" celebration (Screen 2 passes `focusNickname=true`), the nickname `TextInput` is focused via a `ref` after a 450ms delay (lets the screen-slide animation settle before the keyboard opens). Only fires when `isNew && focusNickname === 'true'`.
 - Submit sequence: (1) insert problem if new (auto-name = "Blue V4 Main Wall", custom_name if entered); (2) insert session; (3) insert climb with problem_id; (4) upload send media → update session.media_url; (5) recompute problems.media_url from most-liked session with media for this problem; (6) silent home-gym inference via `syncHomeGymAfterSubmit`; (7) show "CLIMB LOGGED" for 2.5s → navigate to feed.
 - **New high point celebration** — after the "CLIMB LOGGED" success, the grade is compared on read against the user's previous hardest send (query their other sessions' climbs via `isNewHighPoint` from `stats.ts`; no denormalized max stored). A strictly-harder grade — or the first-ever log — shows a full-screen celebration: "NEW HIGH POINT" label, the grade huge (104px Syne, **SAND on INK**), "Your hardest send yet." Auto-dismiss on tap → feed. Ties and below-max do NOT trigger it; a query error never falsely celebrates and never blocks submit. SAND only — no ACCENT red.
@@ -635,10 +643,11 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 - **One adaptive retry** — if the first pass finds zero clusters for the selected color, it retries once with relaxed bounds (`relaxRange`: hue window ±8°, sMin −15, lightness ±10 each end) for hard colored-LED gym lighting. Still nothing → continue silently (no error surfaced).
 
 ### Profile Stats Dashboard (Overview tab)
-Three chart cards, all data derived from the existing sessions+climbs fetch (zero extra Supabase queries):
+Four cards, all data derived from the existing sessions+climbs fetch (the only extra query is a small `problems(id, wall_section)` lookup for Terrain). All Arc'teryx editorial style — one confident statement, restrained support:
 1. **Weekly Intensity** — `react-native-chart-kit` BarChart of problems per day Mon–Sun. Uses `withCustomBarColorFromData` + `flatColor`: selected day bar is solid `#1a1408` (INK), others `#ece8df` (SURFACE). Tap a day chip to drill into sessions for that day.
-2. **Grade Distribution** — **Custom View-based bar chart** (NOT chart-kit — it clipped V10). Collapsed card: compact 130px bars + grade chips + drill-down list. Tap `↗` to expand inline (no Modal — avoids iOS touch-blocking bugs): expanded shows 180px bars + grade chips + tappable session rows. Tap `×` to collapse. State: `selectedGrade` (collapsed) and `modalSelectedGrade` (expanded) are separate. **Tapping any climb row** (collapsed or expanded) opens the full-screen media viewer.
-3. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. SAND line color (`rgba(200,168,74)` — note the config var is named `ACCENT_CHART_CONFIG` but resolves to SAND), bezier curve.
+2. **Terrain** — climbs by wall section (Slab / Overhang / Cave / Main Wall / …). A small `TERRAIN` label → the dominant style as a big Syne hero → `your ground · {pct}% of sends` → restrained SAND bars per section (dominant fills the track; others scale relative to it at 0.45 opacity) with `{pct}%` + count. Wall section comes from the linked `problems.wall_section` (climbs with no problem/section are skipped). Empty state when no sectioned climbs.
+3. **Grade Pyramid** — replaces the old Grade Distribution. Centered horizontal bars, **hardest grade at the apex**, easy grades forming the wide base; only grades with ≥1 climb are shown (`reverse()`d so hardest is on top). Bars scale to the most-climbed grade; the **peak (most-climbed) grade is ACCENT**, the rest SAND. Tap a grade row → inline drill-down of that grade's sends (each row opens the full-screen media viewer). Single `selectedGrade` state; no expand/collapse, no Modal.
+4. **Monthly Volume** — `react-native-chart-kit` LineChart of total problems per week for the last 12 weeks. SAND line color (`rgba(200,168,74)` — note the config var is named `ACCENT_CHART_CONFIG` but resolves to SAND), bezier curve.
 
 ### Session Detail Screen (`/session/[id]`)
 - Route: `src/app/session/[id].tsx` — presented as `fullScreenModal` (slides up over profile).
@@ -757,7 +766,10 @@ Therefore:
 - Profile photo — tappable square avatar, uploads to Supabase Storage, `profiles.avatar_url` updated (propagates to feed)
 - Profile banner — full-width tappable banner with camera button, persisted via AsyncStorage
 - **Profile 3-tab layout** — Overview / My Climbs / Settings tabs with fixed tab bar
-- **Profile stats dashboard** — 3 interactive charts (Weekly Intensity, Grade Distribution, Monthly Volume) in Overview tab
+- **Profile stats dashboard** — 4 cards (Weekly Intensity, Terrain, Grade Pyramid, Monthly Volume) in Overview tab, Arc'teryx editorial style
+- **Terrain chart** — climbs by wall section (Slab / Overhang / Cave / …) with %-of-sends + count; dominant style as a big Syne hero (`src/app/(tabs)/profile.tsx`)
+- **Grade Pyramid** — replaced Grade Distribution: centered bars, hardest grade at the apex, peak grade in ACCENT, tap a grade → drill-down to its sends
+- **Send-style tag** — optional Flash / Send / Project chip per climb (`climbs.send_style`); renders as a small tag on cards; `project` excluded from Top Grade + high-point (it's not a send)
 - **Interactive chart drill-downs** — tap day or grade chips to see climb details
 - **Grade Distribution inline expand** — ↗ expands card in place (no Modal), × collapses; tapping any climb row opens the media viewer
 - **Media viewer** — full-screen fade Modal, conditionally rendered; photos shown inline, videos via Linking.openURL
