@@ -253,9 +253,17 @@ export default function SendScreen() {
       // 4. Upload send media and save to session
       let mediaUrl: string | null = null;
       if (sendMedia) {
-        mediaUrl = await uploadSessionMedia(sendMedia.uri, sendMedia.type);
+        const up = await uploadSessionMedia(sendMedia.uri, sendMedia.type);
+        mediaUrl = up.url;
         if (mediaUrl) {
           await supabase.from('sessions').update({ media_url: mediaUrl }).eq('id', session.id);
+        } else {
+          // Don't fail silently — the climb still saves, but tell the user the
+          // media was rejected and why (large videos / disallowed type are common).
+          Alert.alert(
+            `Your ${sendMedia.type} didn't upload`,
+            `${up.error ?? 'Unknown error'}\n\nThe climb was logged, but without the ${sendMedia.type}. Videos over the storage size limit are the usual cause.`,
+          );
         }
       }
 

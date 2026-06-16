@@ -10,14 +10,19 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 const BUCKET = 'session-media';
 
+// Result of an upload: the public URL on success, or a human-readable reason on
+// failure. The reason is surfaced to the user so a rejected upload (e.g. a video
+// over the bucket's file-size limit, or a disallowed MIME type) is never silent.
+export type UploadResult = { url: string | null; error: string | null };
+
 /**
  * Streaming binary upload to Supabase Storage via expo-file-system's uploadAsync.
  * The file is streamed straight to the storage REST endpoint — it is NEVER read
  * into JS memory — so this works for large videos where the old
  * base64 → ArrayBuffer path failed/ran out of memory.
- * Returns the public URL, or null on failure (best-effort, never throws).
+ * Returns { url } on success or { error } on failure (best-effort, never throws).
  */
-async function uploadFileToStorage(localUri: string, path: string, contentType: string): Promise<string | null> {
+async function uploadFileToStorage(localUri: string, path: string, contentType: string): Promise<UploadResult> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token ?? SUPABASE_ANON_KEY;
@@ -36,14 +41,19 @@ async function uploadFileToStorage(localUri: string, path: string, contentType: 
     });
 
     if (res.status !== 200 && res.status !== 201) {
-      console.log('[uploadFileToStorage] failed', res.status, res.body?.slice(0, 300));
-      return null;
+      // Common cases: 413 = file too large (bucket file-size limit), 400 = MIME
+      // type not allowed, 403 = auth/RLS. Surface the status so it's diagnosable.
+      const snippet = res.body?.slice(0, 200)?.replace(/\s+/g, ' ').trim();
+      const error = `Upload failed (${res.status})${snippet ? `: ${snippet}` : ''}`;
+      console.log('[uploadFileToStorage]', error);
+      return { url: null, error };
     }
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return data.publicUrl;
+    return { url: data.publicUrl, error: null };
   } catch (err) {
-    console.log('[uploadFileToStorage] error', err);
-    return null;
+    const error = `Upload error: ${err instanceof Error ? err.message : String(err)}`;
+    console.log('[uploadFileToStorage]', error);
+    return { url: null, error };
   }
 }
 
@@ -140,7 +150,7 @@ export async function uploadProfileAvatar(uri: string): Promise<string | null> {
 
     // Stable path (always overwritten). Append ?v=timestamp to the saved URL so
     // the new image isn't masked by a cached copy of the identical URL.
-    const publicUrl = await uploadFileToStorage(uri, `avatars/${user.id}.jpg`, 'image/jpeg');
+    const { url: publicUrl } = await uploadFileToStorage(uri, `avatars/${user.id}.jpg`, 'image/jpeg');
     if (!publicUrl) return null;
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
@@ -165,7 +175,7 @@ export async function uploadProfileBanner(uri: string): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const publicUrl = await uploadFileToStorage(uri, `banners/${user.id}.jpg`, 'image/jpeg');
+    const { url: publicUrl } = await uploadFileToStorage(uri, `banners/${user.id}.jpg`, 'image/jpeg');
     if (!publicUrl) return null;
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
@@ -188,16 +198,16 @@ export async function getProfileBanner(): Promise<string | null> {
 }
 
 // ─── Session media upload ─────────────────────────────────────
-// Uploads a local file URI to the 'session-media' Supabase Storage bucket
-// and returns the public URL. Returns null (silently) on failure so the
-// session can still be saved even if the upload fails.
+// Uploads a local file URI to the 'session-media' Supabase Storage bucket.
+// Returns { url } on success or { error } on failure — the caller surfaces the
+// error so a rejected upload (oversized video, disallowed MIME) isn't silent.
 
 export async function uploadSessionMedia(
   uri: string,
   mediaType: 'image' | 'video'
-): Promise<string | null> {
+): Promise<UploadResult> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) return { url: null, error: 'Not signed in' };
 
   // Derive a sensible extension. CRITICAL for video: the feed/session screens
   // detect video by the URL extension (/\.(mp4|mov|m4v|avi)$/i), so a video
@@ -222,5 +232,5 @@ export async function uploadSessionMedia(
 // problem's identity image. Stored at problems/{problemId}.jpg → start_photo_url.
 
 export async function uploadProblemStartPhoto(uri: string, problemId: string): Promise<string | null> {
-  return uploadFileToStorage(uri, `problems/${problemId}.jpg`, 'image/jpeg');
+  return (await uploadFileToStorage(uri, `problems/${problemId}.jpg`, 'image/jpeg')).url;
 }

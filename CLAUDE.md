@@ -361,6 +361,17 @@ No code changes. No redeployment needed.
 - Session media: `{userId}/{timestamp}.ext`
 - Profile avatars: `avatars/{userId}.jpg` (always same path, upsert: true → self-overwrites)
 
+⚠️ **Bucket settings gate video uploads.** The `session-media` bucket has a
+**file size limit** and an optional **allowed-MIME-types** list. Photos are a few
+MB and sail through; iPhone videos are 50–300 MB and get **rejected (HTTP 413)**
+if the limit is too low, or **400** if `video/mp4` / `video/quicktime` aren't in
+the allowed list. A rejected upload leaves `media_url` null → the feed card shows
+the blank dark gradient ("no media at all"). Fix in Supabase → Storage →
+`session-media` → Edit bucket: raise the **file size limit** (e.g. 500 MB) and set
+allowed MIME types to include `image/*` + `video/*` (or leave unrestricted). This
+is a dashboard change — no rebuild needed. `uploadFileToStorage` now returns
+`{ url, error }` and `send.tsx` Alerts the failure reason instead of failing silently.
+
 ### ⚠️ Media Upload Pattern (React Native)
 **NEVER use fetch+blob or FormData** (fail for local URIs), and **do NOT use the
 old base64 → ArrayBuffer → `supabase.storage.upload()` path** — it reads the whole
