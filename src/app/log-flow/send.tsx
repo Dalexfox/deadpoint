@@ -115,6 +115,8 @@ export default function SendScreen() {
   const [highPointGrade, setHighPointGrade] = useState('');
   // Visibility — defaults to Public on every launch (useState default handles the reset).
   const [isPublic, setIsPublic] = useState(true);
+  // Solo — when on, this climb is never grouped with same-day sends in the feed.
+  const [postSolo, setPostSolo] = useState(false);
   const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -209,6 +211,7 @@ export default function SendScreen() {
           total_problems: 1,
           visibility:     isPublic ? 'public' : 'quiet',
           feed_rank:      null,
+          solo:           postSolo,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
         })
         .select('id')
@@ -481,6 +484,26 @@ export default function SendScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Post on its own — when on, this climb is never grouped with same-day sends. */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.visibilityRow}
+            onPress={() => setPostSolo(v => !v)}
+            activeOpacity={0.7}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.visibilityLabel}>POST ON ITS OWN</Text>
+              <Text style={styles.soloHint}>
+                {postSolo ? "Won't be grouped with today's other sends" : 'Groups with your other sends here today'}
+              </Text>
+            </View>
+            <Ionicons
+              name={postSolo ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={postSolo ? SAND : INK3}
+            />
+          </TouchableOpacity>
+        </View>
+
         {/* Submit */}
         <TouchableOpacity
           style={[styles.submitBtn, (!selectedGym || submitting) && styles.submitBtnDisabled]}
@@ -706,6 +729,12 @@ const styles = StyleSheet.create({
     color: INK3,
     letterSpacing: 2.5,
     textTransform: 'uppercase',
+  },
+  soloHint: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    marginTop: 3,
   },
 
   // ── Notes ──────────────────────────────────────────────────────

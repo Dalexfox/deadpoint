@@ -24,6 +24,7 @@ export type Post = {
   problemId?: string;      // problem_id from climbs[0] — used to recompute cover after a visibility change
   visibility?: 'public' | 'quiet';  // session visibility; quiet = only the owner sees it
   feedRank?: number | null;         // sessions.feed_rank — user's custom order within a same-day group
+  solo?: boolean;                   // sessions.solo — true = never folded into a group; always its own card
   climbNickname?: string;  // custom_name from the linked problem row, if set
   climbNotes?: string;     // notes entered on the log screen
   createdAt?: string;      // raw sessions.created_at ISO — used for same-day grouping

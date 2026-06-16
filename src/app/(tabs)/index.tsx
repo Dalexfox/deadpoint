@@ -136,7 +136,7 @@ async function fetchSessionPosts(
   // this keeps it explicit and correct even if RLS ever changes.
   let query = supabase
     .from('sessions')
-    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, climbs(grade, problem_id)')
+    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, solo, climbs(grade, problem_id)')
     .order('created_at', { ascending: false })
     .limit(50);
   query = currentUserId
@@ -208,6 +208,7 @@ async function fetchSessionPosts(
       createdAt:  session.created_at,
       visibility: ((session as any).visibility ?? 'public') as 'public' | 'quiet',
       feedRank:   (session as any).feed_rank ?? null,
+      solo:       (session as any).solo ?? false,
       topGrade:   (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.grade,
       problemId:  (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id ?? undefined,
       climbNotes: (session as any).notes ?? undefined,
@@ -988,6 +989,16 @@ export default function FeedScreen() {
     runLoad(() => true);
   }, [arrangeGroup, arrangeBusy, runLoad]);
 
+  // Pull one climb out of its group (solo = true) / merge it back (solo = false).
+  const setSolo = useCallback(async (value: boolean) => {
+    if (!overflowPost) return;
+    await supabase.from('sessions').update({ solo: value }).eq('id', overflowPost.id);
+    setOverflowPost(null);
+    setOverflowGroup(null);
+    setOverflowConfirm(false);
+    runLoad(() => true);
+  }, [overflowPost, runLoad]);
+
   const handleToggleVisibility = useCallback(async () => {
     if (!overflowPost || overflowBusy) return;
     setOverflowBusy(true);
@@ -1118,6 +1129,17 @@ export default function FeedScreen() {
 
     setSendingComment(false);
   };
+
+  // A solo post can rejoin its day's group only if a groupable sibling exists.
+  const overflowCanRegroup = !!(
+    overflowPost?.solo && overflowPost.createdAt &&
+    posts.some(p =>
+      p.id !== overflowPost.id && !p.solo &&
+      p.userId === overflowPost.userId && p.gymId === overflowPost.gymId &&
+      p.createdAt &&
+      new Date(p.createdAt).toDateString() === new Date(overflowPost.createdAt!).toDateString(),
+    )
+  );
 
   // Build the feed item list — posts plus the first-run cards, all full-height so
   // the vertical snap behaviour is identical for every item.
@@ -1409,6 +1431,24 @@ export default function FeedScreen() {
                       onPress={() => overflowGroup && openArrange(overflowGroup)}>
                       <Ionicons name="swap-vertical" size={22} color={INK} />
                       <Text style={overflow.rowLabel}>Arrange climbs</Text>
+                    </TouchableOpacity>
+                  )}
+                  {overflowGroup && (
+                    <TouchableOpacity
+                      style={[overflow.row, overflow.rowBordered]}
+                      activeOpacity={0.7}
+                      onPress={() => setSolo(true)}>
+                      <Ionicons name="remove-circle-outline" size={22} color={INK} />
+                      <Text style={overflow.rowLabel}>Post separately</Text>
+                    </TouchableOpacity>
+                  )}
+                  {overflowCanRegroup && (
+                    <TouchableOpacity
+                      style={[overflow.row, overflow.rowBordered]}
+                      activeOpacity={0.7}
+                      onPress={() => setSolo(false)}>
+                      <Ionicons name="albums-outline" size={22} color={INK} />
+                      <Text style={overflow.rowLabel}>Add back to the group</Text>
                     </TouchableOpacity>
                   )}
                 </>

@@ -41,6 +41,9 @@ function localDayKey(iso: string | undefined): string {
 }
 
 function groupKeyFor(p: Post): string {
+  // A solo session gets a unique key, so it's always a singleton bucket and
+  // renders as its own card — even if it shares a day/gym with other sends.
+  if (p.solo) return `solo|${p.id}`;
   return `${p.userId ?? '?'}|${p.gymId ?? '?'}|${localDayKey(p.createdAt)}`;
 }
 

@@ -183,12 +183,14 @@ sessions (
   visibility text not null default 'public' check (visibility in ('public','quiet')),
                              -- 'quiet' = only the owner sees it (feed, others' profiles, gym browser)
   feed_rank integer,         -- null = system order; set by "Arrange climbs" to pin page order in a group
+  solo boolean not null default false,  -- true = never folded into a same-day group; always its own card
   created_at timestamp with time zone default now()
 )
--- ⚠️ notes / visibility / feed_rank columns must be added manually if not present:
+-- ⚠️ notes / visibility / feed_rank / solo columns must be added manually if not present:
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes text;
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','quiet'));
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS feed_rank integer;
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS solo boolean NOT NULL DEFAULT false;
 
 -- Individual climbs within a session
 climbs (
@@ -522,6 +524,11 @@ posting. Posts hit the feed instantly and are only *visually* clustered.
   **Pages** = cover first, then oldest → newest — UNLESS any member has
   `feed_rank` set, in which case ALL pages order by `feed_rank` asc, nulls last.
 - **Single-member groups render as a normal post** (zero visual change).
+- **Solo opt-out** (`sessions.solo`) — a session with `solo = true` gets a unique
+  group key, so it's always its own card even if it shares a day/gym. Set it at
+  log time ("Post on its own" toggle in `send.tsx`), via a grouped card's
+  overflow ("Post separately" → `solo = true`), or undo it ("Add back to the
+  group" → `solo = false`, shown only when a groupable same-day sibling exists).
 - **Render** (`GroupedCard` in `index.tsx`) — a horizontal `FlatList`
   (`pagingEnabled`, `directionalLockEnabled`) of full `FullScreenCard` pages
   (`inGroup` hides the top tabs + duplicate username). Group header
