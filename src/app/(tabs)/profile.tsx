@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { monthStats, highestGrade, weekStreak } from '../../lib/stats';
+import { ensureCameraPermission } from '../../lib/permissions';
 import { ClimbDatePicker, climbDayKey } from '../../components/ClimbDatePicker';
 
 // V-scale order used to determine hardest grade sent
@@ -521,6 +522,7 @@ export default function ProfileScreen() {
   };
 
   const takeAvatarPhoto = async () => {
+    if (!(await ensureCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true, aspect: [1, 1], quality: 0.8,
     });
@@ -562,6 +564,7 @@ export default function ProfileScreen() {
   };
 
   const shareFromCamera = async () => {
+    if (!(await ensureCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
     if (!result.canceled) await publishPost(result.assets[0].uri, 'image');
   };

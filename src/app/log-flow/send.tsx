@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia } from '../../lib/store';
 import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
 import { isNewHighPoint } from '../../lib/stats';
+import { ensureCameraPermission } from '../../lib/permissions';
 import { fetchGyms, type Gym } from '../../lib/gyms';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
@@ -148,6 +149,7 @@ export default function SendScreen() {
   };
 
   const launchCamera = async () => {
+    if (!(await ensureCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
     if (!result.canceled) setSendMedia({ type: 'image', uri: result.assets[0].uri });
   };

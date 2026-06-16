@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchGyms, gymName } from '../../../lib/gyms';
 import { detectHolds, type BoundingBox } from '../../../lib/holdDetection';
+import { ensureCameraPermission } from '../../../lib/permissions';
 
 const BG      = '#ffffff';
 const CARD    = '#f4f1eb';
@@ -107,6 +108,7 @@ export default function GymLogScreen() {
   };
 
   const launchCamera = async () => {
+    if (!(await ensureCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.8 });
     if (!result.canceled) processPhoto(result.assets[0].uri);
   };
