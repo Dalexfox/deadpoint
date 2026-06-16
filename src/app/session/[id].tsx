@@ -28,6 +28,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
+import { VideoBackground } from '../../components/VideoBackground';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const STATS_BAR_H = 64;
@@ -319,11 +320,15 @@ export default function SessionDetailScreen() {
 
       {/* ── Background media ─────────────────────────────────────────────── */}
       {session.mediaUrl ? (
-        <Image
-          source={{ uri: session.mediaUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        />
+        session.isVideo ? (
+          <VideoBackground uri={session.mediaUrl} isActive />
+        ) : (
+          <Image
+            source={{ uri: session.mediaUrl }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+        )
       ) : (
         <LinearGradient
           colors={['#2a2010', '#1a1408']}

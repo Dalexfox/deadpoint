@@ -1,8 +1,8 @@
 /**
  * Feed screen — TikTok-style full-screen vertical swipeable feed.
  *
- * Video posts show a tap-to-play card (system player via Linking) — see the
- * "Video handling" note below. expo-av was removed (broke the iOS build).
+ * Video posts autoplay inline via expo-video (<VideoBackground>) — only the
+ * active card plays. expo-av was removed (it broke the iOS native build).
  */
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -12,7 +12,6 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -32,6 +31,7 @@ import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
 import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPosts';
+import { VideoBackground } from '../../components/VideoBackground';
 
 // ─── Session-only dismissal flags ───────────────────────────────────────────────
 // Module-level (not component state) so a dismissal survives tab switches and feed
@@ -39,12 +39,6 @@ import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPost
 // lifetime. The picker/suggestion cards reappear next launch until resolved.
 let gymPickerDismissedThisSession = false;
 let suggestionsDismissedThisSession = false;
-
-// ─── Video handling ───────────────────────────────────────────────────────────
-// expo-av was removed — it no longer builds against this Expo SDK (EXEventEmitter
-// header gone), which broke the native iOS build. Video posts now show a
-// tap-to-play card that hands off to the system player via Linking.openURL.
-// TODO: migrate to `expo-video` (useVideoPlayer + <VideoView>) for inline autoplay.
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const ACCENT     = '#e8383c';
@@ -294,22 +288,8 @@ function FullScreenCard({
       {/* ── Background ──────────────────────────────────────────────────────── */}
       {hasMedia ? (
         isVideo ? (
-          // Video → tap to play in the system player (no inline player yet).
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={0.9}
-            onPress={() => mediaItem!.uri && Linking.openURL(mediaItem!.uri)}>
-            <LinearGradient
-              colors={['#2a2010', '#1a1408']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-            <View style={card.videoPlay} pointerEvents="none">
-              <Ionicons name="play-circle" size={76} color="rgba(255,255,255,0.92)" />
-              <Text style={card.videoPlayLabel}>Tap to play</Text>
-            </View>
-          </TouchableOpacity>
+          // Inline video — autoplays/loops while this card is the active one.
+          <VideoBackground uri={mediaItem!.uri} isActive={isActive} />
         ) : (
           <Image
             source={{ uri: mediaItem!.uri }}
@@ -1579,19 +1559,6 @@ const card = StyleSheet.create({
     right: 14,
     zIndex: 11,
     padding: 4,
-  },
-  videoPlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  videoPlayLabel: {
-    fontSize: 12,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: 'rgba(255,255,255,0.85)',
-    letterSpacing: 0.3,
   },
   quietBadge: {
     position: 'absolute',
