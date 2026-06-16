@@ -20,6 +20,7 @@ import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
 import { isNewHighPoint } from '../../lib/stats';
 import { ensureCameraPermission } from '../../lib/permissions';
 import { fetchGyms, type Gym } from '../../lib/gyms';
+import { VideoBackground } from '../../components/VideoBackground';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
 const BG      = '#ffffff';
@@ -411,8 +412,11 @@ export default function SendScreen() {
                 <Image source={{ uri: sendMedia.uri }} style={styles.mediaPreview} resizeMode="cover" />
               ) : (
                 <View style={styles.videoPreview}>
-                  <Text style={styles.videoIcon}>▶</Text>
-                  <Text style={styles.videoLabel}>Video selected</Text>
+                  {/* Cover = the video's first frame (paused), via expo-video */}
+                  <VideoBackground uri={sendMedia.uri} isActive={false} />
+                  <View style={styles.videoPlayBadge} pointerEvents="none">
+                    <Text style={styles.videoPlayIcon}>▶</Text>
+                  </View>
                 </View>
               )}
               <TouchableOpacity style={styles.mediaRemoveBtn} onPress={() => setSendMedia(null)} activeOpacity={0.8}>
@@ -741,14 +745,23 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 160,
-    backgroundColor: CARD,
+    backgroundColor: '#0d0a05',
     borderRadius: 14,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
-  videoIcon: { fontSize: 32, color: INK },
-  videoLabel: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
+  videoPlayBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayIcon: { fontSize: 16, color: '#ffffff', marginLeft: 3 },
   mediaRemoveBtn: {
     position: 'absolute',
     top: 10,

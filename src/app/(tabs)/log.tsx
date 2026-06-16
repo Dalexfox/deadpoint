@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  GestureResponderEvent,
   Image,
   Pressable,
   ScrollView,
@@ -17,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchGyms, gymName, type Gym } from '../../lib/gyms';
 import { detectHolds, type BoundingBox } from '../../lib/holdDetection';
 import { ensureCameraPermission } from '../../lib/permissions';
+import { StartHoldPicker } from '../../components/StartHoldPicker';
 
 const BG      = '#ffffff';
 const CARD    = '#f4f1eb';
@@ -81,6 +81,7 @@ export default function LogScreen() {
   const [detecting, setDetecting]           = useState(false);
   const [photoLayout, setPhotoLayout]       = useState({ width: 1, height: 1 });
   const [startHold, setStartHold]           = useState<{ x: number; y: number } | null>(null);
+  const [startPickerOpen, setStartPickerOpen] = useState(false);
   useFocusEffect(useCallback(() => {
     fetchGyms().then(setGyms);
   }, []));
@@ -125,25 +126,6 @@ export default function LogScreen() {
     setPhotoUri(uri);
     setStartHold(null);
     if (holdColor) runDetection(uri, holdColor);
-  };
-
-  // Tap the photo to mark the starting hold — snaps to the nearest detected hold.
-  const snapToHold = (x: number, y: number) => {
-    if (boxes.length === 0) return { x, y };
-    let best = boxes[0], bestD = Infinity;
-    for (const b of boxes) {
-      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-      const d = (cx - x) ** 2 + (cy - y) ** 2;
-      if (d < bestD) { bestD = d; best = b; }
-    }
-    return { x: best.x + best.width / 2, y: best.y + best.height / 2 };
-  };
-
-  const handleStartTap = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    const x = Math.max(0, Math.min(1, locationX / photoLayout.width));
-    const y = Math.max(0, Math.min(1, locationY / photoLayout.height));
-    setStartHold(snapToHold(x, y));
   };
 
   const handleSelectColor = (colorId: string) => {
@@ -218,9 +200,9 @@ export default function LogScreen() {
                   />
                 ))}
 
-                {/* Tap surface — mark the starting hold (snaps to nearest detected hold) */}
+                {/* Tap surface — opens the full-screen pinch-zoom start-hold picker */}
                 {!detecting && (
-                  <Pressable style={StyleSheet.absoluteFill} onPress={handleStartTap} />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => setStartPickerOpen(true)} />
                 )}
 
                 {/* Start-hold ring */}
@@ -238,7 +220,7 @@ export default function LogScreen() {
                 {!detecting && (
                   <View style={styles.startHint} pointerEvents="none">
                     <Text style={styles.startHintText}>
-                      {startHold ? '✓ Start hold set — tap to adjust' : 'Tap your starting hold'}
+                      {startHold ? '✓ Start hold set — tap to zoom & adjust' : 'Tap to zoom & set your start hold'}
                     </Text>
                   </View>
                 )}
@@ -390,6 +372,15 @@ export default function LogScreen() {
         </View>
 
       </ScrollView>
+
+      <StartHoldPicker
+        visible={startPickerOpen}
+        photoUri={photoUri}
+        boxes={boxes}
+        initial={startHold}
+        onCancel={() => setStartPickerOpen(false)}
+        onConfirm={(p) => { setStartHold(p); setStartPickerOpen(false); }}
+      />
     </SafeAreaView>
   );
 }

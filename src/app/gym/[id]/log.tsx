@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  GestureResponderEvent,
   Image,
   Pressable,
   ScrollView,
@@ -17,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchGyms, gymName } from '../../../lib/gyms';
 import { detectHolds, type BoundingBox } from '../../../lib/holdDetection';
 import { ensureCameraPermission } from '../../../lib/permissions';
+import { StartHoldPicker } from '../../../components/StartHoldPicker';
 
 const BG      = '#ffffff';
 const CARD    = '#f4f1eb';
@@ -85,6 +85,7 @@ export default function GymLogScreen() {
   const [detecting, setDetecting]     = useState(false);
   const [photoLayout, setPhotoLayout] = useState({ width: 1, height: 1 });
   const [startHold, setStartHold]     = useState<{ x: number; y: number } | null>(null);
+  const [startPickerOpen, setStartPickerOpen] = useState(false);
   const canContinue = holdColor !== null && wallSection !== null;
 
   // ── Photo & detection ───────────────────────────────────────────
@@ -125,24 +126,6 @@ export default function GymLogScreen() {
     setPhotoUri(uri);
     setStartHold(null);
     if (holdColor) runDetection(uri, holdColor);
-  };
-
-  const snapToHold = (x: number, y: number) => {
-    if (boxes.length === 0) return { x, y };
-    let best = boxes[0], bestD = Infinity;
-    for (const b of boxes) {
-      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-      const d = (cx - x) ** 2 + (cy - y) ** 2;
-      if (d < bestD) { bestD = d; best = b; }
-    }
-    return { x: best.x + best.width / 2, y: best.y + best.height / 2 };
-  };
-
-  const handleStartTap = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    const x = Math.max(0, Math.min(1, locationX / photoLayout.width));
-    const y = Math.max(0, Math.min(1, locationY / photoLayout.height));
-    setStartHold(snapToHold(x, y));
   };
 
   const handleSelectColor = (colorId: string) => {
@@ -214,7 +197,7 @@ export default function GymLogScreen() {
                 ))}
 
                 {!detecting && (
-                  <Pressable style={StyleSheet.absoluteFill} onPress={handleStartTap} />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => setStartPickerOpen(true)} />
                 )}
                 {startHold && (
                   <View pointerEvents="none" style={[styles.startRing, {
@@ -225,7 +208,7 @@ export default function GymLogScreen() {
                 {!detecting && (
                   <View style={styles.startHint} pointerEvents="none">
                     <Text style={styles.startHintText}>
-                      {startHold ? '✓ Start hold set — tap to adjust' : 'Tap your starting hold'}
+                      {startHold ? '✓ Start hold set — tap to zoom & adjust' : 'Tap to zoom & set your start hold'}
                     </Text>
                   </View>
                 )}
@@ -343,6 +326,15 @@ export default function GymLogScreen() {
         </View>
 
       </ScrollView>
+
+      <StartHoldPicker
+        visible={startPickerOpen}
+        photoUri={photoUri}
+        boxes={boxes}
+        initial={startHold}
+        onCancel={() => setStartPickerOpen(false)}
+        onConfirm={(p) => { setStartHold(p); setStartPickerOpen(false); }}
+      />
     </SafeAreaView>
   );
 }
