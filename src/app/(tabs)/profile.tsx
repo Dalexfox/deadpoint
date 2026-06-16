@@ -293,10 +293,6 @@ export default function ProfileScreen() {
   const [displayUsername, setDisplayUsername] = useState('');
   const [displayBio,      setDisplayBio]      = useState('');
 
-  // Grade Distribution inline expanded card
-  const [gradeExpanded,       setGradeExpanded]       = useState(false);
-  const [modalSelectedGrade,  setModalSelectedGrade]  = useState<string | null>(null);
-
   // Media viewer modal (Layer 3)
   const [mediaViewerVisible,   setMediaViewerVisible]   = useState(false);
   const [mediaViewerData,      setMediaViewerData]      = useState<MediaViewerData | null>(null);
@@ -1007,268 +1003,88 @@ export default function ProfileScreen() {
                 )}
               </View>
 
-              {/* Grade Distribution — inline expand/collapse, no Modal */}
+              {/* Grade Pyramid — centered bars, hardest on top (apex), easy grades = wide base */}
               <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Grade Pyramid</Text>
+                <Text style={styles.chartSubtitle}>Your sends stacked by grade · tap a grade to drill down</Text>
 
-                {/* Title row — always visible, tapping toggles expanded state */}
-                <TouchableOpacity
-                  style={styles.chartTitleRow}
-                  onPress={() => {
-                    if (gradeExpanded) setModalSelectedGrade(null);
-                    setGradeExpanded(!gradeExpanded);
-                  }}
-                  activeOpacity={0.7}>
-                  <Text style={styles.chartTitle}>Grade Distribution</Text>
-                  <Text style={gradeExpanded ? styles.chartCollapseIcon : styles.chartExpandIcon}>
-                    {gradeExpanded ? '×' : '↗'}
-                  </Text>
-                </TouchableOpacity>
-
-                {!gradeExpanded ? (
-                  // ── Collapsed view ──────────────────────────────────────
-                  <>
-                    <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to drill down</Text>
-
-                    {/* Compact bar chart (130 px) */}
-                    {(() => {
-                      const maxVal = Math.max(...chartData.gradeDistribution, 1);
-                      return (
-                        <View style={styles.gradeBarChart}>
-                          {GRADES.map((grade, i) => {
-                            const val        = chartData.gradeDistribution[i];
-                            const barH       = val > 0 ? Math.max((val / maxVal) * 130, 5) : 0;
-                            const isPeak     = i === chartData.maxGradeIndex;
-                            const isSelected = selectedGrade === grade;
-                            return (
-                              <TouchableOpacity
-                                key={grade}
-                                style={styles.gradeBarSlot}
-                                onPress={() => setSelectedGrade(isSelected ? null : grade)}
-                                activeOpacity={val > 0 ? 0.7 : 1}
-                                disabled={val === 0}>
-                                <View style={styles.gradeBarArea}>
-                                  {val > 0 && (
-                                    <View style={[
-                                      styles.gradeBar,
-                                      {
-                                        height: barH,
-                                        backgroundColor: isPeak ? ACCENT : SAND,
-                                        opacity: selectedGrade !== null && !isSelected ? 0.35 : 1,
-                                      },
-                                    ]} />
-                                  )}
-                                </View>
-                                <Text
-                                  style={[styles.gradeBarLabel, isSelected && styles.gradeBarLabelActive]}
-                                  numberOfLines={1}>
-                                  {grade}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()}
-
-                    {/* Grade chips */}
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.gradeChipScroll}
-                      contentContainerStyle={styles.gradeChipScrollContent}>
-                      {GRADES.map((grade, i) => {
-                        const total      = chartData.gradeDistribution[i];
-                        const hasClimbs  = total > 0;
-                        const isSelected = selectedGrade === grade;
-                        const isPeak     = i === chartData.maxGradeIndex;
+                {(() => {
+                  const maxVal = Math.max(...chartData.gradeDistribution, 1);
+                  const rows = GRADES
+                    .map((grade, i) => ({ grade, count: chartData.gradeDistribution[i], isPeak: i === chartData.maxGradeIndex }))
+                    .filter((r) => r.count > 0)
+                    .reverse(); // hardest grade on top → easy grades form the wide base
+                  if (rows.length === 0) {
+                    return <Text style={styles.pyramidEmpty}>Log a climb to build your pyramid.</Text>;
+                  }
+                  return (
+                    <View style={styles.pyramidWrap}>
+                      {rows.map((r) => {
+                        const isSel = selectedGrade === r.grade;
                         return (
                           <TouchableOpacity
-                            key={grade}
-                            style={[
-                              styles.gradeChip,
-                              isSelected && (isPeak ? styles.gradeChipActivePeak : styles.gradeChipActive),
-                              !hasClimbs && styles.gradeChipEmpty,
-                            ]}
-                            onPress={() => setSelectedGrade(isSelected ? null : grade)}
-                            activeOpacity={0.7}
-                            disabled={!hasClimbs}>
-                            <Text style={[styles.gradeChipLabel, isSelected && styles.gradeChipLabelActive]}>
-                              {grade}
-                            </Text>
-                            {hasClimbs && (
-                              <Text style={[styles.gradeChipCount, isSelected && styles.gradeChipCountActive]}>
-                                ×{total}
-                              </Text>
-                            )}
+                            key={r.grade}
+                            style={styles.pyramidRow}
+                            onPress={() => setSelectedGrade(isSel ? null : r.grade)}
+                            activeOpacity={0.7}>
+                            <Text style={[styles.pyramidGrade, isSel && styles.pyramidGradeActive]}>{r.grade}</Text>
+                            <View style={styles.pyramidTrack}>
+                              <View style={[styles.pyramidBar, {
+                                width: `${Math.max((r.count / maxVal) * 100, 7)}%`,
+                                backgroundColor: r.isPeak ? ACCENT : SAND,
+                                opacity: selectedGrade !== null && !isSel ? 0.3 : 1,
+                              }]} />
+                            </View>
+                            <Text style={styles.pyramidCount}>{r.count}</Text>
                           </TouchableOpacity>
                         );
                       })}
-                    </ScrollView>
+                    </View>
+                  );
+                })()}
 
-                    {/* Collapsed grade drill-down — rows are tappable to open media */}
-                    {selectedGrade !== null && (() => {
-                      const entries    = climbEntries.filter((e) => e.grade === selectedGrade);
-                      const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
-                      return (
-                        <View style={styles.dayDetail}>
-                          <Text style={styles.dayDetailHeading}>
-                            {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
-                          </Text>
-                          {entries.map((e, idx) => {
-                            const session = sessions.find((s) => s.id === e.sessionId);
-                            return (
-                              <TouchableOpacity
-                                key={`${e.sessionId}-${idx}`}
-                                style={styles.dayDetailCard}
-                                onPress={() => {
-                                  setMediaViewerData({
-                                    mediaUrl: session?.mediaUrl ?? null,
-                                    gymName:  e.gymName,
-                                    date:     e.date,
-                                    grade:    e.grade,
-                                    count:    e.count,
-                                  });
-                                  setMediaViewerVisible(true);
-                                }}
-                                activeOpacity={0.75}>
-                                <View style={[styles.dayDetailAccentBar, { backgroundColor: SAND }]} />
-                                <View style={styles.dayDetailBody}>
-                                  <Text style={styles.dayDetailGym}>{e.gymName}</Text>
-                                  <Text style={styles.dayDetailGrades}>{e.date}</Text>
-                                </View>
-                                <Text style={styles.dayDetailProblems}>
-                                  ×{e.count}{'\n'}
-                                  <Text style={styles.dayDetailProblemsLabel}>sends</Text>
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()}
-                  </>
-                ) : (
-                  // ── Expanded view ────────────────────────────────────────
-                  <>
-                    <Text style={styles.chartSubtitle}>Your climbs by V-grade · tap a grade to see sessions</Text>
-
-                    {/* Larger bar chart (180 px) */}
-                    {(() => {
-                      const maxVal = Math.max(...chartData.gradeDistribution, 1);
-                      return (
-                        <View style={styles.modalBarChart}>
-                          {GRADES.map((grade, i) => {
-                            const val    = chartData.gradeDistribution[i];
-                            const barH   = val > 0 ? Math.max((val / maxVal) * 180, 6) : 0;
-                            const isPeak = i === chartData.maxGradeIndex;
-                            const isSel  = modalSelectedGrade === grade;
-                            return (
-                              <TouchableOpacity
-                                key={grade}
-                                style={styles.modalBarSlot}
-                                onPress={() => setModalSelectedGrade(isSel ? null : grade)}
-                                activeOpacity={val > 0 ? 0.7 : 1}
-                                disabled={val === 0}>
-                                <View style={styles.modalBarArea}>
-                                  {val > 0 && (
-                                    <View style={[
-                                      styles.modalBar,
-                                      {
-                                        height: barH,
-                                        backgroundColor: isPeak ? ACCENT : SAND,
-                                        opacity: modalSelectedGrade !== null && !isSel ? 0.3 : 1,
-                                      },
-                                    ]} />
-                                  )}
-                                </View>
-                                <Text style={[styles.modalBarLabel, isSel && styles.modalBarLabelActive]}>
-                                  {grade}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()}
-
-                    {/* Grade chips */}
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.modalChipScroll}
-                      contentContainerStyle={styles.modalChipScrollContent}>
-                      {GRADES.map((grade, i) => {
-                        const total    = chartData.gradeDistribution[i];
-                        const hasSends = total > 0;
-                        const isSel    = modalSelectedGrade === grade;
-                        const isPeak   = i === chartData.maxGradeIndex;
+                {/* Grade drill-down — rows are tappable to open media */}
+                {selectedGrade !== null && (() => {
+                  const entries    = climbEntries.filter((e) => e.grade === selectedGrade);
+                  const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
+                  if (entries.length === 0) return null;
+                  return (
+                    <View style={styles.dayDetail}>
+                      <Text style={styles.dayDetailHeading}>
+                        {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
+                      </Text>
+                      {entries.map((e, idx) => {
+                        const session = sessions.find((s) => s.id === e.sessionId);
                         return (
                           <TouchableOpacity
-                            key={grade}
-                            style={[
-                              styles.gradeChip,
-                              isSel && (isPeak ? styles.gradeChipActivePeak : styles.gradeChipActive),
-                              !hasSends && styles.gradeChipEmpty,
-                            ]}
-                            onPress={() => setModalSelectedGrade(isSel ? null : grade)}
-                            activeOpacity={0.7}
-                            disabled={!hasSends}>
-                            <Text style={[styles.gradeChipLabel, isSel && styles.gradeChipLabelActive]}>
-                              {grade}
+                            key={`${e.sessionId}-${idx}`}
+                            style={styles.dayDetailCard}
+                            onPress={() => {
+                              setMediaViewerData({
+                                mediaUrl: session?.mediaUrl ?? null,
+                                gymName:  e.gymName,
+                                date:     e.date,
+                                grade:    e.grade,
+                                count:    e.count,
+                              });
+                              setMediaViewerVisible(true);
+                            }}
+                            activeOpacity={0.75}>
+                            <View style={[styles.dayDetailAccentBar, { backgroundColor: SAND }]} />
+                            <View style={styles.dayDetailBody}>
+                              <Text style={styles.dayDetailGym}>{e.gymName}</Text>
+                              <Text style={styles.dayDetailGrades}>{e.date}</Text>
+                            </View>
+                            <Text style={styles.dayDetailProblems}>
+                              ×{e.count}{'\n'}
+                              <Text style={styles.dayDetailProblemsLabel}>sends</Text>
                             </Text>
-                            {hasSends && (
-                              <Text style={[styles.gradeChipCount, isSel && styles.gradeChipCountActive]}>
-                                ×{total}
-                              </Text>
-                            )}
                           </TouchableOpacity>
                         );
                       })}
-                    </ScrollView>
-
-                    {/* Expanded session list for selected grade */}
-                    {modalSelectedGrade !== null && (() => {
-                      const entries    = climbEntries.filter((e) => e.grade === modalSelectedGrade);
-                      const totalSends = entries.reduce((sum, e) => sum + e.count, 0);
-                      return (
-                        <View style={styles.modalSessionList}>
-                          <Text style={styles.modalSessionListHeading}>
-                            {modalSelectedGrade}  ·  {totalSends} total send{totalSends !== 1 ? 's' : ''}
-                          </Text>
-                          {entries.map((entry, idx) => {
-                            const session = sessions.find((s) => s.id === entry.sessionId);
-                            return (
-                              <TouchableOpacity
-                                key={`${entry.sessionId}-${idx}`}
-                                style={styles.modalSessionRow}
-                                onPress={() => {
-                                  setMediaViewerData({
-                                    mediaUrl: session?.mediaUrl ?? null,
-                                    gymName:  entry.gymName,
-                                    date:     entry.date,
-                                    grade:    entry.grade,
-                                    count:    entry.count,
-                                  });
-                                  setMediaViewerVisible(true);
-                                }}
-                                activeOpacity={0.75}>
-                                <View style={styles.modalSessionRowBody}>
-                                  <Text style={styles.modalSessionGym}>{entry.gymName}</Text>
-                                  <Text style={styles.modalSessionDate}>{entry.date}</Text>
-                                </View>
-                                <Text style={styles.modalSessionCount}>
-                                  {entry.grade} ×{entry.count}
-                                </Text>
-                                <Text style={styles.modalSessionChevron}>›</Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()}
-                  </>
-                )}
-
+                    </View>
+                  );
+                })()}
               </View>
 
               {/* Monthly Volume */}
@@ -2142,6 +1958,52 @@ const styles = StyleSheet.create({
   chart: {
     borderRadius: 14,
     marginLeft: -16,
+  },
+
+  // ─── Grade Pyramid (centered bars, hardest on top) ───────────
+  pyramidWrap: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  pyramidRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 5,
+  },
+  pyramidGrade: {
+    width: 32,
+    fontSize: 13,
+    fontFamily: 'Syne_800ExtraBold',
+    letterSpacing: -0.5,
+    color: INK2,
+  },
+  pyramidGradeActive: {
+    color: INK,
+  },
+  pyramidTrack: {
+    flex: 1,
+    height: 22,
+    alignItems: 'center',     // centers the bar → builds the pyramid silhouette
+    justifyContent: 'center',
+  },
+  pyramidBar: {
+    height: 22,
+    borderRadius: 6,
+  },
+  pyramidCount: {
+    width: 26,
+    textAlign: 'right',
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
+  },
+  pyramidEmpty: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+    paddingVertical: 18,
+    textAlign: 'center',
   },
 
   // ─── Grade Distribution custom bar chart ─────────────────────
