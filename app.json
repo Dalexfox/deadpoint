@@ -10,8 +10,10 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.foxcollective.deadpoint",
-      "buildNumber": "1",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -47,7 +49,8 @@
           "photosPermission": "Allow Deadpoint to access your photos to share your climbing sessions.",
           "cameraPermission": "Allow Deadpoint to use your camera to capture your climbing sessions."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
