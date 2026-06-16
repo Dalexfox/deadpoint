@@ -12,6 +12,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -39,25 +40,11 @@ import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPost
 let gymPickerDismissedThisSession = false;
 let suggestionsDismissedThisSession = false;
 
-// ─── expo-av dynamic load ─────────────────────────────────────────────────────
-// expo-av requires a development build. In Expo Go the native ExponentAV module
-// is absent, and a static top-level import crashes the whole app at launch —
-// the error surfaces immediately, before any screen renders.
-//
-// Workaround: defer the load to runtime with require() inside try/catch. If the
-// native module is present (dev build / EAS client), VideoPlayer is assigned the
-// real Video component and autoplay works normally. If it throws (Expo Go),
-// VideoPlayer stays null and video cards fall back to a static thumbnail image.
-//
-// TODO: once a dev build is in place, replace this block with:
-//   import { Video } from 'expo-av';
-// and rename VideoPlayer back to Video throughout this file.
-let VideoPlayer: React.ComponentType<any> | null = null;
-try {
-  VideoPlayer = require('expo-av').Video;
-} catch {
-  // expo-av native module unavailable (Expo Go) — video cards show thumbnail
-}
+// ─── Video handling ───────────────────────────────────────────────────────────
+// expo-av was removed — it no longer builds against this Expo SDK (EXEventEmitter
+// header gone), which broke the native iOS build. Video posts now show a
+// tap-to-play card that hands off to the system player via Linking.openURL.
+// TODO: migrate to `expo-video` (useVideoPlayer + <VideoView>) for inline autoplay.
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const ACCENT     = '#e8383c';
@@ -307,23 +294,22 @@ function FullScreenCard({
       {/* ── Background ──────────────────────────────────────────────────────── */}
       {hasMedia ? (
         isVideo ? (
-          // VideoPlayer is null in Expo Go (expo-av unavailable) — show thumbnail
-          VideoPlayer ? (
-            <VideoPlayer
-              source={{ uri: mediaItem!.uri }}
+          // Video → tap to play in the system player (no inline player yet).
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={0.9}
+            onPress={() => mediaItem!.uri && Linking.openURL(mediaItem!.uri)}>
+            <LinearGradient
+              colors={['#2a2010', '#1a1408']}
               style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-              isLooping
-              shouldPlay={isActive}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
             />
-          ) : (
-            // Expo Go fallback: static thumbnail until a dev build is available
-            <Image
-              source={{ uri: mediaItem!.uri }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-            />
-          )
+            <View style={card.videoPlay} pointerEvents="none">
+              <Ionicons name="play-circle" size={76} color="rgba(255,255,255,0.92)" />
+              <Text style={card.videoPlayLabel}>Tap to play</Text>
+            </View>
+          </TouchableOpacity>
         ) : (
           <Image
             source={{ uri: mediaItem!.uri }}
@@ -1593,6 +1579,19 @@ const card = StyleSheet.create({
     right: 14,
     zIndex: 11,
     padding: 4,
+  },
+  videoPlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  videoPlayLabel: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.3,
   },
   quietBadge: {
     position: 'absolute',
