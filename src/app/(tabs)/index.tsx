@@ -1,8 +1,8 @@
 /**
  * Feed screen — TikTok-style full-screen vertical swipeable feed.
  *
- * expo-av is loaded via a dynamic require() below instead of a static import.
- * See the "expo-av dynamic load" comment for the full explanation.
+ * Video posts show a tap-to-play card (system player via Linking) — see the
+ * "Video handling" note below. expo-av was removed (broke the iOS build).
  */
 import { useCallback, useRef, useState } from 'react';
 import {
