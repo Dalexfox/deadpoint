@@ -66,6 +66,7 @@ export type Post = {
   visibility?: 'public' | 'quiet';  // session visibility; quiet = only the owner sees it
   feedRank?: number | null;         // sessions.feed_rank — user's custom order within a same-day group
   solo?: boolean;                   // sessions.solo — true = never folded into a group; always its own card
+  sendStyle?: 'flash' | 'send' | 'project';  // optional per-climb send-style tag; absent = not set
   climbNickname?: string;  // custom_name from the linked problem row, if set
   climbNotes?: string;     // notes entered on the log screen
   createdAt?: string;      // raw sessions.created_at ISO — used for same-day grouping

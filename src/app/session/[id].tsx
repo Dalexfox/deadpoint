@@ -71,6 +71,7 @@ type SessionData = {
   isVideo:       boolean;
   climbNickname: string | null;
   climbNotes:    string | null;
+  sendStyle:     'flash' | 'send' | 'project' | null;
   problemId:     string | null;
   visibility:    'public' | 'quiet';
 };
@@ -126,7 +127,7 @@ export default function SessionDetailScreen() {
       const [sessionRes, likesRes, commentCountRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, user_id, gym_id, media_url, notes, visibility, climbs(grade, problem_id)')
+          .select('id, user_id, gym_id, media_url, notes, visibility, climbs(grade, problem_id, send_style)')
           .eq('id', id)
           .single(),
         supabase.from('likes').select('user_id').eq('session_id', id),
@@ -136,7 +137,7 @@ export default function SessionDetailScreen() {
       const s = sessionRes.data;
       if (!s) return;
 
-      const climb     = ((s.climbs ?? []) as { grade: string; problem_id: string | null }[])[0];
+      const climb     = ((s.climbs ?? []) as { grade: string; problem_id: string | null; send_style: string | null }[])[0];
       const grade     = climb?.grade ?? null;
       const problemId = climb?.problem_id ?? null;
       const mediaUrl  = s.media_url ?? null;
@@ -160,6 +161,7 @@ export default function SessionDetailScreen() {
         isVideo:       !!mediaUrl && /\.(mp4|mov|m4v|avi)$/i.test(mediaUrl),
         climbNickname: problemRes.data?.custom_name ?? null,
         climbNotes:    (s as any).notes ?? null,
+        sendStyle:     (climb?.send_style ?? null) as SessionData['sendStyle'],
         problemId,
         visibility:    ((s as any).visibility ?? 'public') as 'public' | 'quiet',
       });
@@ -426,6 +428,13 @@ export default function SessionDetailScreen() {
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Text style={st.username}>{displayName}</Text>
         </TouchableOpacity>
+        {session.sendStyle ? (
+          <View style={[st.styleTag, session.sendStyle === 'project' && st.styleTagMuted]}>
+            <Text style={[st.styleTagText, session.sendStyle === 'project' && st.styleTagTextMuted]}>
+              {session.sendStyle === 'flash' ? 'FLASH' : session.sendStyle === 'send' ? 'SEND' : 'PROJECT'}
+            </Text>
+          </View>
+        ) : null}
         {session.climbNickname ? (
           <Text style={st.climbNickname}>{session.climbNickname}</Text>
         ) : null}
@@ -741,6 +750,29 @@ const st = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  styleTag: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(232,200,122,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
+  styleTagMuted: {
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  styleTagText: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 1.5,
+    color: SAND_LT,
+  },
+  styleTagTextMuted: {
+    color: 'rgba(255,255,255,0.72)',
   },
   climbNotes: {
     fontSize: 12,

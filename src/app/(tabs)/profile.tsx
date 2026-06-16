@@ -87,6 +87,7 @@ type ClimbEntry = {
   createdAt: string;
   mediaUrl:  string | null;
   visibility: 'public' | 'quiet';
+  sendStyle: 'flash' | 'send' | 'project' | null;
 };
 
 // Shape of a session card built from Supabase data
@@ -179,6 +180,13 @@ function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
       {entry.visibility === 'quiet' && (
         <View style={styles.gridCardQuiet}>
           <Ionicons name="eye-off-outline" size={12} color="#ffffff" />
+        </View>
+      )}
+      {entry.sendStyle && (
+        <View style={[styles.gridCardStyleTag, entry.sendStyle === 'project' && styles.gridCardStyleTagMuted]}>
+          <Text style={[styles.gridCardStyleTagText, entry.sendStyle === 'project' && styles.gridCardStyleTagTextMuted]}>
+            {entry.sendStyle === 'flash' ? 'FLASH' : entry.sendStyle === 'send' ? 'SEND' : 'PROJ'}
+          </Text>
         </View>
       )}
       <View style={styles.gridCardBody}>
@@ -381,7 +389,7 @@ export default function ProfileScreen() {
           const sessionIds = rawSessions.map((s) => s.id);
           const { data: climbs } = await supabase
             .from('climbs')
-            .select('session_id, grade, count, problem_id')
+            .select('session_id, grade, count, problem_id, send_style')
             .in('session_id', sessionIds);
 
           const allClimbs = climbs ?? [];
@@ -426,9 +434,11 @@ export default function ProfileScreen() {
           // ── 4. Stats ────────────────────────────────────────────
           const uniqueGyms  = new Set(rawSessions.map((s) => s.gym_id)).size;
           const totalClimbs = allClimbs.length; // one climb row per session
-          // Overall top grade: highest V-scale grade across all sessions
+          // Overall top grade: hardest V-scale grade across all SENDS.
+          // Projects (still being worked) aren't sends → excluded from your top grade.
           let topGradeIndex = -1;
           allClimbs.forEach((c) => {
+            if ((c as any).send_style === 'project') return;
             const idx = GRADES.indexOf(c.grade);
             if (idx > topGradeIndex) topGradeIndex = idx;
           });
@@ -506,6 +516,7 @@ export default function ProfileScreen() {
                 createdAt: sessionMetaById[c.session_id]?.createdAt ?? '',
                 mediaUrl:  sessionMetaById[c.session_id]?.mediaUrl ?? null,
                 visibility: sessionMetaById[c.session_id]?.visibility ?? 'public',
+                sendStyle: ((c as any).send_style ?? null) as ClimbEntry['sendStyle'],
               }))
           );
 
@@ -2406,6 +2417,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 10,
     padding: 4,
+  },
+  gridCardStyleTag: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 0.5,
+    borderColor: 'rgba(232,200,122,0.55)',
+  },
+  gridCardStyleTagMuted: {
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
+  gridCardStyleTagText: {
+    fontSize: 8,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 1,
+    color: SAND_LT,
+  },
+  gridCardStyleTagTextMuted: {
+    color: 'rgba(255,255,255,0.75)',
   },
   gridCardThumbEmpty: {
     width: '100%',

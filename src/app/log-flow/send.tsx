@@ -124,6 +124,8 @@ export default function SendScreen() {
   const [isPublic, setIsPublic] = useState(true);
   // Solo — when on, this climb is never grouped with same-day sends in the feed.
   const [postSolo, setPostSolo] = useState(false);
+  // Send style — optional per-climb tag. null = not chosen (no tag shown).
+  const [sendStyle, setSendStyle] = useState<'flash' | 'send' | 'project' | null>(null);
   const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -244,6 +246,7 @@ export default function SendScreen() {
           grade,
           count:       1,
           problem_id:  finalProblemId,
+          ...(sendStyle ? { send_style: sendStyle } : {}),
         });
       if (cErr) throw cErr;
 
@@ -270,25 +273,34 @@ export default function SendScreen() {
       // send, computed on read (no denormalized max stored). First-ever log
       // counts as a high point. Best-effort: never block submit on this.
       let isHigh = false;
-      try {
-        const { data: userSessions } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('user_id', user.id);
-        const otherIds = (userSessions ?? [])
-          .map(s => s.id)
-          .filter((id: string) => id !== session.id);
-        if (otherIds.length === 0) {
-          isHigh = true; // first-ever log
-        } else {
-          const { data: prevClimbs } = await supabase
-            .from('climbs')
-            .select('grade')
-            .in('session_id', otherIds);
-          isHigh = isNewHighPoint(grade, (prevClimbs ?? []).map(c => c.grade));
+      if (sendStyle === 'project') {
+        // A project isn't a send — never a high point, even if it's the hardest grade.
+        isHigh = false;
+      } else {
+        try {
+          const { data: userSessions } = await supabase
+            .from('sessions')
+            .select('id')
+            .eq('user_id', user.id);
+          const otherIds = (userSessions ?? [])
+            .map(s => s.id)
+            .filter((id: string) => id !== session.id);
+          if (otherIds.length === 0) {
+            isHigh = true; // first-ever log
+          } else {
+            const { data: prevClimbs } = await supabase
+              .from('climbs')
+              .select('grade, send_style')
+              .in('session_id', otherIds);
+            // Previous projects don't count as sends → exclude them from the prior max.
+            const prevSentGrades = (prevClimbs ?? [])
+              .filter((c: { send_style: string | null }) => c.send_style !== 'project')
+              .map((c: { grade: string }) => c.grade);
+            isHigh = isNewHighPoint(grade, prevSentGrades);
+          }
+        } catch {
+          isHigh = false; // never celebrate on an error — avoids a false high point
         }
-      } catch {
-        isHigh = false; // never celebrate on an error — avoids a false high point
       }
 
       setHighPointGrade(grade);
@@ -439,6 +451,33 @@ export default function SendScreen() {
           </View>
         </View>
 
+        {/* Send style — optional per-climb tag */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>SEND STYLE (OPTIONAL)</Text>
+          <View style={styles.styleRow}>
+            {(['flash', 'send', 'project'] as const).map((opt) => {
+              const active = sendStyle === opt;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.styleChip, active && styles.styleChipActive]}
+                  onPress={() => setSendStyle(active ? null : opt)}
+                  activeOpacity={0.8}>
+                  <Text style={[styles.styleChipText, active && styles.styleChipTextActive]}>
+                    {opt === 'flash' ? 'Flash' : opt === 'send' ? 'Send' : 'Project'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.styleHint}>
+            {sendStyle === 'flash'    ? 'Sent it first try.'
+             : sendStyle === 'send'    ? 'Sent it after working the moves.'
+             : sendStyle === 'project' ? "Still working it — won't count toward your top grade."
+             : 'Tag how it went, or leave it off.'}
+          </Text>
+        </View>
+
         {/* Gym picker */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>GYM</Text>
@@ -582,6 +621,41 @@ const styles = StyleSheet.create({
     color: INK3,
     letterSpacing: 2.5,
     textTransform: 'uppercase',
+  },
+
+  // ── Send style chips ───────────────────────────────────────────
+  styleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  styleChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: CARD,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  styleChipActive: {
+    backgroundColor: SAND,
+    borderColor: SAND,
+  },
+  styleChipText: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK2,
+    letterSpacing: -0.2,
+  },
+  styleChipTextActive: {
+    color: '#ffffff',
+  },
+  styleHint: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK3,
+    marginTop: 2,
+    lineHeight: 17,
   },
 
   // ── Context pill ───────────────────────────────────────────────

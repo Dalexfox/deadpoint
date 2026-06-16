@@ -117,7 +117,7 @@ async function fetchSessionPosts(
   // this keeps it explicit and correct even if RLS ever changes.
   let query = supabase
     .from('sessions')
-    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, solo, climbs(grade, problem_id)')
+    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, solo, climbs(grade, problem_id, send_style)')
     .order('created_at', { ascending: false })
     .limit(50);
   query = currentUserId
@@ -132,7 +132,7 @@ async function fetchSessionPosts(
 
   const problemIds = [
     ...new Set(
-      sessions.flatMap(s => (s.climbs as { grade: string; problem_id: string | null }[])
+      sessions.flatMap(s => (s.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])
         .map(c => c.problem_id).filter(Boolean) as string[]
     )
   )];
@@ -190,11 +190,12 @@ async function fetchSessionPosts(
       visibility: ((session as any).visibility ?? 'public') as 'public' | 'quiet',
       feedRank:   (session as any).feed_rank ?? null,
       solo:       (session as any).solo ?? false,
-      topGrade:   (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.grade,
-      problemId:  (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id ?? undefined,
+      topGrade:   (session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.grade,
+      problemId:  (session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.problem_id ?? undefined,
+      sendStyle:  ((session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.send_style ?? undefined) as Post['sendStyle'],
       climbNotes: (session as any).notes ?? undefined,
       climbNickname: (() => {
-        const pid = (session.climbs as { grade: string; problem_id: string | null }[])?.[0]?.problem_id;
+        const pid = (session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.problem_id;
         if (!pid) return undefined;
         const prob = problemMap.get(pid);
         return prob?.custom_name ?? undefined;
@@ -428,6 +429,13 @@ function FullScreenCard({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         onPress={() => post.userId && onPressUser(post.userId)}>
         {!inGroup && <Text style={card.username}>{displayName}</Text>}
+        {post.sendStyle ? (
+          <View style={[card.styleTag, post.sendStyle === 'project' && card.styleTagMuted]}>
+            <Text style={[card.styleTagText, post.sendStyle === 'project' && card.styleTagTextMuted]}>
+              {post.sendStyle === 'flash' ? 'FLASH' : post.sendStyle === 'send' ? 'SEND' : 'PROJECT'}
+            </Text>
+          </View>
+        ) : null}
         {post.climbNickname ? (
           <Text style={card.climbNickname}>{post.climbNickname}</Text>
         ) : null}
@@ -1675,6 +1683,29 @@ const card = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  styleTag: {
+    alignSelf: 'flex-start',
+    marginTop: 3,
+    marginBottom: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(232,200,122,0.5)',     // SAND_LT @ 50%
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
+  styleTagMuted: {
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  styleTagText: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 1.5,
+    color: SAND_LT,
+  },
+  styleTagTextMuted: {
+    color: 'rgba(255,255,255,0.72)',
   },
   climbNotes: {
     fontSize: 12,

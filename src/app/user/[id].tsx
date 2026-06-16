@@ -59,6 +59,7 @@ type ClimbCard = {
   date:      string;
   createdAt: string;
   mediaUrl:  string | null;
+  sendStyle: 'flash' | 'send' | 'project' | null;
 };
 
 // Chunk a list into rows of 3 for the grid.
@@ -135,7 +136,7 @@ export default function UserProfileScreen() {
       fetchGyms(),
       supabase
         .from('sessions')
-        .select('id, gym_id, media_url, created_at, climbs(grade)')
+        .select('id, gym_id, media_url, created_at, climbs(grade, send_style)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
     ]);
@@ -147,10 +148,14 @@ export default function UserProfileScreen() {
 
     (sessions ?? []).forEach((session) => {
       gymSet.add(session.gym_id);
-      const grade = ((session.climbs ?? []) as { grade: string }[])[0]?.grade;
+      const climb = ((session.climbs ?? []) as { grade: string; send_style: string | null }[])[0];
+      const grade = climb?.grade;
       if (grade) {
         totalClimbs += 1;
-        gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1;
+        // Top grade = hardest SEND → projects (still being worked) don't count.
+        if (climb?.send_style !== 'project') {
+          gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1;
+        }
       }
     });
 
@@ -160,16 +165,20 @@ export default function UserProfileScreen() {
 
     // Build the climb grid (already public-only via RLS, newest first).
     setClimbs(
-      (sessions ?? []).map((s) => ({
-        sessionId: String(s.id),
-        grade:     ((s.climbs ?? []) as { grade: string }[])[0]?.grade ?? null,
-        gymName:   resolveGymName(gyms, s.gym_id),
-        date:      new Date(s.created_at).toLocaleDateString('en-US', {
-          month: 'short', day: 'numeric', year: 'numeric',
-        }),
-        createdAt: s.created_at,
-        mediaUrl:  s.media_url ?? null,
-      })),
+      (sessions ?? []).map((s) => {
+        const climb = ((s.climbs ?? []) as { grade: string; send_style: string | null }[])[0];
+        return {
+          sessionId: String(s.id),
+          grade:     climb?.grade ?? null,
+          gymName:   resolveGymName(gyms, s.gym_id),
+          date:      new Date(s.created_at).toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+          }),
+          createdAt: s.created_at,
+          mediaUrl:  s.media_url ?? null,
+          sendStyle: (climb?.send_style ?? null) as ClimbCard['sendStyle'],
+        };
+      }),
     );
 
     setProfile({
@@ -513,6 +522,13 @@ export default function UserProfileScreen() {
                               <Text style={styles.climbEmptyIcon}>🧗</Text>
                             </View>
                           )}
+                          {c.sendStyle && (
+                            <View style={[styles.climbStyleTag, c.sendStyle === 'project' && styles.climbStyleTagMuted]}>
+                              <Text style={[styles.climbStyleTagText, c.sendStyle === 'project' && styles.climbStyleTagTextMuted]}>
+                                {c.sendStyle === 'flash' ? 'FLASH' : c.sendStyle === 'send' ? 'SEND' : 'PROJ'}
+                              </Text>
+                            </View>
+                          )}
                           <View style={styles.climbBody}>
                             <Text style={styles.climbGrade}>{c.grade ?? '—'}</Text>
                             <Text style={styles.climbGym} numberOfLines={1}>{c.gymName}</Text>
@@ -802,6 +818,29 @@ const styles = StyleSheet.create({
   climbThumb: {
     width: '100%',
     height: 80,
+  },
+  climbStyleTag: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 0.5,
+    borderColor: 'rgba(232,200,122,0.55)',
+  },
+  climbStyleTagMuted: {
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
+  climbStyleTagText: {
+    fontSize: 8,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 1,
+    color: SAND_LT,
+  },
+  climbStyleTagTextMuted: {
+    color: 'rgba(255,255,255,0.75)',
   },
   climbThumbEmpty: {
     width: '100%',
