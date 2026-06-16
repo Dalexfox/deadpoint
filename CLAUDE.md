@@ -91,7 +91,7 @@ DIVIDER    = 'rgba(26,20,8,0.08)'   // Hairline dividers
 
 ### Feed Cards (TikTok full-screen)
 Each card fills the entire screen. Two background variants:
-- **With media** — full-screen `Image` or `expo-av Video` background
+- **With media** — full-screen `Image` (photo) or `expo-video` `<VideoView>` (via `VideoBackground`) background
 - **Without media** — `LinearGradient '#2a2010 → #1a1408'` background (warm dark)
 
 Overlays (all `position: 'absolute'`):
@@ -145,7 +145,7 @@ Overlays (all `position: 'absolute'`):
 - **Charts:** `react-native-chart-kit` + `react-native-svg` — BarChart (Weekly Intensity) and LineChart (Monthly Volume) on Profile. Grade Distribution uses a fully custom View-based bar chart (no chart-kit) to avoid label clipping.
 - **Maps:** `react-native-maps` — used on the Gyms tab. Works in Expo Go on iOS (Apple Maps, no API key needed). Do NOT pass `provider={PROVIDER_GOOGLE}` unless a Google Maps API key is configured.
 - **Gradients:** `expo-linear-gradient` (feed card photo overlay)
-- **Video:** `expo-av` is installed (`package.json`) but **requires a development build** — it does NOT work in Expo Go (throws `ExponentAV` native module error). For video playback in Expo Go, use `Linking.openURL(url)` to hand off to the system player. When a dev build is available, swap in `expo-av Video`.
+- **Video:** `expo-video` (`useVideoPlayer` + `<VideoView>`) via the shared `src/components/VideoBackground.tsx`. Inline autoplay/loop; only the active feed card (and visible group page) plays. ⚠️ `expo-av` was **removed** — it broke the native iOS build (`EXAV` / `EXEventEmitter.h` symbol errors). Do NOT reintroduce expo-av. Inline video needs a real build (dev build or EAS/TestFlight); in Expo Go it renders but is best verified on a build.
 - **Icons:** `@expo/vector-icons` (Ionicons) — installed, works in Expo Go. Used for all tab bar icons and inline icons throughout the app. **Do NOT use `expo-symbols` (SymbolView)** — it requires a dev build and crashes Expo Go.
 - **Platform:** iOS first (iPhone)
 
@@ -434,10 +434,12 @@ src/lib/
 src/components/
   ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
   ClimbDatePicker.tsx  — Zero-dependency month-calendar bottom sheet (exports ClimbDatePicker + climbDayKey). Days with climbs are SAND-dotted/tappable; used by My Climbs + /user/[id] date filtering.
+  VideoBackground.tsx  — Inline full-bleed video via expo-video (useVideoPlayer + VideoView). Mounted only for video posts; autoplays/loops while isActive, pauses otherwise. Used by the feed FullScreenCard (+ group pages) and session/[id].
+  SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
 ```
 
 ### 5 Main Tabs
-1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a warm dark gradient (`#2a2010 → #1a1408`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **expo-av Video** is used for video autoplay (`shouldPlay={isActive}`) — requires a dev build, crashes in Expo Go. The feed also hosts the **zero-onboarding first-run cards** — see "Feed First-Run Cards" below.
+1. **Feed** — TikTok-style full-screen vertical swipeable feed. Each session card fills the entire content area (measured via `onLayout` — window height minus status bar and tab bar). Swipe up/down with `FlatList pagingEnabled + snapToInterval`. Sessions fetched from Supabase (top 50, `created_at` desc), then reordered in JS: followed users' posts first (preserving chronological order), then everyone else sorted by like count descending. `onViewableItemsChanged` (stable ref) tracks the active card index for video autoplay. Cards with media_url show a full-screen photo/video background; cards without show a warm dark gradient (`#2a2010 → #1a1408`). Bottom vignette gradient for readability. Likes and comments are Supabase-backed. **Video autoplays inline via `expo-video`** (`<VideoBackground>`), playing only on the active card. The feed also hosts the **zero-onboarding first-run cards** — see "Feed First-Run Cards" below.
 2. **Gyms** — Interactive `react-native-maps` map (warm custom style, SAND dot markers, Callout popups) above a scrollable gym list. Both map and list are driven live from the `gyms` Supabase table via `fetchGyms()`. Tapping a marker shows a Callout with name/neighborhood/address and a "View Gym →" button. Tapping a list card animates the map to that gym's coordinates and navigates to `/gym/[id]`. Visited gyms (gyms the user has logged a session at) are highlighted differently in the list. Map height: `max(170, screenHeight * 0.26)` — kept compact so the gym list is easy to reach.
 3. **Explore** — Find and follow other climbers. See Explore tab section below.
 4. **Log** — 3-screen flow for identifying and logging a climb. See 3-Screen Log Flow section below.
@@ -457,7 +459,7 @@ src/components/
 ### Feed Card Layout (TikTok-style full-screen)
 Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with all overlays `position: 'absolute'`:
 
-- **Background** — full-screen `Image` (photo) or `expo-av Video` (`shouldPlay={isActive}`, `isLooping`) for media sessions; `LinearGradient '#2a2010 → #1a1408'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
+- **Background** — full-screen `Image` (photo) or inline video via `<VideoBackground>` (expo-video, autoplays/loops while `isActive`) for media sessions; `LinearGradient '#2a2010 → #1a1408'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
 - **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
@@ -754,7 +756,7 @@ Therefore:
 - **Comments — Supabase-backed** — comment sheet slides up from bottom; shows real comments with avatars; post new comments live; count updates on feed card instantly
 - **User profile page** (`/user/[id]`) — view-only profile for other users: avatar, name, username, bio, stats (total climbs, top grade, gyms visited)
 - **Feed — TikTok-style full-screen swipeable feed** — `FlatList pagingEnabled`, `snapToInterval = cardHeight` (measured via `onLayout`), `onViewableItemsChanged` tracks active card; full-screen photo/video or warm dark ink gradient bg; right rail with like/comment/share/gym; bottom stats bar showing grade (SAND_LT) + gym name only
-- **Feed expo-av workaround** — `VideoPlayer` loaded via `try { require('expo-av').Video }` so Expo Go doesn't crash; falls back to static thumbnail; TODO marks where to restore static import for dev build
+- **Inline video via `expo-video`** — shared `src/components/VideoBackground.tsx` (`useVideoPlayer` + `<VideoView>`); autoplays/loops on the active feed card and the visible group page; used by the feed + session detail. Replaced the removed `expo-av`.
 - **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
 - **Feed ordering** — followed users' sessions shown first (chronological), then everyone else sorted by like count descending. Computed in JS in `fetchSessionPosts`: `allPosts` split into `followedPosts` (userId in `followingSet`) + `otherPosts` (sorted by `.likes` desc), then concatenated.
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d0d0b` background + white tints on `/`; all other tabs use white bg with INK active tint
@@ -781,6 +783,9 @@ Therefore:
 - **Feed session grouping** — `src/lib/groupPosts.ts` folds same-day/same-gym/same-user runs into one carousel card (horizontal paged FlatList, page dots, +N more, per-page likes/comments/video); "Arrange climbs" writes `feed_rank`. Singles unchanged. See "Feed Session Grouping".
 - **Other users' climbs grid** — `/user/[id]` lists the user's public climbs (RLS-filtered) with the same grade slider, Date/Gym sort, and calendar date picker as My Climbs.
 - **Climb date picker** — `src/components/ClimbDatePicker.tsx`, a zero-dependency calendar used by My Climbs + `/user/[id]` to filter climbs to an exact day.
+- **Inline video** — `expo-video` via `src/components/VideoBackground.tsx`; autoplays on the active feed card / visible group page / session detail (replaced removed `expo-av`).
+- **Real app icon + animated splash** — dotted-D marker icon; static native splash on `#0d0a05`; `SplashGate` "two doors" launch reveal.
+- **Live on TestFlight** — EAS production builds (`eas build … --auto-submit`), Supabase keys as EAS env vars, remote auto-incrementing build numbers. See "EAS Build + TestFlight".
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
 - Sign up / log in screens (white background, Syne ExtraBold, premium minimal)
@@ -800,21 +805,35 @@ Therefore:
 - [ ] Leaderboards
 - [ ] App Store launch
 
-## app.json — TestFlight Config
-```json
-{
-  "name": "Deadpoint",
-  "slug": "deadpoint",
-  "bundleIdentifier": "com.foxcollective.deadpoint",
-  "buildNumber": "1",
-  "version": "1.0.0",
-  "supportsTablet": false
-}
-```
-- Splash background: `#1a1408` (INK dark)
-- Icon: `./assets/images/icon.png` — **needs a real 1024×1024 PNG** (currently placeholder)
-- Splash image: `./assets/images/splash-icon.png` — replace with Deadpoint wordmark/logo
-- Zero TypeScript errors as of last commit
+## EAS Build + TestFlight (LIVE — first build shipped 2026-06-16)
+The app builds on **EAS** and is on **TestFlight**. Project: `@dalexthefox/deadpoint`,
+bundle id `com.foxcollective.deadpoint`, App Store Connect app id `6780744569`.
+- **Build + submit:** `npx eas-cli build --platform ios --profile production --auto-submit`
+  (build profiles in `eas.json`). `eas.json` uses `appVersionSource: "remote"` so EAS
+  **auto-increments the iOS build number** — `ios.buildNumber` is NOT in app.json (remove it; it's ignored).
+- **⚠️ ENV VARS — the #1 launch-crash cause.** `.env` is gitignored, so EAS cloud builds
+  do NOT get `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` → `createClient()`
+  throws on the first line → instant crash at launch. They are set as **EAS environment
+  variables** (`eas env:create --environment production/preview/development --name … --visibility sensitive`).
+  If you ever rotate keys or add an env var, set it on EAS too, not just in `.env`.
+- **⚠️ Keep Expo packages aligned.** Run `npx expo install --check` before building. Mismatched
+  native module versions cause DYLD **"Symbol not found"** launch crashes (this happened:
+  expo-video 56.1.4 vs expo-modules-core 56.0.13 → fixed with `npx expo install --fix`, which
+  brought expo→56.0.12 / expo-modules-core→56.0.17). `expo-video` + `expo-image` config plugins
+  live in app.json `plugins`.
+- **Diagnosing a TestFlight launch crash:** iPhone → Settings → Privacy & Security → Analytics &
+  Improvements → Analytics Data → `Deadpoint-*` → read `Termination Reason` + top frames.
+- **Apple Silicon / ITMS-90863 warning** (non-blocking) — Expo apps reference ExpoModulesCore
+  symbols not available when run as an iPhone app on a Mac. Before the public App Store release,
+  turn OFF Mac availability in App Store Connect → Pricing and Availability. Does not affect iPhone/TestFlight.
+
+## Icon + Splash (real, shipped)
+- **Icon:** `./assets/images/icon.png` — the dotted-"D" climbing-hold marker (1024×1024, opaque).
+- **Native splash:** static, `backgroundColor: #0d0a05` (sampled from the icon's corners so the
+  logo sits seamlessly), `image: ./assets/images/splash-icon.png` (= the marker), `imageWidth: 220`.
+- **Door animation:** native splashes are static, so the "two doors" reveal is the in-app
+  `SplashGate` overlay (see Key Source Files), rendered once at root.
+- Zero TypeScript errors as of last commit.
 
 ## Important Rules for Claude Code
 - Always use **expo-router** for navigation, NEVER react-navigation
@@ -837,7 +856,7 @@ Therefore:
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
 - **Gym data:** ALWAYS use `src/lib/gyms.ts` — `fetchGyms()` fetches from Supabase (cached), `gymName(gyms, id)` does the lookup. NEVER hardcode gym names, IDs, or coordinates in any screen file. There is no fallback `GYM_NAMES` constant anywhere in the codebase.
 - **Icons:** ALWAYS use `@expo/vector-icons` Ionicons — NEVER use `expo-symbols` / `SymbolView` (requires dev build, crashes Expo Go)
-- **Video playback:** `expo-av` IS used in the Feed (`index.tsx`) for TikTok-style video autoplay (`shouldPlay={isActive}`). It is loaded via a **dynamic `require()` inside `try/catch`** (not a static import) so Expo Go doesn't crash — if the native module is absent, `VideoPlayer` is `null` and video cards fall back to a static thumbnail. A TODO comment marks where to restore the static import once a dev build is set up. The Profile media viewer still uses `Linking.openURL(url)` as its own fallback.
+- **Video playback:** use `expo-video` via the shared `src/components/VideoBackground.tsx` (`useVideoPlayer` + `<VideoView contentFit="cover" nativeControls={false}>`, looping, autoplay gated on `isActive`). Mounted only for video posts (feed cards, group pages, session detail). **NEVER reintroduce `expo-av`** — it does not build against this Expo SDK (`EXAV`/`EXEventEmitter.h` errors) and crashes the iOS build. The Profile media viewer still uses `Linking.openURL(url)`.
 - **Chart cards:** NEVER add `overflow: 'hidden'` to chart card containers — on iOS it clips hit-testing and prevents taps on rows inside expanded cards. Charts are sized correctly so nothing bleeds out.
 - **Modals that overlay scrollable content:** ALWAYS conditionally render them (`{visible && <Modal visible>}`) so they fully unmount when closed and cannot intercept touches on the screen behind them.
 - **Session grade access:** ALWAYS use `session.climbs?.[0]?.grade` — never `.reduce()`, never `.sort()`, never `Math.max()` on grades within a single session. One session = one climb = one grade.
