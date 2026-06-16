@@ -96,7 +96,7 @@ Each card fills the entire screen. Two background variants:
 
 Overlays (all `position: 'absolute'`):
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down
-- **Top tab row** — Following / For You / Nearby tabs at `top: 32`; "For You" underline in SAND_LT
+- **Top tab row** — **Following | For You** at `top: 32` (screen-level overlay, not per-card); active underline in SAND_LT. (Nearby removed — no geo yet.)
 - **Right action rail** — avatar, like, comment, share, gym icons stacked on right
 - **Bottom-left** — `@username` only (Syne_800ExtraBold, 18px)
 - **Stats bar** — `height: 64`, `rgba(0,0,0,0.50)`, pinned to bottom: **left** — top grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label; **right** — `📍 gymName` in white
@@ -481,7 +481,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 
 - **Background** — full-screen `Image` (photo) or inline video via `<VideoBackground>` (expo-video, autoplays/loops while `isActive`) for media sessions; `LinearGradient '#2a2010 → #1a1408'` for sessions without media. **Media type is sniffed from the URL extension** — `sessions` has no `media_type` column, so `fetchSessionPosts` tests `media_url` against `/\.(mp4|mov|m4v|avi)$/i` to decide `type: 'video'` vs `'image'` (same regex as `session/[id].tsx`). ⚠️ This is a workaround; the proper fix is a `media_type` column on `sessions` set at upload time.
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down, `pointerEvents="none"`.
-- **Top tab row** — `absolute, top: 32`. Three tabs: `Following` (inactive, 16px `rgba(255,255,255,0.55)`) | `For You` (active, 17px white bold + ACCENT 2.5px underline with `alignSelf: 'stretch'`) | `Nearby` (inactive). Following and Nearby are placeholder touchables for Phase 2.
+- **Top tab row** — now a **screen-level overlay** (`absolute, top: 32`) rendered once by `FeedScreen` over the FlatList, NOT inside each card (so it's visible even on grouped carousels). Two tabs: **Following** | **For You** (active = 17px white bold + SAND_LT 2.5px underline; inactive = 16px `rgba(255,255,255,0.55)`). `feedTab` state drives both the active styling and the feed filter: **Following** filters `posts` to `followingSet`; **For You** shows all. Switching tabs resets to the top (`scrollToOffset 0`). First-run cards + the CLIMBERS suggestion card only appear on For You. An empty Following tab renders `FollowingEmptyCard` (→ Explore / For You). Shown only when `posts.length > 0`. (Nearby removed — no geolocation yet.)
 - **Right action rail** — `absolute, right: 12, bottom: STATS_BAR_H + 20`. Five items stacked with `gap: 22`:
   1. Avatar circle (50px, white ring border, `overflow: hidden`) — follow/profile behaviour (see Feed Card Tap-Through below)
   2. Heart `♥/♡` + like count → `onLike` (filled ACCENT when liked)
@@ -669,6 +669,8 @@ Two separate state buckets to prevent live-typing from updating the displayed he
 
 ### App Tab Bar (bottom nav)
 - `src/app/(tabs)/_layout.tsx` uses `usePathname()` to detect the active tab.
+- Tab order is **Feed · Explore · Log · Gyms · Profile** — Log is intentionally the **center** tab.
+- **Elevated center Log button** — `LogIcon` renders a 56×56 SAND rounded-square (`borderRadius: 18`) with a white `add` icon, lifted above the bar (`marginTop: -22`) with a drop shadow and a 4px ring whose color matches the bar background (`#0d0d0b` on Feed, `#ffffff` elsewhere → reads as floating). `ringColor` is passed from the layout based on `isFeed`. Tapping it navigates to the Log flow (Screen 1) like any tab.
 - **Feed tab (`/`)** — dark theme: `backgroundColor: #0d0d0b`, active tint `#ffffff`, inactive tint `rgba(255,255,255,0.38)`. Matches the full-screen dark feed background.
 - **All other tabs** — light theme: `backgroundColor: #ffffff`, active tint `INK`, inactive tint `rgba(26,20,8,0.3)`. Normal app style.
 - The three computed values (`tabBarStyle`, `tabBarActiveTintColor`, `tabBarInactiveTintColor`) are passed to `screenOptions` and update automatically on every tab switch.
@@ -785,6 +787,8 @@ Therefore:
 - **Inline video via `expo-video`** — shared `src/components/VideoBackground.tsx` (`useVideoPlayer` + `<VideoView>`); autoplays/loops on the active feed card and the visible group page; used by the feed + session detail. Replaced the removed `expo-av`.
 - **Feed card tap-through** — right rail avatar: own post → profile tab; other user not following → follow + animated 😊 overlay; other user already following → `/user/[id]`. Bottom-left `@username` always navigates to profile.
 - **Feed ordering** — followed users' sessions shown first (chronological), then everyone else sorted by like count descending. Computed in JS in `fetchSessionPosts`: `allPosts` split into `followedPosts` (userId in `followingSet`) + `otherPosts` (sorted by `.likes` desc), then concatenated.
+- **Following feed tab** — screen-level Following | For You overlay; Following filters the feed to followed users (`FollowingEmptyCard` when none); switching resets to top. Nearby removed.
+- **Elevated center Log button** — Strava-style raised SAND button in the middle of the tab bar (floats above with a bar-matching ring + shadow); `src/app/(tabs)/_layout.tsx`
 - **Dark tab bar on Feed** — `usePathname()` in `_layout.tsx` switches tab bar to `#0d0d0b` background + white tints on `/`; all other tabs use white bg with INK active tint
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers AND gyms simultaneously; gym results instant from cache, climber results debounced via Supabase; "Send It." tagline when search empty; suggested climbers from shared gyms (no header/empty-state text); Follow/Following toggle (optimistic)
