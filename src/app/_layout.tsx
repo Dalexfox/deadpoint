@@ -16,6 +16,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { SplashGate } from '../components/SplashGate';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,6 +33,7 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [gateDone, setGateDone] = useState(false); // animated door-reveal overlay
   const segments = useSegments();
   const router = useRouter();
 
@@ -97,6 +99,7 @@ export default function RootLayout() {
         <Stack.Screen name="user/[id]" />
         <Stack.Screen name="session/[id]" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
+      {!gateDone && <SplashGate onDone={() => setGateDone(true)} />}
     </ThemeProvider>
   );
 }
