@@ -50,7 +50,8 @@
           "cameraPermission": "Allow Deadpoint to use your camera to capture your climbing sessions."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
