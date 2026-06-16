@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 
 const SAND = '#c8a84a';
@@ -23,6 +24,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -81,15 +83,27 @@ export default function LoginScreen() {
 
             <View style={styles.field}>
               <Text style={styles.label}>PASSWORD</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={INK3}
-                secureTextEntry
-                autoComplete="password"
-              />
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor={INK3}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}>
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={INK3}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -183,6 +197,21 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: CARD,
     borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_500Medium',
+    color: INK,
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderRadius: 14,
+    paddingRight: 16,
+  },
+  passwordInput: {
+    flex: 1,
     paddingHorizontal: 18,
     paddingVertical: 16,
     fontSize: 16,

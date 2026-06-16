@@ -23,7 +23,7 @@ import {
   getProfileAvatar,
   uploadProfileAvatar,
   getProfileBanner,
-  saveProfileBanner,
+  uploadProfileBanner,
   saveUserPost,
 } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
@@ -537,8 +537,8 @@ export default function ProfileScreen() {
     });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
-      setBannerUri(uri);
-      saveProfileBanner(uri);
+      setBannerUri(uri); // optimistic; swap to the durable storage URL once uploaded
+      uploadProfileBanner(uri).then((url) => { if (url) setBannerUri(url); });
     }
   };
 

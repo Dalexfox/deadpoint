@@ -350,20 +350,28 @@ No code changes. No redeployment needed.
 - Profile avatars: `avatars/{userId}.jpg` (always same path, upsert: true → self-overwrites)
 
 ### ⚠️ Media Upload Pattern (React Native)
-**NEVER use fetch+blob or FormData** — both fail for local file URIs in React Native / Hermes.
-**Always use this pattern:**
+**NEVER use fetch+blob or FormData** (fail for local URIs), and **do NOT use the
+old base64 → ArrayBuffer → `supabase.storage.upload()` path** — it reads the whole
+file into JS memory and **fails for videos** (and is flaky for images in Hermes),
+which caused empty `media_url`s and reverting avatars/banners on the first device build.
+**Always stream the file with `FileSystem.uploadAsync` (BINARY_CONTENT)** via the
+shared `uploadFileToStorage(localUri, path, contentType)` helper in `src/lib/store.ts`:
 ```ts
 import * as FileSystem from 'expo-file-system/legacy';
-import { decode } from 'base64-arraybuffer';
-
-const base64 = await FileSystem.readAsStringAsync(uri, {
-  encoding: FileSystem.EncodingType.Base64,
-});
-const arrayBuffer = decode(base64);
-const { error } = await supabase.storage
-  .from('session-media')
-  .upload(path, arrayBuffer, { contentType, upsert: true });
+const res = await FileSystem.uploadAsync(
+  `${SUPABASE_URL}/storage/v1/object/session-media/${path}`,
+  localUri,
+  { httpMethod: 'POST', uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+    headers: { Authorization: `Bearer ${userAccessToken}`, apikey: SUPABASE_ANON_KEY,
+               'Content-Type': contentType, 'x-upsert': 'true' } },
+);
+// res.status 200 = ok → supabase.storage.from('session-media').getPublicUrl(path)
 ```
+- `uploadSessionMedia` namespaces by `{userId}/{ts}.{ext}` — videos **must** keep a
+  real video extension (`mp4`/`mov`/…) so the feed's `/\.(mp4|mov|m4v|avi)$/i` sniff
+  detects them. `uploadProfileAvatar` / `uploadProfileBanner` use stable paths
+  (`avatars/`/`banners/{userId}.jpg`) + append `?v=<ts>` to bust the image cache.
+  Banner persists its **public URL** in AsyncStorage (never the transient local file URI).
 
 ## App Structure
 
@@ -852,7 +860,7 @@ bundle id `com.foxcollective.deadpoint`, App Store Connect app id `6780744569`.
 - Always import Supabase from `src/lib/supabase.ts`
 - Keep `.env` out of git — credentials go there only
 - Keep designs minimal and premium — less is more
-- **Media uploads:** ALWAYS use `expo-file-system/legacy` readAsStringAsync → `base64-arraybuffer` decode() → ArrayBuffer → supabase.storage.upload(). NEVER use fetch+blob or FormData.
+- **Media uploads:** ALWAYS stream via `FileSystem.uploadAsync` (BINARY_CONTENT) → the `uploadFileToStorage` helper in `src/lib/store.ts`. The old base64→ArrayBuffer→`supabase.storage.upload()` path fails for video — do NOT use it. NEVER use fetch+blob or FormData. (base64 decode is still fine for non-upload work like holdDetection.)
 - **Feed profiles:** `sessions.user_id` references `auth.users`, NOT `profiles` — always batch-fetch profiles separately and join in JS
 - **Gym data:** ALWAYS use `src/lib/gyms.ts` — `fetchGyms()` fetches from Supabase (cached), `gymName(gyms, id)` does the lookup. NEVER hardcode gym names, IDs, or coordinates in any screen file. There is no fallback `GYM_NAMES` constant anywhere in the codebase.
 - **Icons:** ALWAYS use `@expo/vector-icons` Ionicons — NEVER use `expo-symbols` / `SymbolView` (requires dev build, crashes Expo Go)

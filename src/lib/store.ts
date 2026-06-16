@@ -1,10 +1,51 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 
 const POSTS_KEY = 'deadpoint_user_posts';
 const AVATAR_KEY = 'deadpoint_profile_avatar';
+const BANNER_KEY = 'deadpoint_profile_banner';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const BUCKET = 'session-media';
+
+/**
+ * Streaming binary upload to Supabase Storage via expo-file-system's uploadAsync.
+ * The file is streamed straight to the storage REST endpoint — it is NEVER read
+ * into JS memory — so this works for large videos where the old
+ * base64 → ArrayBuffer path failed/ran out of memory.
+ * Returns the public URL, or null on failure (best-effort, never throws).
+ */
+async function uploadFileToStorage(localUri: string, path: string, contentType: string): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? SUPABASE_ANON_KEY;
+    const endpoint = `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`;
+
+    const res = await FileSystem.uploadAsync(endpoint, localUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': contentType,
+        'x-upsert': 'true',          // overwrite if the path already exists (avatars/banners)
+        'cache-control': '3600',
+      },
+    });
+
+    if (res.status !== 200 && res.status !== 201) {
+      console.log('[uploadFileToStorage] failed', res.status, res.body?.slice(0, 300));
+      return null;
+    }
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  } catch (err) {
+    console.log('[uploadFileToStorage] error', err);
+    return null;
+  }
+}
 
 export type MediaItem = {
   type: 'image' | 'video';
@@ -96,59 +137,52 @@ export async function uploadProfileAvatar(uri: string): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const path = `avatars/${user.id}.jpg`;
-    const contentType = 'image/jpeg';
+    // Stable path (always overwritten). Append ?v=timestamp to the saved URL so
+    // the new image isn't masked by a cached copy of the identical URL.
+    const publicUrl = await uploadFileToStorage(uri, `avatars/${user.id}.jpg`, 'image/jpeg');
+    if (!publicUrl) return null;
+    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const arrayBuffer = decode(base64);
+    // Persist to profiles so the feed/other users see it, and cache locally.
+    await supabase.from('profiles').update({ avatar_url: bustedUrl }).eq('id', user.id);
+    await AsyncStorage.setItem(AVATAR_KEY, bustedUrl);
 
-    const { error } = await supabase.storage
-      .from('session-media')
-      .upload(path, arrayBuffer, { contentType, upsert: true });
-
-    if (error) throw error;
-
-    const { data } = supabase.storage
-      .from('session-media')
-      .getPublicUrl(path);
-
-    const publicUrl = data.publicUrl;
-
-    // Write the public URL to the profiles table so the feed can display it
-    await supabase
-      .from('profiles')
-      .update({ avatar_url: publicUrl })
-      .eq('id', user.id);
-
-    // Cache in AsyncStorage so the profile screen loads it instantly on next open
-    await AsyncStorage.setItem(AVATAR_KEY, publicUrl);
-
-    return publicUrl;
+    return bustedUrl;
   } catch (err) {
     console.log('[uploadProfileAvatar] Error:', err);
     return null;
   }
 }
 
-// ─── Profile banner ───────────────────────────────────────────
+// ─── Profile banner upload ────────────────────────────────────
+// Uploads the banner to Storage and caches its PUBLIC URL (not the transient
+// local file path, which iOS deletes — that was the "banner reverts" bug).
+// Banner stays device-local (AsyncStorage) like before; it's just a durable URL now.
 
-const BANNER_KEY = 'deadpoint_profile_banner';
+export async function uploadProfileBanner(uri: string): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const publicUrl = await uploadFileToStorage(uri, `banners/${user.id}.jpg`, 'image/jpeg');
+    if (!publicUrl) return null;
+    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
+
+    await AsyncStorage.setItem(BANNER_KEY, bustedUrl);
+    return bustedUrl;
+  } catch (err) {
+    console.log('[uploadProfileBanner] Error:', err);
+    return null;
+  }
+}
+
+// ─── Profile banner ───────────────────────────────────────────
 
 export async function getProfileBanner(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(BANNER_KEY);
   } catch {
     return null;
-  }
-}
-
-export async function saveProfileBanner(uri: string): Promise<void> {
-  try {
-    await AsyncStorage.setItem(BANNER_KEY, uri);
-  } catch {
-    // fail silently for now
   }
 }
 
@@ -161,49 +195,23 @@ export async function uploadSessionMedia(
   uri: string,
   mediaType: 'image' | 'video'
 ): Promise<string | null> {
-  try {
-    // Get the logged-in user so we can namespace the file path by user ID
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
-    // Pull the extension from the local URI (e.g. "jpg", "mp4")
-    const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase()
-      ?? (mediaType === 'video' ? 'mp4' : 'jpg');
-
-    // Use a timestamp so the filename is unique on every upload
-    const path = `${user.id}/${Date.now()}.${ext}`;
-    const contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
-
-    console.log('[uploadSessionMedia] Uploading file:', { uri, path, contentType });
-
-    // Read the file as base64, then decode to an ArrayBuffer using
-    // base64-arraybuffer — more reliable than atob() in React Native/Hermes.
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const arrayBuffer = decode(base64);
-
-    const { error } = await supabase.storage
-      .from('session-media')
-      .upload(path, arrayBuffer, { contentType, upsert: true });
-
-    if (error) {
-      console.log('[uploadSessionMedia] Supabase Storage upload error:', error);
-      throw error;
-    }
-
-    console.log('[uploadSessionMedia] Upload succeeded for path:', path);
-
-    // Return the permanent public URL for the uploaded file
-    const { data } = supabase.storage
-      .from('session-media')
-      .getPublicUrl(path);
-
-    console.log('[uploadSessionMedia] Final media_url to save:', data.publicUrl);
-
-    return data.publicUrl;
-  } catch (err) {
-    console.log('[uploadSessionMedia] Caught error (returning null):', err);
-    return null;
+  // Derive a sensible extension. CRITICAL for video: the feed/session screens
+  // detect video by the URL extension (/\.(mp4|mov|m4v|avi)$/i), so a video
+  // MUST land on a video extension or it renders as a (broken) image.
+  const rawExt = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+  let ext: string;
+  let contentType: string;
+  if (mediaType === 'video') {
+    ext = rawExt && /^(mp4|mov|m4v|avi)$/.test(rawExt) ? rawExt : 'mp4';
+    contentType = ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+  } else {
+    ext = rawExt && /^(jpg|jpeg|png|heic|webp)$/.test(rawExt) ? rawExt : 'jpg';
+    contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
   }
+
+  const path = `${user.id}/${Date.now()}.${ext}`;
+  return uploadFileToStorage(uri, path, contentType);
 }
