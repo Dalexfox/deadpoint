@@ -2,7 +2,9 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  GestureResponderEvent,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -78,6 +80,7 @@ export default function LogScreen() {
   const [boxes, setBoxes]                   = useState<BoundingBox[]>([]);
   const [detecting, setDetecting]           = useState(false);
   const [photoLayout, setPhotoLayout]       = useState({ width: 1, height: 1 });
+  const [startHold, setStartHold]           = useState<{ x: number; y: number } | null>(null);
   useFocusEffect(useCallback(() => {
     fetchGyms().then(setGyms);
   }, []));
@@ -120,7 +123,27 @@ export default function LogScreen() {
 
   const processPhoto = (uri: string) => {
     setPhotoUri(uri);
+    setStartHold(null);
     if (holdColor) runDetection(uri, holdColor);
+  };
+
+  // Tap the photo to mark the starting hold — snaps to the nearest detected hold.
+  const snapToHold = (x: number, y: number) => {
+    if (boxes.length === 0) return { x, y };
+    let best = boxes[0], bestD = Infinity;
+    for (const b of boxes) {
+      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      const d = (cx - x) ** 2 + (cy - y) ** 2;
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return { x: best.x + best.width / 2, y: best.y + best.height / 2 };
+  };
+
+  const handleStartTap = (e: GestureResponderEvent) => {
+    const { locationX, locationY } = e.nativeEvent;
+    const x = Math.max(0, Math.min(1, locationX / photoLayout.width));
+    const y = Math.max(0, Math.min(1, locationY / photoLayout.height));
+    setStartHold(snapToHold(x, y));
   };
 
   const handleSelectColor = (colorId: string) => {
@@ -139,6 +162,12 @@ export default function LogScreen() {
       wallSection: wallSection!,
       grade:       selectedGrade,
     });
+    // Carry the start-hold photo + coords forward (used when creating a new problem).
+    if (photoUri && startHold) {
+      params.set('photoUri', photoUri);
+      params.set('startX', startHold.x.toFixed(4));
+      params.set('startY', startHold.y.toFixed(4));
+    }
     if (skip) {
       params.set('newProblem', 'true');
       router.push(`/log-flow/send?${params.toString()}`);
@@ -164,10 +193,8 @@ export default function LogScreen() {
         {/* 1 ── Recognition photo */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>RECOGNITION PHOTO</Text>
-          <TouchableOpacity
+          <View
             style={styles.photoArea}
-            onPress={handleTakePhoto}
-            activeOpacity={0.85}
             onLayout={e => setPhotoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
 
             {photoUri ? (
@@ -175,12 +202,13 @@ export default function LogScreen() {
                 <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 {/* Dark desaturating overlay */}
                 {boxes.length > 0 && (
-                  <View style={[StyleSheet.absoluteFill, styles.darkOverlay]} />
+                  <View style={[StyleSheet.absoluteFill, styles.darkOverlay]} pointerEvents="none" />
                 )}
                 {/* Hold highlight boxes */}
                 {boxes.map((box, i) => (
                   <View
                     key={i}
+                    pointerEvents="none"
                     style={[styles.holdBox, {
                       left:   box.x      * photoLayout.width,
                       top:    box.y      * photoLayout.height,
@@ -189,28 +217,58 @@ export default function LogScreen() {
                     }]}
                   />
                 ))}
+
+                {/* Tap surface — mark the starting hold (snaps to nearest detected hold) */}
+                {!detecting && (
+                  <Pressable style={StyleSheet.absoluteFill} onPress={handleStartTap} />
+                )}
+
+                {/* Start-hold ring */}
+                {startHold && (
+                  <View
+                    pointerEvents="none"
+                    style={[styles.startRing, {
+                      left: startHold.x * photoLayout.width,
+                      top:  startHold.y * photoLayout.height,
+                    }]}
+                  />
+                )}
+
+                {/* Instruction / status */}
+                {!detecting && (
+                  <View style={styles.startHint} pointerEvents="none">
+                    <Text style={styles.startHintText}>
+                      {startHold ? '✓ Start hold set — tap to adjust' : 'Tap your starting hold'}
+                    </Text>
+                  </View>
+                )}
+
                 {detecting && (
-                  <View style={styles.detectingOverlay}>
+                  <View style={styles.detectingOverlay} pointerEvents="none">
                     <ActivityIndicator color={SAND} />
                     <Text style={styles.detectingLabel}>Detecting holds…</Text>
                   </View>
                 )}
-                {!detecting && boxes.length === 0 && photoUri && (
-                  <View style={styles.noHoldsLabel}>
-                    <Text style={styles.noHoldsText}>No holds detected</Text>
-                  </View>
-                )}
+
+                {/* Retake */}
+                <TouchableOpacity
+                  style={styles.retakeBtn}
+                  onPress={handleTakePhoto}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.retakeBtnText}>↻ Retake</Text>
+                </TouchableOpacity>
               </>
             ) : (
-              <View style={styles.photoEmpty}>
+              <TouchableOpacity style={styles.photoEmptyTouch} onPress={handleTakePhoto} activeOpacity={0.85}>
                 <Text style={styles.cameraIcon}>📷</Text>
                 <Text style={styles.photoEmptyLabel}>Take a photo of the climb</Text>
                 <View style={styles.detectionPill}>
-                  <Text style={styles.detectionPillText}>For detection only — not posted</Text>
+                  <Text style={styles.detectionPillText}>Detect holds + mark your start</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* 2 ── Hold color chips */}
@@ -417,6 +475,55 @@ const styles = StyleSheet.create({
     borderColor: SAND,
     borderRadius: 6,
     backgroundColor: 'rgba(200,168,74,0.15)',
+  },
+  photoEmptyTouch: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  startRing: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginLeft: -15,
+    marginTop: -15,
+    borderWidth: 3,
+    borderColor: SAND,
+    backgroundColor: 'rgba(200,168,74,0.25)',
+  },
+  startHint: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  startHintText: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: '#ffffff',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    overflow: 'hidden',
+  },
+  retakeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  retakeBtnText: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: '#ffffff',
   },
   detectingOverlay: {
     position: 'absolute',

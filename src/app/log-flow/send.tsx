@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
-import { uploadSessionMedia } from '../../lib/store';
+import { uploadSessionMedia, uploadProblemStartPhoto } from '../../lib/store';
 import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
 import { isNewHighPoint } from '../../lib/stats';
 import { ensureCameraPermission } from '../../lib/permissions';
@@ -72,6 +72,9 @@ export default function SendScreen() {
     problemGrade?: string; // from Screen 2 (matched problem)
     newProblem?:  string;
     focusNickname?: string; // from the "first to log" celebration → auto-focus nickname
+    photoUri?:    string;   // recognition photo + start-hold coords (for new problems)
+    startX?:      string;
+    startY?:      string;
   }>();
 
   const {
@@ -85,6 +88,9 @@ export default function SendScreen() {
     problemGrade,
     newProblem,
     focusNickname,
+    photoUri,
+    startX,
+    startY,
   } = params;
 
   // Grade comes from Screen 2 (problemGrade) if a match was selected,
@@ -184,6 +190,8 @@ export default function SendScreen() {
       let finalProblemId = problemId ?? null;
       if (isNew) {
         const autoName = `${holdColor.charAt(0).toUpperCase() + holdColor.slice(1)} ${grade} ${wallSection}`;
+        const sx = startX ? parseFloat(startX) : null;
+        const sy = startY ? parseFloat(startY) : null;
         const { data: newP, error: pErr } = await supabase
           .from('problems')
           .insert({
@@ -194,14 +202,22 @@ export default function SendScreen() {
             grade,
             wall_section: wallSection,
             created_by:  user.id,
-            map_x:       null,
-            map_y:       null,
+            map_x:       sx,   // start-hold position on the recognition photo (0–1)
+            map_y:       sy,
             map_wall_id: null,
           })
           .select('id')
           .single();
         if (pErr) throw pErr;
         finalProblemId = newP.id;
+
+        // Upload the recognition photo as this problem's start-hold reference image.
+        if (photoUri && sx != null && sy != null) {
+          const startUrl = await uploadProblemStartPhoto(photoUri, newP.id);
+          if (startUrl) {
+            await supabase.from('problems').update({ start_photo_url: startUrl }).eq('id', newP.id);
+          }
+        }
       }
 
       // 2. Insert session (with visibility; feed_rank starts null = system order)

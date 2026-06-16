@@ -211,9 +211,10 @@ problems (
   grade text not null,                      -- V-scale: 'V0'–'V10'
   wall_section text,                        -- e.g. 'Main Wall', 'Cave', 'Slab'
   media_url text,                           -- cover photo = media_url of most-liked session for this problem
-  map_x float,                              -- reserved for future wall map (always null for now)
+  start_photo_url text,                     -- first-logger's recognition photo (the start-hold reference image)
+  map_x float,                              -- start-hold position on start_photo_url (0–1 proportional)
   map_y float,
-  map_wall_id text,
+  map_wall_id text,                         -- reserved for a future shared wall-coordinate map
   created_by uuid references auth.users(id),
   created_at timestamp with time zone default now()
 )
@@ -444,7 +445,7 @@ src/lib/
   constants.ts         — OFFICIAL_ACCOUNT_ID (string | null). When non-null, signup creates an auto-follow to it; currently null (no auto-follow). The follow is ordinary and unfollowable.
   groupPosts.ts        — Pure render-time feed fold: groupPosts(posts) → (Post | GroupedPost)[]. Groups same user_id + gym_id + LOCAL day; cover = hardest grade, pages = cover-first or feed_rank order. See "Feed Session Grouping".
 src/components/
-  ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). Used in log-flow/match.tsx and gym Current Climbs browser.
+  ProblemCard.tsx      — Reusable full-bleed problem card (media bg or dark gradient, grade in SAND_LT, hold color dot, wall section, name, custom_name). When the problem has start_photo_url + map_x/map_y, shows THAT photo with a SAND start-hold ring + "START" tag (so same-colour problems are distinguishable). Used in log-flow/match.tsx and gym Current Climbs browser.
   ClimbDatePicker.tsx  — Zero-dependency month-calendar bottom sheet (exports ClimbDatePicker + climbDayKey). Days with climbs are SAND-dotted/tappable; used by My Climbs + /user/[id] date filtering.
   VideoBackground.tsx  — Inline full-bleed video via expo-video (useVideoPlayer + VideoView). Mounted only for video posts; autoplays/loops while isActive, pauses otherwise. Used by the feed FullScreenCard (+ group pages) and session/[id].
   SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
@@ -586,7 +587,7 @@ The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
 - **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus. Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
 
 **Log form** (`gym/[id]/log.tsx`) — Screen 1 of the 3-screen log flow with gymId pre-filled:
-- Recognition photo (for hold detection only — never uploaded), hold color chips, wall section chips, grade slider, IDENTIFY CLIMB button
+- Recognition photo (hold detection + start-hold tap; uploaded to `start_photo_url` only when a new problem is created), hold color chips, wall section chips, grade slider, IDENTIFY CLIMB button
 - Navigates to `/log-flow/match` (passing gym_id + hold_color + wall_section + grade); the match screen runs the two-pass query and decides matches / close / celebration. The "Skip" link goes straight to `/log-flow/send?newProblem=true`.
 - No gym picker — gymId comes from the route param
 
@@ -605,9 +606,10 @@ Screen 3 success (2.5s):    router.navigate('/(tabs)')
 ```
 
 **Screen 1 — Identify Your Climb** (`(tabs)/log.tsx` and `gym/[id]/log.tsx`):
-- Step indicator (Step 1 of 3), recognition photo area (camera/library, for detection only — never posted), hold color chips (9 colors), wall section chips (Main Wall / Cave / Slab / Overhang / Arete), grade slider (V0–V10), gym dropdown (tab version) or pre-filled gym (gym version)
+- Step indicator (Step 1 of 3), recognition photo area (camera/library), hold color chips (9 colors), wall section chips (Main Wall / Cave / Slab / Overhang / Arete), grade slider (V0–V10), gym dropdown (tab version) or pre-filled gym (gym version)
 - Hold color + wall section required to continue; grade defaults to V0
 - On photo select + color select: `detectHolds(uri, color)` runs automatically, shows SAND bounding boxes over detected holds with dark desaturating overlay. Zero clusters → "No holds detected" label.
+- **Start-hold tap** (`startHold`) — after a photo, tapping it marks the starting hold (snaps to the nearest detected hold box → SAND ring). Optional. Passed forward as `photoUri` + `startX`/`startY` (0–1) through match → send. When a NEW problem is created, the recognition photo is uploaded to `problems.start_photo_url` and the coords saved to `map_x`/`map_y` — so on Screen 2, same-colour candidates show their start-hold photo + ring and the climber visually picks the right one. (Human disambiguation; not cross-photo auto-matching.) The recognition photo is now uploaded ONLY for the first logger of a new problem; otherwise it stays local.
 - "IDENTIFY CLIMB" button queries `problems` (gym_id + hold_color + wall_section + grade); navigates based on results
 - "Skip — log by attributes only" link does the same query without detection
 

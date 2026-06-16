@@ -72,8 +72,16 @@ export default function MatchScreen() {
     holdColor: string;
     wallSection: string;
     grade: string;
+    photoUri?: string;
+    startX?: string;
+    startY?: string;
   }>();
-  const { gymId, gymName: passedGymName, holdColor, wallSection, grade } = params;
+  const { gymId, gymName: passedGymName, holdColor, wallSection, grade, photoUri, startX, startY } = params;
+
+  // Start-hold photo + coords, only forwarded when present (used for new problems).
+  const startParams: Record<string, string> = (photoUri && startX && startY)
+    ? { photoUri, startX, startY }
+    : {};
 
   const [queryState, setQueryState] = useState<QueryState>('loading');
   const [exactMatches, setExactMatches] = useState<Problem[]>([]);
@@ -149,6 +157,7 @@ export default function MatchScreen() {
       problemId:    p.id,
       problemName:  p.name,
       problemGrade: p.grade,
+      ...startParams,
     });
     router.push(`/log-flow/send?${sendParams.toString()}`);
   };
@@ -161,6 +170,7 @@ export default function MatchScreen() {
       wallSection,
       grade,
       newProblem: 'true',
+      ...startParams,
     });
     if (focusNickname) sendParams.set('focusNickname', 'true');
     router.push(`/log-flow/send?${sendParams.toString()}`);

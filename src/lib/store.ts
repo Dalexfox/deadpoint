@@ -215,3 +215,11 @@ export async function uploadSessionMedia(
   const path = `${user.id}/${Date.now()}.${ext}`;
   return uploadFileToStorage(uri, path, contentType);
 }
+
+// ─── Problem start-hold reference photo ───────────────────────
+// The first logger's recognition photo (with the tapped start hold) becomes the
+// problem's identity image. Stored at problems/{problemId}.jpg → start_photo_url.
+
+export async function uploadProblemStartPhoto(uri: string, problemId: string): Promise<string | null> {
+  return uploadFileToStorage(uri, `problems/${problemId}.jpg`, 'image/jpeg');
+}
