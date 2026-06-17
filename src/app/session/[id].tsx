@@ -102,6 +102,7 @@ export default function SessionDetailScreen() {
   const [liked,          setLiked]          = useState(false);
   const [commentCount,   setCommentCount]   = useState(0);
   const [currentUserId,  setCurrentUserId]  = useState<string | null>(null);
+  const [videoMuted,     setVideoMuted]     = useState(false);
 
   // Overflow / visibility sheet (own session only)
   const [overflowOpen,    setOverflowOpen]    = useState(false);
@@ -323,7 +324,7 @@ export default function SessionDetailScreen() {
       {/* ── Background media ─────────────────────────────────────────────── */}
       {session.mediaUrl ? (
         session.isVideo ? (
-          <VideoBackground uri={session.mediaUrl} isActive />
+          <VideoBackground uri={session.mediaUrl} isActive muted={videoMuted} />
         ) : (
           <Image
             source={{ uri: session.mediaUrl }}
@@ -348,6 +349,16 @@ export default function SessionDetailScreen() {
         end={{ x: 0, y: 1 }}
         pointerEvents="none"
       />
+
+      {/* ── Tap-to-mute (video only) ─────────────────────────────────────── */}
+      {session.isVideo && session.mediaUrl && (
+        <>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setVideoMuted(m => !m)} />
+          <View style={[st.muteBadge, { top: insets.top + 64 }]} pointerEvents="none">
+            <Ionicons name={videoMuted ? 'volume-mute' : 'volume-high'} size={15} color="#ffffff" />
+          </View>
+        </>
+      )}
 
       {/* ── Close button (top-left) ───────────────────────────────────────── */}
       <TouchableOpacity
@@ -635,6 +646,17 @@ const st = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  muteBadge: {
+    position: 'absolute',
+    left: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,

@@ -13,7 +13,7 @@ import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
-export function VideoBackground({ uri, isActive }: { uri: string; isActive: boolean }) {
+export function VideoBackground({ uri, isActive, muted = false }: { uri: string; isActive: boolean; muted?: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
   });
@@ -22,6 +22,10 @@ export function VideoBackground({ uri, isActive }: { uri: string; isActive: bool
     if (isActive) player.play();
     else player.pause();
   }, [isActive, player]);
+
+  useEffect(() => {
+    player.muted = muted;
+  }, [muted, player]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">

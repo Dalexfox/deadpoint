@@ -241,6 +241,8 @@ function FullScreenCard({
   onGym,
   onOverflow,
   inGroup,
+  muted,
+  onToggleMute,
 }: {
   post:            Post;
   height:          number;
@@ -255,6 +257,8 @@ function FullScreenCard({
   onShare:         (post: Post) => void;
   onGym:           (gymId: string) => void;
   onOverflow:      (post: Post) => void;
+  muted?:          boolean;
+  onToggleMute?:   () => void;
 }) {
   const hasMedia  = !!(post.media && post.media.length > 0);
   const mediaItem = hasMedia ? post.media![0] : null;
@@ -291,7 +295,7 @@ function FullScreenCard({
       {hasMedia ? (
         isVideo ? (
           // Inline video — autoplays/loops while this card is the active one.
-          <VideoBackground uri={mediaItem!.uri} isActive={isActive} />
+          <VideoBackground uri={mediaItem!.uri} isActive={isActive} muted={muted} />
         ) : (
           <Image
             source={{ uri: mediaItem!.uri }}
@@ -317,6 +321,16 @@ function FullScreenCard({
         end={{ x: 0, y: 1 }}
         pointerEvents="none"
       />
+
+      {/* ── Tap-to-mute (video only) — a tap anywhere on the card toggles sound ── */}
+      {isVideo && (
+        <>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onToggleMute} />
+          <View style={card.muteBadge} pointerEvents="none">
+            <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={15} color="#ffffff" />
+          </View>
+        </>
+      )}
 
       {/* Top tabs (Following | For You) are a screen-level overlay now — see FeedScreen. */}
 
@@ -452,6 +466,7 @@ function FullScreenCard({
 function GroupedCard({
   group, height, isActive, currentUserId, followingSet,
   onLike, onComment, onFollowToggle, onPressUser, onShare, onGym, onOverflow,
+  muted, onToggleMute,
 }: {
   group:          GroupedPost;
   height:         number;
@@ -465,6 +480,8 @@ function GroupedCard({
   onShare:        (post: Post) => void;
   onGym:          (gymId: string) => void;
   onOverflow:     (post: Post, group: GroupedPost) => void;
+  muted?:         boolean;
+  onToggleMute?:  () => void;
 }) {
   const [activePage, setActivePage] = useState(0);
   const pages = group.pages;
@@ -499,6 +516,8 @@ function GroupedCard({
             onShare={onShare}
             onGym={onGym}
             onOverflow={(post) => onOverflow(post, group)}
+            muted={muted}
+            onToggleMute={onToggleMute}
           />
         )}
       />
@@ -742,6 +761,7 @@ export default function FeedScreen() {
   const [cardHeight,    setCardHeight]    = useState(0);
   const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
   const [feedTab,       setFeedTab]       = useState<'forYou' | 'following'>('forYou');
+  const [videoMuted,    setVideoMuted]    = useState(false);   // global feed mute (TikTok-style)
   const flatListRef = useRef<FlatList>(null);
 
   // First-run / personalization state
@@ -1225,6 +1245,8 @@ export default function FeedScreen() {
                       onShare={handleShare}
                       onGym={gymId => router.push(`/gym/${gymId}`)}
                       onOverflow={(post) => handleOverflow(post)}
+                      muted={videoMuted}
+                      onToggleMute={() => setVideoMuted(m => !m)}
                     />
                   );
                 case 'group':
@@ -1242,6 +1264,8 @@ export default function FeedScreen() {
                       onShare={handleShare}
                       onGym={gymId => router.push(`/gym/${gymId}`)}
                       onOverflow={handleOverflow}
+                      muted={videoMuted}
+                      onToggleMute={() => setVideoMuted(m => !m)}
                     />
                   );
                 case 'gymPicker':
@@ -1634,6 +1658,18 @@ const card = StyleSheet.create({
     right: 14,
     zIndex: 11,
     padding: 4,
+  },
+  muteBadge: {
+    position: 'absolute',
+    top: 30,
+    left: 14,
+    zIndex: 11,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quietBadge: {
     position: 'absolute',
