@@ -185,13 +185,28 @@ sessions (
                              -- 'quiet' = only the owner sees it (feed, others' profiles, gym browser)
   feed_rank integer,         -- null = system order; set by "Arrange climbs" to pin page order in a group
   solo boolean not null default false,  -- true = never folded into a same-day group; always its own card
+  co_session_id uuid references co_sessions(id),  -- set when combined with a friend's send into a co-session
   created_at timestamp with time zone default now()
 )
--- ⚠️ notes / visibility / feed_rank / solo columns must be added manually if not present:
+-- ⚠️ notes / visibility / feed_rank / solo / co_session_id columns must be added manually if not present:
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS notes text;
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','quiet'));
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS feed_rank integer;
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS solo boolean NOT NULL DEFAULT false;
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS co_session_id uuid REFERENCES co_sessions(id);
+
+-- Co-sessions: two climbers combine their separate sends into one shared post.
+co_sessions (
+  id uuid primary key default gen_random_uuid(),
+  created_by uuid references auth.users(id) on delete cascade,
+  created_at timestamp with time zone default now()
+)
+-- RLS: select public (true); insert own (auth.uid() = created_by).
+-- Linking is done by a SECURITY DEFINER RPC (can touch the friend's session row,
+-- but only if you own the session you combine FROM):
+--   combine_sessions(my_session uuid, other_session uuid) RETURNS uuid
+--     → verifies auth.uid() owns my_session, reuses an existing co_session_id on
+--       either side or creates one, sets co_session_id on BOTH sessions, returns it.
 
 -- Individual climbs within a session
 climbs (
@@ -576,6 +591,14 @@ posting. Posts hit the feed instantly and are only *visually* clustered.
 - **Arrange climbs** — own grouped cards' overflow adds "Arrange climbs" → a
   sheet with up/down chevrons → writes `feed_rank 0..n-1`; "Reset to default"
   nulls every member's `feed_rank`. The feed reloads so `groupPosts` re-orders.
+- **Co-sessions** (combine across users) — when two climbers combine their
+  separate sends, both sessions share a `co_session_id`. `groupKeyFor` returns
+  `co|<id>` for those (overriding solo + the user/gym/day key), so they fold into
+  ONE card **across users + across day/gym**. `isCoSession(group)` (groupKey starts
+  with `co|`) drives the multi-name header (`@a + @b · co-session · N climbs`) and
+  keeps each page's own username visible (`inGroup={!co}`). Each page is still its
+  own session (independent likes/comments/owner in the rail). The combine action
+  lives on the session detail overflow — see "Session Detail Screen".
 
 ### Explore Tab (`/explore`)
 - "EXPLORE" header (Syne_800ExtraBold), SURFACE search bar with Ionicons `search-outline` icon
@@ -673,6 +696,7 @@ Four cards, all data derived from the existing sessions+climbs fetch (the only e
 - **Right action rail** — avatar, ♥ like (ACCENT, optimistic), ◎ comment count, ↗ share, ⬡ gym.
 - **Stats bar** — grade (SAND_LT, Syne_800ExtraBold 28px) + gym name, pinned to bottom.
 - **Comment sheet** — identical to the feed comment sheet; slides up as a nested Modal. Full thread with avatars, timestamps, comment input + Send button.
+- **Overflow (own session)** — `ellipsis-vertical` → bottom sheet with "Make quiet/public" (+ confirm) AND **"Combine with a friend's send"** → opens a picker of recent **public** sends from people you follow (avatar, @user, grade · gym · date) → tapping one calls the `combine_sessions` RPC → the two become a **co-session** (`router.replace('/(tabs)')` to see it). Media-less sessions render `DefaultCover`; notes render via `MentionText` (tappable @handles).
 - **No top tab row** (Following/For You/Nearby) — single post view.
 - Registered in `_layout.tsx` as `<Stack.Screen name="session/[id]" options={{ presentation: 'fullScreenModal' }} />`.
 - Navigated to from: My Climbs card tap (`router.push('/session/${entry.sessionId}')`).
@@ -820,6 +844,7 @@ Therefore:
 - **Tap-to-mute video** — tap a video card (feed or session detail) to toggle sound; feed mute is global (TikTok-style), with a speaker badge showing the state. Default sound ON.
 - **Branded default cover** — media-less climbs render `DefaultCover` (Grade / Gym / Date + Deadpoint motif) instead of a blank gradient (`src/components/DefaultCover.tsx`)
 - **@username tagging** — type `@handle` in a climb's notes and it renders as a tappable link to that profile (`src/components/MentionText.tsx`); no schema, resolves the handle on tap
+- **Co-sessions** (combine with a friend) — from a session's overflow, "Combine with a friend's send" picks a followed climber's recent public send and merges the two (via the `combine_sessions` SECURITY DEFINER RPC + `sessions.co_session_id`). The feed folds co-sessions into one cross-user card (`@a + @b · co-session`); `groupPosts`/`isCoSession` handle the grouping
 - **Visible upload failures** — `uploadFileToStorage` returns `{ url, error }`; the send screen Alerts the reason (e.g. `Upload failed (413)` = video over the bucket size limit) instead of silently posting a blank card
 - **`problems` table** — community-created climb records (gym_id, hold_color, grade, wall_section, name, custom_name, media_url). `climbs.problem_id` links each logged climb to a problem. `problems.media_url` auto-updated to the most-liked session photo on each send.
 - **Feed + session detail show climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on both feed cards and the session detail modal when set. `gap: 2` keeps them tight.

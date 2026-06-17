@@ -30,7 +30,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
-import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPosts';
+import { groupPosts, isGroupedPost, isCoSession, type GroupedPost } from '../../lib/groupPosts';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
 import { MentionText } from '../../components/MentionText';
@@ -120,7 +120,7 @@ async function fetchSessionPosts(
   // this keeps it explicit and correct even if RLS ever changes.
   let query = supabase
     .from('sessions')
-    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, solo, climbs(grade, problem_id, send_style)')
+    .select('id, user_id, gym_id, media_url, notes, created_at, visibility, feed_rank, solo, co_session_id, climbs(grade, problem_id, send_style)')
     .order('created_at', { ascending: false })
     .limit(50);
   query = currentUserId
@@ -193,6 +193,7 @@ async function fetchSessionPosts(
       visibility: ((session as any).visibility ?? 'public') as 'public' | 'quiet',
       feedRank:   (session as any).feed_rank ?? null,
       solo:       (session as any).solo ?? false,
+      coSessionId: (session as any).co_session_id ?? null,
       topGrade:   (session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.grade,
       problemId:  (session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.problem_id ?? undefined,
       sendStyle:  ((session.climbs as { grade: string; problem_id: string | null; send_style: string | null }[])?.[0]?.send_style ?? undefined) as Post['sendStyle'],
@@ -487,7 +488,15 @@ function GroupedCard({
   const [activePage, setActivePage] = useState(0);
   const pages = group.pages;
   const n     = pages.length;
-  const head  = pages[0]; // username + gym are identical across members
+  const head  = pages[0]; // username + gym are identical across members (same-user groups)
+
+  // Co-session: a group spanning >1 climber (combined sends). Show every member's
+  // @name in the header and keep each page's own username visible.
+  const co = isCoSession(group);
+  const coNames = co
+    ? [...new Map(group.members.map(m => [m.userId, m])).values()]
+        .map(m => `@${m.username ?? m.name}`).join('  +  ')
+    : '';
 
   return (
     <View style={{ width: SCREEN_WIDTH, height, backgroundColor: '#000' }}>
@@ -509,7 +518,7 @@ function GroupedCard({
             isActive={isActive && index === activePage}
             isOwnPost={item.userId === currentUserId}
             isFollowing={!!item.userId && followingSet.has(item.userId)}
-            inGroup
+            inGroup={!co}
             onLike={onLike}
             onComment={onComment}
             onFollowToggle={onFollowToggle}
@@ -523,14 +532,16 @@ function GroupedCard({
         )}
       />
 
-      {/* Group header (top-left) — username + "N climbs at gym" */}
+      {/* Group header (top-left) — co-session shows all member names */}
       <TouchableOpacity
         style={grp.header}
         activeOpacity={0.8}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         onPress={() => head.userId && onPressUser(head.userId)}>
-        <Text style={grp.headerUser} numberOfLines={1}>@{head.username ?? head.name}</Text>
-        <Text style={grp.headerMeta} numberOfLines={1}>{n} climbs at {head.gym ?? 'the gym'}</Text>
+        <Text style={grp.headerUser} numberOfLines={1}>{co ? coNames : `@${head.username ?? head.name}`}</Text>
+        <Text style={grp.headerMeta} numberOfLines={1}>
+          {co ? `co-session · ${n} climbs` : `${n} climbs at ${head.gym ?? 'the gym'}`}
+        </Text>
       </TouchableOpacity>
 
       {/* "+N more" cue — cover page only */}

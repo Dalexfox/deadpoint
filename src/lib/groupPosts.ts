@@ -41,10 +41,18 @@ function localDayKey(iso: string | undefined): string {
 }
 
 function groupKeyFor(p: Post): string {
+  // An explicit co-session (you combined your send with a friend's) groups ACROSS
+  // users — and across day/gym — overriding everything else, including solo.
+  if (p.coSessionId) return `co|${p.coSessionId}`;
   // A solo session gets a unique key, so it's always a singleton bucket and
   // renders as its own card — even if it shares a day/gym with other sends.
   if (p.solo) return `solo|${p.id}`;
   return `${p.userId ?? '?'}|${p.gymId ?? '?'}|${localDayKey(p.createdAt)}`;
+}
+
+/** True when a group spans more than one climber (a co-session, not a same-day run). */
+export function isCoSession(g: GroupedPost): boolean {
+  return g.groupKey.startsWith('co|');
 }
 
 function mostRecent(members: Post[]): Post {

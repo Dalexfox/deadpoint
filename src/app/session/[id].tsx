@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -76,6 +77,7 @@ type SessionData = {
   sendStyle:     'flash' | 'send' | 'project' | null;
   date:          string | null;
   problemId:     string | null;
+  coSessionId:   string | null;
   visibility:    'public' | 'quiet';
 };
 
@@ -87,6 +89,17 @@ type CommentItem = {
   fullName:  string;
   username:  string | null;
   avatarUrl: string | null;
+};
+
+// A friend's send shown in the "combine with a friend" picker.
+type CombineItem = {
+  sessionId: string;
+  name:      string;
+  username:  string | null;
+  avatarUrl: string | null;
+  grade:     string;
+  gymName:   string;
+  date:      string;
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -112,6 +125,12 @@ export default function SessionDetailScreen() {
   const [overflowConfirm, setOverflowConfirm] = useState(false);
   const [overflowBusy,    setOverflowBusy]    = useState(false);
 
+  // Combine-with-a-friend (co-session) picker
+  const [combineOpen,    setCombineOpen]    = useState(false);
+  const [combineLoading, setCombineLoading] = useState(false);
+  const [combineList,    setCombineList]    = useState<CombineItem[]>([]);
+  const [combineBusy,    setCombineBusy]    = useState<string | null>(null);
+
   // Comment sheet state
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
   const [commentsList,        setCommentsList]        = useState<CommentItem[]>([]);
@@ -131,7 +150,7 @@ export default function SessionDetailScreen() {
       const [sessionRes, likesRes, commentCountRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, user_id, gym_id, media_url, notes, visibility, created_at, climbs(grade, problem_id, send_style)')
+          .select('id, user_id, gym_id, media_url, notes, visibility, created_at, co_session_id, climbs(grade, problem_id, send_style)')
           .eq('id', id)
           .single(),
         supabase.from('likes').select('user_id').eq('session_id', id),
@@ -169,6 +188,7 @@ export default function SessionDetailScreen() {
         date:          (s as any).created_at
           ? new Date((s as any).created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : null,
+        coSessionId:   (s as any).co_session_id ?? null,
         problemId,
         visibility:    ((s as any).visibility ?? 'public') as 'public' | 'quiet',
       });
@@ -281,6 +301,70 @@ export default function SessionDetailScreen() {
     setOverflowBusy(false);
     setOverflowOpen(false);
     setOverflowConfirm(false);
+  }
+
+  // ── Combine with a friend's send (co-session) ───────────────────────────────
+  async function openCombine() {
+    setOverflowOpen(false);
+    setCombineOpen(true);
+    setCombineLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !session) { setCombineList([]); return; }
+      // People you follow → their recent public sends (not yours, not this co-session).
+      const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', user.id);
+      const ids = (follows ?? []).map((f: { following_id: string }) => f.following_id);
+      if (ids.length === 0) { setCombineList([]); return; }
+      const { data: sess } = await supabase
+        .from('sessions')
+        .select('id, user_id, gym_id, created_at, co_session_id, climbs(grade)')
+        .in('user_id', ids)
+        .eq('visibility', 'public')
+        .order('created_at', { ascending: false })
+        .limit(40);
+      const rows = (sess ?? []).filter((s: any) => !s.co_session_id || s.co_session_id !== session.coSessionId);
+      const uids = [...new Set(rows.map((s: any) => s.user_id))];
+      const [{ data: profs }, gyms] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, username, avatar_url').in('id', uids),
+        fetchGyms(),
+      ]);
+      const pmap = new Map((profs ?? []).map((p: any) => [p.id, p]));
+      setCombineList(rows.map((s: any): CombineItem => {
+        const p = pmap.get(s.user_id);
+        return {
+          sessionId: s.id,
+          name:      p?.full_name ?? p?.username ?? 'Climber',
+          username:  p?.username ?? null,
+          avatarUrl: p?.avatar_url ?? null,
+          grade:     s.climbs?.[0]?.grade ?? '—',
+          gymName:   resolveGymName(gyms, s.gym_id),
+          date:      new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        };
+      }));
+    } catch {
+      setCombineList([]);
+    } finally {
+      setCombineLoading(false);
+    }
+  }
+
+  async function doCombine(otherSessionId: string) {
+    if (!session) return;
+    setCombineBusy(otherSessionId);
+    try {
+      const { error } = await supabase.rpc('combine_sessions', {
+        my_session: session.id, other_session: otherSessionId,
+      });
+      if (error) throw error;
+      setCombineOpen(false);
+      Alert.alert('Combined', 'This climb is now a co-session — see it on your feed.', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)') },
+      ]);
+    } catch (e: any) {
+      Alert.alert("Couldn't combine", e?.message ?? 'Please try again.');
+    } finally {
+      setCombineBusy(null);
+    }
   }
 
   // ── Share ──────────────────────────────────────────────────────────────────
@@ -595,6 +679,11 @@ export default function SessionDetailScreen() {
                       ? 'Everyone will be able to see this climb.'
                       : 'Only you will see this climb. It still counts in your stats.'}
                   </Text>
+                  <TouchableOpacity style={ov.row} activeOpacity={0.7} onPress={openCombine}>
+                    <Ionicons name="git-merge-outline" size={22} color={INK} />
+                    <Text style={ov.rowLabel}>Combine with a friend&apos;s send</Text>
+                  </TouchableOpacity>
+                  <Text style={ov.hint}>Bundle this with a friend&apos;s climb into one co-session.</Text>
                 </>
               ) : (
                 <>
@@ -624,6 +713,54 @@ export default function SessionDetailScreen() {
                   </TouchableOpacity>
                 </>
               )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ── Combine-with-a-friend picker ─────────────────────────────────── */}
+      {combineOpen && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setCombineOpen(false)}>
+          <View style={ov.backdrop}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCombineOpen(false)} />
+            <View style={ov.sheet}>
+              <View style={ov.handle} />
+              <Text style={cb.title}>Combine with a friend</Text>
+              <Text style={cb.sub}>Bundle this climb with a friend&apos;s send into one co-session.</Text>
+              {combineLoading ? (
+                <ActivityIndicator color={SAND} style={{ marginVertical: 28 }} />
+              ) : combineList.length === 0 ? (
+                <Text style={cb.empty}>No recent sends from people you follow.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+                  {combineList.map((c) => (
+                    <TouchableOpacity
+                      key={c.sessionId}
+                      style={cb.row}
+                      activeOpacity={0.7}
+                      disabled={combineBusy !== null}
+                      onPress={() => doCombine(c.sessionId)}>
+                      {c.avatarUrl ? (
+                        <Image source={{ uri: c.avatarUrl }} style={cb.avatar} />
+                      ) : (
+                        <View style={cb.avatarFallback}>
+                          <Text style={cb.avatarInitials}>{(c.name[0] ?? '?').toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={cb.rowName} numberOfLines={1}>@{c.username ?? c.name}</Text>
+                        <Text style={cb.rowMeta} numberOfLines={1}>{c.grade} · {c.gymName} · {c.date}</Text>
+                      </View>
+                      {combineBusy === c.sessionId
+                        ? <ActivityIndicator color={SAND} />
+                        : <Ionicons name="git-merge-outline" size={18} color={INK3} />}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              <TouchableOpacity style={ov.cancelBtn} activeOpacity={0.7} onPress={() => setCombineOpen(false)}>
+                <Text style={ov.cancelText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -1010,6 +1147,24 @@ const cm = StyleSheet.create({
 });
 
 // ─── Overflow / visibility sheet styles ─────────────────────────────────────────
+
+const cb = StyleSheet.create({
+  title: { fontSize: 20, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: -0.5, marginBottom: 4 },
+  sub: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK3, lineHeight: 18, marginBottom: 12 },
+  empty: { fontSize: 14, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, textAlign: 'center', paddingVertical: 28 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10,
+    borderTopWidth: 0.5, borderTopColor: 'rgba(26,20,8,0.08)',
+  },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: SURFACE },
+  avatarFallback: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#2a2010',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarInitials: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: SAND_LT },
+  rowName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
+  rowMeta: { fontSize: 12, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginTop: 1 },
+});
 
 const ov = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
