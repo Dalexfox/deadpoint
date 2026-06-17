@@ -21,6 +21,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
   getProfileAvatar,
+  saveProfileAvatar,
   uploadProfileAvatar,
   getProfileBanner,
   uploadProfileBanner,
@@ -344,7 +345,7 @@ export default function ProfileScreen() {
           // ── 0. Profile fields (for Settings edit form) ──────────
           const { data: profileRow } = await supabase
             .from('profiles')
-            .select('full_name, username, bio')
+            .select('full_name, username, bio, avatar_url')
             .eq('id', user.id)
             .single();
           if (profileRow) {
@@ -354,6 +355,12 @@ export default function ProfileScreen() {
             setDisplayName(profileRow.full_name ?? '');
             setDisplayUsername(profileRow.username ?? '');
             setDisplayBio(profileRow.bio ?? '');
+            // avatar_url is the SOURCE OF TRUTH (survives reinstalls / new devices).
+            // The AsyncStorage cache is only a fast first paint; the DB value wins.
+            if (profileRow.avatar_url) {
+              setAvatarUri(profileRow.avatar_url);
+              saveProfileAvatar(profileRow.avatar_url); // keep the local cache in sync
+            }
           }
 
           // ── Follow counts ─────────────────────────────────────────
@@ -545,7 +552,10 @@ export default function ProfileScreen() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      uploadProfileAvatar(uri).then((url) => { if (url) setAvatarUri(url); });
+      uploadProfileAvatar(uri).then((url) => {
+        if (url) setAvatarUri(url);
+        else Alert.alert("Photo didn't save", "Your profile photo couldn't be uploaded. Check your connection and try again.");
+      });
     }
   };
 
@@ -557,7 +567,10 @@ export default function ProfileScreen() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      uploadProfileAvatar(uri).then((url) => { if (url) setAvatarUri(url); });
+      uploadProfileAvatar(uri).then((url) => {
+        if (url) setAvatarUri(url);
+        else Alert.alert("Photo didn't save", "Your profile photo couldn't be uploaded. Check your connection and try again.");
+      });
     }
   };
 

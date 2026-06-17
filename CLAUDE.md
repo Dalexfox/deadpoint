@@ -125,6 +125,7 @@ Overlays (all `position: 'absolute'`):
 - Initials color: SAND_LT
 - Border: `borderWidth: 3, borderColor: BG` (white ring separating avatar from banner)
 - Avatar uploads to Supabase Storage (`avatars/{userId}.jpg`) and `profiles.avatar_url` is updated — propagates to all feed cards
+- ⚠️ The profile screen reads `profiles.avatar_url` from Supabase on focus (SOURCE OF TRUTH); the AsyncStorage cache is only a fast first paint. Earlier the avatar loaded *only* from AsyncStorage, so it vanished on a fresh install / new device even though it was in the DB — fixed by selecting `avatar_url` in the focus fetch and `setAvatarUri(profileRow.avatar_url)`. A failed avatar upload now Alerts instead of silently reverting.
 
 ### Profile Banner
 - Full-width, height 140, sits at top of profile scroll
