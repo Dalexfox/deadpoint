@@ -30,6 +30,7 @@ import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
+import { MentionText } from '../../components/MentionText';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const STATS_BAR_H = 64;
@@ -450,7 +451,7 @@ export default function SessionDetailScreen() {
           <Text style={st.climbNickname}>{session.climbNickname}</Text>
         ) : null}
         {session.climbNotes ? (
-          <Text style={st.climbNotes} numberOfLines={2}>{session.climbNotes}</Text>
+          <MentionText text={session.climbNotes} style={st.climbNotes} mentionStyle={st.mention} numberOfLines={2} />
         ) : null}
       </View>
 
@@ -804,6 +805,10 @@ const st = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  mention: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: SAND_LT,
   },
 
   // Stats bar

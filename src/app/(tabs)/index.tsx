@@ -33,6 +33,7 @@ import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
 import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPosts';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
+import { MentionText } from '../../components/MentionText';
 
 // ─── Session-only dismissal flags ───────────────────────────────────────────────
 // Module-level (not component state) so a dismissal survives tab switches and feed
@@ -438,7 +439,7 @@ function FullScreenCard({
           <Text style={card.climbNickname}>{post.climbNickname}</Text>
         ) : null}
         {post.climbNotes ? (
-          <Text style={card.climbNotes} numberOfLines={2}>{post.climbNotes}</Text>
+          <MentionText text={post.climbNotes} style={card.climbNotes} mentionStyle={card.mention} numberOfLines={2} />
         ) : null}
       </TouchableOpacity>
 
@@ -1818,6 +1819,10 @@ const card = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.45)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  mention: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: SAND_LT,
   },
   gymPill: {
     alignSelf: 'flex-start',
