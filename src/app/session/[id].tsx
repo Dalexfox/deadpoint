@@ -29,6 +29,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { VideoBackground } from '../../components/VideoBackground';
+import { DefaultCover } from '../../components/DefaultCover';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const STATS_BAR_H = 64;
@@ -72,6 +73,7 @@ type SessionData = {
   climbNickname: string | null;
   climbNotes:    string | null;
   sendStyle:     'flash' | 'send' | 'project' | null;
+  date:          string | null;
   problemId:     string | null;
   visibility:    'public' | 'quiet';
 };
@@ -128,7 +130,7 @@ export default function SessionDetailScreen() {
       const [sessionRes, likesRes, commentCountRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, user_id, gym_id, media_url, notes, visibility, climbs(grade, problem_id, send_style)')
+          .select('id, user_id, gym_id, media_url, notes, visibility, created_at, climbs(grade, problem_id, send_style)')
           .eq('id', id)
           .single(),
         supabase.from('likes').select('user_id').eq('session_id', id),
@@ -163,6 +165,9 @@ export default function SessionDetailScreen() {
         climbNickname: problemRes.data?.custom_name ?? null,
         climbNotes:    (s as any).notes ?? null,
         sendStyle:     (climb?.send_style ?? null) as SessionData['sendStyle'],
+        date:          (s as any).created_at
+          ? new Date((s as any).created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : null,
         problemId,
         visibility:    ((s as any).visibility ?? 'public') as 'public' | 'quiet',
       });
@@ -333,12 +338,7 @@ export default function SessionDetailScreen() {
           />
         )
       ) : (
-        <LinearGradient
-          colors={['#2a2010', '#1a1408']}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        />
+        <DefaultCover grade={session.grade ?? undefined} gym={session.gymName} date={session.date ?? undefined} />
       )}
 
       {/* ── Bottom vignette ──────────────────────────────────────────────── */}

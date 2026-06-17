@@ -32,6 +32,7 @@ import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
 import { groupPosts, isGroupedPost, type GroupedPost } from '../../lib/groupPosts';
 import { VideoBackground } from '../../components/VideoBackground';
+import { DefaultCover } from '../../components/DefaultCover';
 
 // ─── Session-only dismissal flags ───────────────────────────────────────────────
 // Module-level (not component state) so a dismissal survives tab switches and feed
@@ -304,12 +305,11 @@ function FullScreenCard({
           />
         )
       ) : (
-        // No media — dark gradient background
-        <LinearGradient
-          colors={['#2a2010', '#1a1408']}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
+        // No media — branded default cover (grade / gym / date + Deadpoint motif)
+        <DefaultCover
+          grade={post.topGrade}
+          gym={post.gym}
+          date={post.createdAt ? new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined}
         />
       )}
 

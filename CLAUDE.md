@@ -92,7 +92,7 @@ DIVIDER    = 'rgba(26,20,8,0.08)'   // Hairline dividers
 ### Feed Cards (TikTok full-screen)
 Each card fills the entire screen. Two background variants:
 - **With media** — full-screen `Image` (photo) or `expo-video` `<VideoView>` (via `VideoBackground`) background
-- **Without media** — `LinearGradient '#2a2010 → #1a1408'` background (warm dark)
+- **Without media** — branded `DefaultCover` (`src/components/DefaultCover.tsx`): warm `#2a2010 → #1a1408` gradient + a centered composition of the climb's **Grade** (big SAND_LT), **Gym** + **Date**, a Deadpoint dot-grid motif, and the `DEADPOINT` wordmark — so a media-less post still feels designed rather than blank
 
 Overlays (all `position: 'absolute'`):
 - **Bottom vignette** — `LinearGradient transparent → rgba(0,0,0,0.75)` from 42% down
@@ -468,6 +468,7 @@ src/components/
   ClimbDatePicker.tsx  — Zero-dependency month-calendar bottom sheet (exports ClimbDatePicker + climbDayKey). Days with climbs are SAND-dotted/tappable; used by My Climbs + /user/[id] date filtering.
   VideoBackground.tsx  — Inline full-bleed video via expo-video (useVideoPlayer + VideoView). Mounted only for video posts; autoplays/loops while isActive, pauses otherwise. Takes a `muted` prop (player.muted). Used by the feed FullScreenCard (+ group pages), session/[id], AND the send-screen video cover preview (isActive=false → shows the paused first frame). **Tap-to-mute:** a tap anywhere on a video card toggles sound; the feed holds one global `videoMuted` (TikTok-style, persists across cards), session/[id] holds its own. A speaker badge (volume-high/volume-mute Ionicon) shows the state. Default = sound ON.
   StartHoldPicker.tsx  — Full-screen pinch-to-zoom + pan modal for marking a climb's starting hold. Native iOS-zoomable ScrollView (maximumZoomScale/pinchGestureEnabled); the tap layer is a child of the content rect so tap locationX/Y are zoom-invariant → map straight to 0–1 proportional image coords. Snaps to the nearest detected hold box. Shared by both Screen-1 log entries ((tabs)/log.tsx + gym/[id]/log.tsx).
+  DefaultCover.tsx     — Branded fallback "cover" for a media-less climb: warm ink gradient + centered Grade / Gym / Date + Deadpoint dot-grid motif + wordmark. Full-bleed (absoluteFill); the card's own overlays render on top. Used by the feed FullScreenCard and session/[id] no-media branch.
   SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
 ```
 
@@ -816,6 +817,7 @@ Therefore:
 - **Full-screen start-hold picker** — `src/components/StartHoldPicker.tsx`: tap the recognition photo → full-screen pinch-zoom + pan modal to place the start hold precisely (snaps to nearest detected hold); shared by both Screen-1 log entries
 - **Video cover preview** — selecting a video on the log screen shows its real first frame (paused expo-video) as the cover, not a text placeholder
 - **Tap-to-mute video** — tap a video card (feed or session detail) to toggle sound; feed mute is global (TikTok-style), with a speaker badge showing the state. Default sound ON.
+- **Branded default cover** — media-less climbs render `DefaultCover` (Grade / Gym / Date + Deadpoint motif) instead of a blank gradient (`src/components/DefaultCover.tsx`)
 - **Visible upload failures** — `uploadFileToStorage` returns `{ url, error }`; the send screen Alerts the reason (e.g. `Upload failed (413)` = video over the bucket size limit) instead of silently posting a blank card
 - **`problems` table** — community-created climb records (gym_id, hold_color, grade, wall_section, name, custom_name, media_url). `climbs.problem_id` links each logged climb to a problem. `problems.media_url` auto-updated to the most-liked session photo on each send.
 - **Feed + session detail show climb nickname + notes** — `climbNickname` (from `problems.custom_name`, SAND_LT) and `climbNotes` (from `sessions.notes`, white 75%) shown below `@username` on both feed cards and the session detail modal when set. `gap: 2` keeps them tight.
