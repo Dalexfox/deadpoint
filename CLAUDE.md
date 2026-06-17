@@ -124,7 +124,7 @@ Overlays (all `position: 'absolute'`):
 - Default background: `#2a2010` (warm dark brown)
 - Initials color: SAND_LT
 - Border: `borderWidth: 3, borderColor: BG` (white ring separating avatar from banner)
-- Avatar uploads to Supabase Storage (`avatars/{userId}.jpg`) and `profiles.avatar_url` is updated — propagates to all feed cards
+- Avatar uploads to Supabase Storage at `{userId}/avatar.jpg` (UNDER the user's own folder, like session media) and `profiles.avatar_url` is updated — propagates to all feed cards. ⚠️ It must live under `{userId}/` because the `session-media` bucket's upload policy is keyed on the first path folder = your user id; a top-level `avatars/` path is rejected (403) → was the silent "profile photo couldn't save".
 - ⚠️ The profile screen reads `profiles.avatar_url` from Supabase on focus (SOURCE OF TRUTH); the AsyncStorage cache is only a fast first paint. Earlier the avatar loaded *only* from AsyncStorage, so it vanished on a fresh install / new device even though it was in the DB — fixed by selecting `avatar_url` in the focus fetch and `setAvatarUri(profileRow.avatar_url)`. A failed avatar upload now Alerts instead of silently reverting.
 
 ### Profile Banner
@@ -375,7 +375,7 @@ No code changes. No redeployment needed.
 ### Storage bucket
 `session-media` (public) — stores:
 - Session media: `{userId}/{timestamp}.ext`
-- Profile avatars: `avatars/{userId}.jpg` (always same path, upsert: true → self-overwrites)
+- Profile avatars: `{userId}/avatar.jpg` and banners: `{userId}/banner.jpg` (under the user's own folder so they pass the bucket's per-user upload policy; stable name + upsert → self-overwrites)
 
 ⚠️ **Bucket settings gate video uploads.** The `session-media` bucket has a
 **file size limit** and an optional **allowed-MIME-types** list. Photos are a few
@@ -409,7 +409,10 @@ const res = await FileSystem.uploadAsync(
 - `uploadSessionMedia` namespaces by `{userId}/{ts}.{ext}` — videos **must** keep a
   real video extension (`mp4`/`mov`/…) so the feed's `/\.(mp4|mov|m4v|avi)$/i` sniff
   detects them. `uploadProfileAvatar` / `uploadProfileBanner` use stable paths
-  (`avatars/`/`banners/{userId}.jpg`) + append `?v=<ts>` to bust the image cache.
+  **under the user's own folder** (`{userId}/avatar.jpg` / `{userId}/banner.jpg`) so
+  they pass the bucket's per-user upload policy (a top-level `avatars/`/`banners/`
+  path 403s), + append `?v=<ts>` to bust the image cache. `uploadProfileAvatar`
+  returns `{ url, error }` so the profile screen Alerts the real failure reason.
   Banner persists its **public URL** in AsyncStorage (never the transient local file URI).
 
 ## App Structure

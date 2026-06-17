@@ -142,27 +142,30 @@ export async function saveProfileAvatar(uri: string): Promise<void> {
 // ─── Profile avatar upload ────────────────────────────────────
 // Uploads the avatar to Supabase Storage, writes the public URL to
 // profiles.avatar_url, and caches it in AsyncStorage for fast local loads.
-// Always writes to the same path (avatars/{userId}.jpg) so it self-overwrites.
+// ⚠️ Path is UNDER the user's own folder ({userId}/avatar.jpg) — the SAME folder
+// session media uses — so it passes the bucket's per-user upload policy. A
+// top-level `avatars/` path is rejected by a "first folder = your id" storage RLS
+// policy (403), which was the silent "profile photo couldn't save". Returns the
+// error string on failure so the caller can show the real reason.
 
-export async function uploadProfileAvatar(uri: string): Promise<string | null> {
+export async function uploadProfileAvatar(uri: string): Promise<UploadResult> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) return { url: null, error: 'Not signed in' };
 
-    // Stable path (always overwritten). Append ?v=timestamp to the saved URL so
-    // the new image isn't masked by a cached copy of the identical URL.
-    const { url: publicUrl } = await uploadFileToStorage(uri, `avatars/${user.id}.jpg`, 'image/jpeg');
-    if (!publicUrl) return null;
+    // Stable name (always overwritten via x-upsert). Append ?v=timestamp to the
+    // saved URL so the new image isn't masked by a cached copy of the same URL.
+    const { url: publicUrl, error } = await uploadFileToStorage(uri, `${user.id}/avatar.jpg`, 'image/jpeg');
+    if (!publicUrl) return { url: null, error };
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 
     // Persist to profiles so the feed/other users see it, and cache locally.
     await supabase.from('profiles').update({ avatar_url: bustedUrl }).eq('id', user.id);
     await AsyncStorage.setItem(AVATAR_KEY, bustedUrl);
 
-    return bustedUrl;
+    return { url: bustedUrl, error: null };
   } catch (err) {
-    console.log('[uploadProfileAvatar] Error:', err);
-    return null;
+    return { url: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -176,7 +179,9 @@ export async function uploadProfileBanner(uri: string): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { url: publicUrl } = await uploadFileToStorage(uri, `banners/${user.id}.jpg`, 'image/jpeg');
+    // Under the user's own folder (see uploadProfileAvatar) so it passes the
+    // bucket's per-user upload policy — a top-level banners/ path is rejected.
+    const { url: publicUrl } = await uploadFileToStorage(uri, `${user.id}/banner.jpg`, 'image/jpeg');
     if (!publicUrl) return null;
     const bustedUrl = `${publicUrl}?v=${Date.now()}`;
 

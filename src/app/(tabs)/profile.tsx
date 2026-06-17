@@ -552,9 +552,9 @@ export default function ProfileScreen() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      uploadProfileAvatar(uri).then((url) => {
+      uploadProfileAvatar(uri).then(({ url, error }) => {
         if (url) setAvatarUri(url);
-        else Alert.alert("Photo didn't save", "Your profile photo couldn't be uploaded. Check your connection and try again.");
+        else Alert.alert("Photo didn't save", error ?? 'Check your connection and try again.');
       });
     }
   };
@@ -567,9 +567,9 @@ export default function ProfileScreen() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       setAvatarUri(uri);
-      uploadProfileAvatar(uri).then((url) => {
+      uploadProfileAvatar(uri).then(({ url, error }) => {
         if (url) setAvatarUri(url);
-        else Alert.alert("Photo didn't save", "Your profile photo couldn't be uploaded. Check your connection and try again.");
+        else Alert.alert("Photo didn't save", error ?? 'Check your connection and try again.');
       });
     }
   };
