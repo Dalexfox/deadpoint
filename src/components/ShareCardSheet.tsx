@@ -1,28 +1,35 @@
 /**
- * ShareCardSheet — full-screen preview + share flow for a climb's ShareCard.
+ * ShareCardSheet — preview + share flow for a climb's ShareCard.
  *
- * Flow: resolve the still (photo URI as-is, or a frame pulled from a video via
- * expo-video-thumbnails; media-less → branded card), prefetch it so the capture
- * isn't blank, preview the ShareCard, then on Share capture it with
- * react-native-view-shot and hand the image to the native share sheet
- * (expo-sharing → Instagram story/feed, Messages, Save to Photos, …).
+ * - Image post  → the photo is the card's hero.
+ * - Video post  → sample frames across the clip into a filmstrip; the user taps
+ *                 which frame becomes the cover (Instagram-style). They can also
+ *                 "Share full video" (downloads the clip → native share sheet so it
+ *                 plays for the audience).
+ * - No media    → branded gradient card.
  *
- * Used by the feed + session detail share buttons.
+ * "Share card" captures the branded still (react-native-view-shot) → expo-sharing.
+ * Frames via expo-video-thumbnails (local files → instant in <Image>).
  */
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Modal, Image, TouchableOpacity, StyleSheet, ActivityIndicator,
-  useWindowDimensions, Alert, Share as RNShare,
+  ScrollView, useWindowDimensions, Alert, Share as RNShare,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as FileSystem from 'expo-file-system/legacy';
 import { ShareCard, type ShareCardData } from './ShareCard';
 
 const NEAR_BLACK = '#0d0a05';
 const SAND       = '#c8a84a';
+
+// Sample points across a clip for the cover filmstrip. Out-of-range times just
+// throw and are dropped, so short clips simply yield fewer frames.
+const FRAME_TIMES_MS = [300, 1000, 2500, 5000, 9000, 15000];
 
 export type ShareInput = {
   grade: string;
@@ -42,42 +49,48 @@ export function ShareCardSheet({
 }) {
   const { width: winW } = useWindowDimensions();
   const cardRef = useRef<View>(null);
-  const [still, setStill]         = useState<string | null>(null);
-  const [preparing, setPreparing] = useState(true);
-  const [sharing, setSharing]     = useState(false);
+  const cardWidth = Math.min(winW - 64, 300);
+  const isVideo = !!(input?.isVideo && input?.mediaUri);
 
-  const cardWidth = Math.min(winW - 56, 320);
+  const [frames, setFrames]           = useState<string[]>([]);   // filmstrip (video only)
+  const [selected, setSelected]       = useState<string | null>(null); // chosen hero still
+  const [preparing, setPreparing]     = useState(true);
+  const [sharing, setSharing]         = useState(false);
+  const [sharingVideo, setSharingVideo] = useState(false);
 
-  // Resolve + preload the still each time the sheet opens.
   useEffect(() => {
     if (!visible || !input) return;
     let active = true;
-    setPreparing(true);
-    setStill(null);
+    setPreparing(true); setFrames([]); setSelected(null); setSharing(false); setSharingVideo(false);
     (async () => {
-      let uri: string | null = input.mediaUri;
-      if (input.mediaUri && input.isVideo) {
+      if (!isVideo) {
+        // Image (or media-less): use it as-is. Prefetch so the capture isn't blank.
+        const uri = input.mediaUri ?? null;
+        if (uri && /^https?:/.test(uri)) { try { await Image.prefetch(uri); } catch { /* non-fatal */ } }
+        if (active) { setSelected(uri); setPreparing(false); }
+        return;
+      }
+      // Video: sample frames across the clip (parallel), keep the ones that succeed.
+      const results = await Promise.all(FRAME_TIMES_MS.map(async (t) => {
         try {
-          const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(input.mediaUri, { time: 1000, quality: 0.9 });
-          uri = thumb;
-        } catch {
-          uri = null; // fall back to the branded (media-less) card
-        }
-      }
-      // Prefetch remote images so the captured card isn't blank.
-      if (uri && /^https?:/.test(uri)) {
-        try { await Image.prefetch(uri); } catch { /* non-fatal */ }
-      }
-      if (active) { setStill(uri); setPreparing(false); }
+          const { uri } = await VideoThumbnails.getThumbnailAsync(input.mediaUri!, { time: t, quality: 0.85 });
+          return uri;
+        } catch { return null; }
+      }));
+      const uris = results.filter(Boolean) as string[];
+      if (!active) return;
+      setFrames(uris);
+      setSelected(uris[0] ?? null);
+      setPreparing(false);
     })();
     return () => { active = false; };
-  }, [visible, input]);
+  }, [visible, input, isVideo]);
 
   const cardData: ShareCardData | null = input
-    ? { grade: input.grade, gym: input.gym, date: input.date, username: input.username, stillUri: still }
+    ? { grade: input.grade, gym: input.gym, date: input.date, username: input.username, stillUri: selected }
     : null;
 
-  const handleShare = async () => {
+  const handleShareCard = async () => {
     if (!cardRef.current) return;
     setSharing(true);
     try {
@@ -93,6 +106,29 @@ export function ShareCardSheet({
       setSharing(false);
     }
   };
+
+  const handleShareVideo = async () => {
+    if (!input?.mediaUri) return;
+    setSharingVideo(true);
+    try {
+      // expo-sharing needs a local file, so download the clip first.
+      const ext = (input.mediaUri.split('.').pop()?.split('?')[0] || 'mp4').toLowerCase();
+      const local = `${FileSystem.cacheDirectory}deadpoint-share.${ext}`;
+      const { uri } = await FileSystem.downloadAsync(input.mediaUri, local);
+      const mime = ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: 'Share your send' });
+      } else {
+        await RNShare.share({ url: uri });
+      }
+    } catch (e: any) {
+      Alert.alert('Could not share the video', e?.message ?? 'Please try again.');
+    } finally {
+      setSharingVideo(false);
+    }
+  };
+
+  const busy = sharing || sharingVideo;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -115,21 +151,53 @@ export function ShareCardSheet({
           ) : null}
         </View>
 
+        {/* Cover picker — video only, when we got more than one frame */}
+        {!preparing && isVideo && frames.length > 1 && (
+          <View style={st.stripWrap}>
+            <Text style={st.stripLabel}>CHOOSE YOUR COVER</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.strip}>
+              {frames.map((f) => {
+                const active = f === selected;
+                return (
+                  <TouchableOpacity key={f} activeOpacity={0.8} onPress={() => setSelected(f)} style={[st.frame, active && st.frameActive]}>
+                    <Image source={{ uri: f }} style={st.frameImg} resizeMode="cover" />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={st.footer}>
           <TouchableOpacity
-            style={[st.shareBtn, (preparing || sharing) && st.shareBtnDisabled]}
-            disabled={preparing || sharing}
-            onPress={handleShare}
+            style={[st.shareBtn, (preparing || busy) && st.disabled]}
+            disabled={preparing || busy}
+            onPress={handleShareCard}
             activeOpacity={0.85}>
             {sharing ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <>
                 <Ionicons name="share-outline" size={18} color="#ffffff" />
-                <Text style={st.shareText}>Share</Text>
+                <Text style={st.shareText}>Share card</Text>
               </>
             )}
           </TouchableOpacity>
+
+          {isVideo && (
+            <TouchableOpacity
+              style={[st.videoBtn, busy && st.disabled]}
+              disabled={busy}
+              onPress={handleShareVideo}
+              activeOpacity={0.7}>
+              {sharingVideo ? (
+                <ActivityIndicator color={SAND} />
+              ) : (
+                <Text style={st.videoText}>Share full video instead</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
           <Text style={st.hint}>Post to your story, send to a friend, or save to Photos.</Text>
         </View>
       </SafeAreaView>
@@ -147,13 +215,33 @@ const st = StyleSheet.create({
     paddingVertical: 12,
   },
   title: { fontSize: 16, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: -0.3 },
-  preview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  preview: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
   cardLoading: {
     borderRadius: 18,
     backgroundColor: '#1a1408',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stripWrap: { paddingTop: 4, paddingBottom: 8 },
+  stripLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    letterSpacing: 2.5,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  strip: { paddingHorizontal: 18, gap: 8 },
+  frame: {
+    width: 52,
+    height: 65,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  frameActive: { borderColor: SAND },
+  frameImg: { width: '100%', height: '100%' },
   footer: { paddingHorizontal: 24, paddingBottom: 8 },
   shareBtn: {
     flexDirection: 'row',
@@ -164,7 +252,14 @@ const st = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
   },
-  shareBtnDisabled: { opacity: 0.6 },
+  videoBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  videoText: { fontSize: 14, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND },
+  disabled: { opacity: 0.6 },
   shareText: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: -0.3 },
   hint: {
     fontSize: 12,
