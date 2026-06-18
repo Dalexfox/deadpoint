@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 
 const SAND = '#c8a84a';
 
-export function AuthBrand() {
+export function AuthBrand({ label = 'DEADPOINT' }: { label?: string }) {
   return (
     <View style={s.brand}>
       <View style={s.dotGrid}>
@@ -16,7 +16,7 @@ export function AuthBrand() {
           <View key={i} style={[s.dot, i === 4 && s.dotCenter]} />
         ))}
       </View>
-      <Text style={s.wordmark}>DEADPOINT</Text>
+      <Text style={s.wordmark}>{label}</Text>
     </View>
   );
 }

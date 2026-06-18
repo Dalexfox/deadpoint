@@ -95,7 +95,7 @@ export default function SignupScreen() {
           showsVerticalScrollIndicator={false}>
 
           {/* Brand */}
-          <AuthBrand />
+          <AuthBrand label="JOIN DEADPOINT" />
 
           {/* Heading */}
           <View style={styles.headingBlock}>
