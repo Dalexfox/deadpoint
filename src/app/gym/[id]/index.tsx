@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
+import { GymLeaderboard } from '../../../components/GymLeaderboard';
 
 // ── Design tokens ────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -35,7 +36,7 @@ const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10
 const PROB_CARD_GAP = 8;
 
 // ── Types ────────────────────────────────────────────────────
-type TabKey = 'log' | 'climbs';
+type TabKey = 'log' | 'climbs' | 'scene';
 
 type SessionData = {
   id: string;
@@ -304,8 +305,8 @@ export default function GymDetailScreen() {
 
       {/* ── Tab bar ─────────────────────────────────────────── */}
       <View style={styles.tabBar}>
-        {(['log', 'climbs'] as TabKey[]).map((tab) => {
-          const label   = tab === 'log' ? 'Log a Climb' : 'Current Climbs';
+        {(['log', 'climbs', 'scene'] as TabKey[]).map((tab) => {
+          const label   = tab === 'log' ? 'Log a Climb' : tab === 'climbs' ? 'Current Climbs' : 'The Scene';
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -598,6 +599,11 @@ export default function GymDetailScreen() {
           })()}
         </View>
       )}
+
+      {/* ══════════════════════════════════════════════════════
+          THE SCENE TAB — this-week leaderboard + recent sends
+      ══════════════════════════════════════════════════════ */}
+      {activeTab === 'scene' && <GymLeaderboard gymId={id as string} />}
 
       {/* ══════════════════════════════════════════════════════
           VIDEO GRID MODAL

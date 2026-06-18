@@ -443,7 +443,7 @@ src/app/
   gym/
     [id]/
       _layout.tsx      — Stack layout for gym screens
-      index.tsx        — Gym detail (two tabs: Log a Climb info + Current Climbs browser)
+      index.tsx        — Gym detail (three tabs: Log a Climb info + Current Climbs browser + The Scene leaderboard)
       log.tsx          — Screen 1 of 3-screen log flow (gymId pre-filled from route)
   log-flow/
     _layout.tsx        — Stack layout for Screens 2 & 3 (slide_from_right animation)
@@ -494,6 +494,7 @@ src/components/
   BrandedVideoOverlay.tsx — The TRANSPARENT version of the card (scrim + Grade/Gym/Date + Deadpoint mark, no opaque bg), rendered at the video's aspect and captured as a PNG (alpha) → fed to the `BrandedVideo` native module to burn onto the clip. forwardRef for capture.
   ShareCardSheet.tsx   — Full-screen preview + share flow. **Image** post → the photo is the hero. **Video** post → samples ~6 frames across the clip (`expo-video-thumbnails.getThumbnailAsync` at fixed times; out-of-range times drop) into an Instagram-style **cover filmstrip** — tap a frame to set the card's still. Share options for video: **Share branded video** (primary when the `BrandedVideo` native module is linked — captures `BrandedVideoOverlay` PNG, downloads the clip, `BrandedVideo.compose` burns the overlay on, shares the mp4), **Share as card** (the still), **Share full video** (raw clip). **Media-less** → branded card. `Image.prefetch`es remote stills so the capture isn't blank; "Share card" does `captureRef` → `expo-sharing.shareAsync` (IG story/feed, Messages, Save to Photos…). Opened from the feed + session-detail share buttons via a `ShareInput`.
   MentionText.tsx      — Renders a notes string with `@username` tokens as tappable links → resolves the handle to profiles.id on tap and routes to /(tabs)/profile (self) or /user/[id] (other). Plain "tag in the description" — no table; the handle is just typed into sessions.notes. Used by the feed card + session/[id] notes.
+  GymLeaderboard.tsx   — "The Scene" tab on the gym page: this-week leaderboard (Sends / Top-grade toggle) + recent-sends strip. Pure render from sessions/climbs/profiles (public, non-project, since Monday). No schema.
 src/app/
   notifications.tsx    — In-app activity inbox. NO notifications table — derived live from existing data: likes/comments on the user's sessions + follows where following_id = me, merged + sorted newest-first. Each row: actor avatar/name (→ profile) + message + timestamp; like/comment rows show a post thumbnail (→ /session/[id], video posts show a ▶ placeholder), follow rows show a Follow-back toggle. Opening it stamps `NOTIF_LAST_SEEN_KEY` (AsyncStorage). The Profile header bell shows a SAND unread dot when the latest activity is newer than that stamp (computed in a lightweight 3×limit-1 focus query).
   SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
@@ -624,7 +625,9 @@ posting. Posts hit the feed instantly and are only *visually* clustered.
 - Gyms loaded once on mount via `useEffect` + `fetchGyms()` (cached).
 
 ### Gym Detail (`/gym/[id]`)
-The gym detail screen has **two tabs**: "Log a Climb" and "Current Climbs".
+The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "The Scene".
+
+**The Scene tab** (`src/components/GymLeaderboard.tsx`) — the local community/competition view: a **this-week leaderboard** of climbers at this gym (rank by **Sends** or **Top grade** via a toggle; #1 in SAND; tap a climber → their profile) + a **recent-sends** strip ("@user sent V6 · 2h" → `/session/[id]`). Pure render from `sessions` + `climbs` + `profiles` (public sends only, projects excluded, since Monday local) — **no schema**. Drives the local FOMO/competition that makes a single-gym seed feel alive. Re-fetches each time the tab is opened (the component mounts only when active).
 
 **Route structure:** `src/app/gym/[id]/` (Stack layout)
 - `index.tsx` — two-tab gym detail screen (info + Current Climbs)
@@ -841,7 +844,8 @@ Therefore:
 - **Profile header live from Supabase** — removed hardcoded `USER` constant; `displayName / displayUsername / displayBio` state drives the header, populated from `profiles` table on focus and committed on successful save
 - **Explore tab** — search climbers AND gyms simultaneously; gym results instant from cache, climber results debounced via Supabase; "Send It." tagline when search empty; suggested climbers from shared gyms (no header/empty-state text); Follow/Following toggle (optimistic)
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
-- **Gym detail two-tab layout** — "Log a Climb" (gym info + CTA) and "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal)
+- **Gym detail three-tab layout** — "Log a Climb" (gym info + CTA), "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal), and **"The Scene"** (this-week leaderboard + recent sends — `src/components/GymLeaderboard.tsx`)
+- **Gym leaderboard / The Scene** — per-gym this-week leaderboard (rank by Sends or Top grade) + recent-sends activity strip; local competition/FOMO for the seed. Derived live from sessions/climbs (public, non-project) — no schema.
 - **Current Climbs grade slider** — always shows V0–V10; filters section to selected grade; "No climbs logged" empty state per grade; defaults to V0 (no auto-snap)
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.
