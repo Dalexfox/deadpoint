@@ -16,7 +16,6 @@ import {
   Modal,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -31,6 +30,7 @@ import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
+import { ShareCardSheet } from '../../components/ShareCardSheet';
 import { MentionText } from '../../components/MentionText';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -119,6 +119,7 @@ export default function SessionDetailScreen() {
   const [commentCount,   setCommentCount]   = useState(0);
   const [currentUserId,  setCurrentUserId]  = useState<string | null>(null);
   const [videoMuted,     setVideoMuted]     = useState(false);
+  const [shareOpen,      setShareOpen]      = useState(false);
 
   // Overflow / visibility sheet (own session only)
   const [overflowOpen,    setOverflowOpen]    = useState(false);
@@ -367,12 +368,9 @@ export default function SessionDetailScreen() {
     }
   }
 
-  // ── Share ──────────────────────────────────────────────────────────────────
+  // ── Share — opens the branded share-card sheet ──────────────────────────────
   function handleShare() {
-    const name = posterUsername ? `@${posterUsername}` : posterName;
-    Share.share({
-      message: `Check out ${name}'s climb on Deadpoint!`,
-    });
+    setShareOpen(true);
   }
 
   // ── Open the poster's profile (own → tab, other → /user/[id]) ───────────────
@@ -765,6 +763,19 @@ export default function SessionDetailScreen() {
           </View>
         </Modal>
       )}
+
+      <ShareCardSheet
+        visible={shareOpen}
+        input={session ? {
+          grade:    session.grade ?? '—',
+          gym:      session.gymName,
+          date:     session.date ?? '',
+          username: posterUsername,
+          mediaUri: session.mediaUrl,
+          isVideo:  session.isVideo,
+        } : null}
+        onClose={() => setShareOpen(false)}
+      />
     </View>
   );
 }

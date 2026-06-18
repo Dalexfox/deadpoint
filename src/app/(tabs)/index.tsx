@@ -15,7 +15,6 @@ import {
   Modal,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -33,6 +32,7 @@ import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
 import { groupPosts, isGroupedPost, isCoSession, type GroupedPost } from '../../lib/groupPosts';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
+import { ShareCardSheet, type ShareInput } from '../../components/ShareCardSheet';
 import { MentionText } from '../../components/MentionText';
 
 // ─── Session-only dismissal flags ───────────────────────────────────────────────
@@ -774,6 +774,7 @@ export default function FeedScreen() {
   const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
   const [feedTab,       setFeedTab]       = useState<'forYou' | 'following'>('forYou');
   const [videoMuted,    setVideoMuted]    = useState(false);   // global feed mute (TikTok-style)
+  const [shareInput,    setShareInput]    = useState<ShareInput | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   // First-run / personalization state
@@ -928,14 +929,19 @@ export default function FeedScreen() {
   }, [currentUserId, followingSet]);
 
   // Native share sheet
-  const handleShare = useCallback(async (post: Post) => {
-    try {
-      await Share.share({
-        message: `Check out this climb at ${post.gym ?? 'the gym'} on Deadpoint! 🧗`,
-      });
-    } catch {
-      // user dismissed
-    }
+  const handleShare = useCallback((post: Post) => {
+    // Open the branded share-card sheet (grade / gym / date + video still).
+    const media = post.media?.[0];
+    setShareInput({
+      grade:    post.topGrade ?? '—',
+      gym:      post.gym ?? 'the gym',
+      date:     post.createdAt
+        ? new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '',
+      username: post.username ?? null,
+      mediaUri: media?.uri ?? null,
+      isVideo:  media?.type === 'video',
+    });
   }, []);
 
   // Pick a home gym from the picker card → write to profile, show confirmation.
@@ -1622,6 +1628,8 @@ export default function FeedScreen() {
           </View>
         </Modal>
       )}
+
+      <ShareCardSheet visible={shareInput !== null} input={shareInput} onClose={() => setShareInput(null)} />
     </SafeAreaView>
   );
 }
