@@ -56,15 +56,17 @@ export const ShareCard = forwardRef<View, { data: ShareCardData; width: number }
           <Text style={st.wordmark}>DEADPOINT</Text>
         </View>
 
-        {/* bottom content */}
+        {/* bottom content — sizes scale with the card width so nothing bleeds */}
         <View style={st.bottom}>
           <Text style={st.gradeLabel}>SENT</Text>
-          <Text style={st.grade}>{data.grade}</Text>
+          <Text style={[st.grade, { fontSize: Math.round(width * 0.25), lineHeight: Math.round(width * 0.26) }]}>
+            {data.grade}
+          </Text>
           <View style={st.metaRow}>
             <View style={st.metaBar} />
             <View style={{ flex: 1 }}>
-              <Text style={st.gym} numberOfLines={1}>{data.gym}</Text>
-              <Text style={st.date}>{data.date}{data.username ? `  ·  @${data.username}` : ''}</Text>
+              <Text style={[st.gym, { fontSize: Math.round(width * 0.062) }]} numberOfLines={1}>{data.gym}</Text>
+              <Text style={st.date} numberOfLines={1}>{data.date}{data.username ? `  ·  @${data.username}` : ''}</Text>
             </View>
           </View>
         </View>
@@ -124,11 +126,9 @@ const st = StyleSheet.create({
     marginBottom: 2,
   },
   grade: {
-    fontSize: 76,
     fontFamily: 'Syne_800ExtraBold',
     letterSpacing: -3,
     color: SAND_LT,
-    lineHeight: 80,
   },
   metaRow: {
     flexDirection: 'row',
@@ -143,7 +143,6 @@ const st = StyleSheet.create({
     backgroundColor: SAND,
   },
   gym: {
-    fontSize: 19,
     fontFamily: 'Syne_800ExtraBold',
     letterSpacing: -0.4,
     color: '#ffffff',

@@ -18,7 +18,7 @@ import {
   View, Text, Modal, Image, TouchableOpacity, StyleSheet, ActivityIndicator,
   ScrollView, useWindowDimensions, Alert, Share as RNShare,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -53,9 +53,13 @@ export function ShareCardSheet({
   onClose: () => void;
 }) {
   const { width: winW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const cardRef    = useRef<View>(null);
   const overlayRef = useRef<View>(null);
-  const cardWidth = Math.min(winW - 64, 300);
+  const [previewH, setPreviewH] = useState(0);
+  // Size the card to fit BOTH the width and the available preview height, so it
+  // never overflows into the header (which made the ✕ unreachable) on smaller phones.
+  const cardWidth = Math.min(winW - 72, previewH > 0 ? (previewH - 16) / 1.25 : 300, 300);
   const isVideo = !!(input?.isVideo && input?.mediaUri);
   const canBrand = isVideo && !!BrandedVideo;
 
@@ -114,7 +118,9 @@ export function ShareCardSheet({
     if (!cardRef.current) return;
     setSharing(true);
     try {
-      const uri = await captureRef(cardRef, { format: 'jpg', quality: 0.95 });
+      // Force an exact 1080×1350 (4:5) output so the shared image ratio is
+      // guaranteed regardless of device/preview size.
+      const uri = await captureRef(cardRef, { format: 'jpg', quality: 0.95, width: 1080, height: 1350 });
       await shareUri(uri, 'image/jpeg');
     } catch (e: any) {
       Alert.alert('Could not create the card', e?.message ?? 'Please try again.');
@@ -164,16 +170,16 @@ export function ShareCardSheet({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={st.container} edges={['top', 'bottom']}>
+      <View style={[st.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={st.header}>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close" size={26} color="#ffffff" />
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}>
+            <Ionicons name="close" size={28} color="#ffffff" />
           </TouchableOpacity>
           <Text style={st.title}>Share your send</Text>
-          <View style={{ width: 26 }} />
+          <View style={{ width: 28 }} />
         </View>
 
-        <View style={st.preview}>
+        <View style={st.preview} onLayout={e => setPreviewH(e.nativeEvent.layout.height)}>
           {preparing ? (
             <View style={[st.cardLoading, { width: cardWidth, height: Math.round(cardWidth * 1.25) }]}>
               <ActivityIndicator color={SAND} />
@@ -251,7 +257,7 @@ export function ShareCardSheet({
             <BrandedVideoOverlay ref={overlayRef} data={cardData} width={OVERLAY_W} height={overlayH} />
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }

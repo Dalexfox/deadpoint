@@ -5,7 +5,6 @@ import {
   Share,
   Dimensions,
   Image,
-  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -102,15 +101,6 @@ type SupabaseSession = {
   createdAt: string;  // ISO string — used to filter sessions by day for chart drill-down
   mediaUrl:  string | null;  // Supabase Storage URL for attached photo / video
   notes:     string | null;  // optional description/notes from the log form
-};
-
-// Data passed into the full-screen media viewer (Layer 3)
-type MediaViewerData = {
-  mediaUrl: string | null;
-  gymName:  string;
-  date:     string;
-  grade:    string;
-  count:    number;
 };
 
 // A user shown in the followers / following bottom sheet
@@ -304,10 +294,6 @@ export default function ProfileScreen() {
   const [displayName,     setDisplayName]     = useState('');
   const [displayUsername, setDisplayUsername] = useState('');
   const [displayBio,      setDisplayBio]      = useState('');
-
-  // Media viewer modal (Layer 3)
-  const [mediaViewerVisible,   setMediaViewerVisible]   = useState(false);
-  const [mediaViewerData,      setMediaViewerData]      = useState<MediaViewerData | null>(null);
 
   const [stats, setStats] = useState<{
     totalClimbs: number;
@@ -1113,21 +1099,11 @@ export default function ProfileScreen() {
                         {selectedGrade} · {totalSends} total send{totalSends !== 1 ? 's' : ''}
                       </Text>
                       {entries.map((e, idx) => {
-                        const session = sessions.find((s) => s.id === e.sessionId);
                         return (
                           <TouchableOpacity
                             key={`${e.sessionId}-${idx}`}
                             style={styles.dayDetailCard}
-                            onPress={() => {
-                              setMediaViewerData({
-                                mediaUrl: session?.mediaUrl ?? null,
-                                gymName:  e.gymName,
-                                date:     e.date,
-                                grade:    e.grade,
-                                count:    e.count,
-                              });
-                              setMediaViewerVisible(true);
-                            }}
+                            onPress={() => router.push(`/session/${e.sessionId}`)}
                             activeOpacity={0.75}>
                             <View style={[styles.dayDetailAccentBar, { backgroundColor: SAND }]} />
                             <View style={styles.dayDetailBody}>
@@ -1420,64 +1396,6 @@ export default function ProfileScreen() {
 
       </ScrollView>
 
-
-      {/* ── Layer 3: Full-screen media viewer ────────────────────── */}
-      {/* Conditionally rendered so the Modal is fully unmounted when closed
-          and cannot intercept touches on the profile scroll view. */}
-      {mediaViewerVisible && (
-        <Modal
-          visible
-          animationType="fade"
-          onRequestClose={() => setMediaViewerVisible(false)}>
-          <View style={styles.mediaContainer}>
-
-            {/* Close button */}
-            <TouchableOpacity
-              style={styles.mediaCloseBtn}
-              onPress={() => setMediaViewerVisible(false)}
-              activeOpacity={0.7}>
-              <Text style={styles.mediaCloseIcon}>×</Text>
-            </TouchableOpacity>
-
-            {mediaViewerData?.mediaUrl ? (
-              /\.(mp4|mov|m4v|avi)$/i.test(mediaViewerData.mediaUrl) ? (
-                <TouchableOpacity
-                  style={styles.mediaVideoPlaceholder}
-                  onPress={() => Linking.openURL(mediaViewerData.mediaUrl!)}
-                  activeOpacity={0.8}>
-                  <Text style={styles.mediaPlayIcon}>▶</Text>
-                  <Text style={styles.mediaPlayLabel}>Tap to play video</Text>
-                  <Text style={styles.mediaPlaySub}>Opens in system player</Text>
-                </TouchableOpacity>
-              ) : (
-                <Image
-                  source={{ uri: mediaViewerData.mediaUrl }}
-                  style={styles.mediaImage}
-                  resizeMode="contain"
-                />
-              )
-            ) : (
-              <View style={styles.mediaPlaceholder}>
-                <Text style={styles.mediaPlaceholderTitle}>No media attached</Text>
-                <Text style={styles.mediaPlaceholderSub}>
-                  {mediaViewerData?.gymName}  ·  {mediaViewerData?.date}
-                </Text>
-              </View>
-            )}
-
-            {/* Info strip at bottom when media is present */}
-            {mediaViewerData?.mediaUrl && (
-              <View style={styles.mediaInfoStrip}>
-                <Text style={styles.mediaInfoGym}>{mediaViewerData.gymName}</Text>
-                <Text style={styles.mediaInfoMeta}>
-                  {mediaViewerData.grade} ×{mediaViewerData.count}  ·  {mediaViewerData.date}
-                </Text>
-              </View>
-            )}
-
-          </View>
-        </Modal>
-      )}
 
       {/* ── Followers bottom sheet ────────────────────────────────── */}
       {followersVisible && (
