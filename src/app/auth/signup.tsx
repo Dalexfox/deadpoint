@@ -95,12 +95,12 @@ export default function SignupScreen() {
           showsVerticalScrollIndicator={false}>
 
           {/* Brand */}
-          <AuthBrand label="JOIN DEADPOINT" />
+          <AuthBrand />
 
           {/* Heading */}
           <View style={styles.headingBlock}>
             <Text style={styles.heading} numberOfLines={2} adjustsFontSizeToFit>
-              CREATE{'\n'}ACCOUNT.
+              JOIN{'\n'}DEADPOINT.
             </Text>
             <Text style={styles.subheading}>Track your climbs. Share your sessions.</Text>
           </View>
