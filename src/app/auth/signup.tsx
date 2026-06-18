@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { OFFICIAL_ACCOUNT_ID } from '../../lib/constants';
+import { AuthBrand } from '../../components/AuthBrand';
 
 const SAND = '#c8a84a';
 const INK  = '#1a1408';
@@ -93,18 +94,14 @@ export default function SignupScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
 
-          {/* Back */}
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.7}>
-            <Text style={styles.backArrow}>‹</Text>
-            <Text style={styles.backLabel}>Log in</Text>
-          </TouchableOpacity>
+          {/* Brand */}
+          <AuthBrand />
 
           {/* Heading */}
           <View style={styles.headingBlock}>
-            <Text style={styles.heading}>JOIN{'\n'}DEADPOINT.</Text>
+            <Text style={styles.heading} numberOfLines={2} adjustsFontSizeToFit>
+              CREATE{'\n'}ACCOUNT.
+            </Text>
             <Text style={styles.subheading}>Track your climbs. Share your sessions.</Text>
           </View>
 

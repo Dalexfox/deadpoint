@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { AuthBrand } from '../../components/AuthBrand';
 
 const SAND = '#c8a84a';
 const INK  = '#1a1408';
@@ -54,14 +55,14 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
 
-          {/* Wordmark */}
-          <View style={styles.wordmarkRow}>
-            <Text style={styles.wordmark}>DEADPOINT</Text>
-          </View>
+          {/* Brand */}
+          <AuthBrand />
 
           {/* Heading */}
           <View style={styles.headingBlock}>
-            <Text style={styles.heading}>WELCOME{'\n'}BACK.</Text>
+            <Text style={styles.heading} numberOfLines={2} adjustsFontSizeToFit>
+              WELCOME{'\n'}BACK.
+            </Text>
             <Text style={styles.subheading}>Log in to see what your crew is climbing.</Text>
           </View>
 
