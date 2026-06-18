@@ -452,12 +452,13 @@ src/app/
                          (presented as fullScreenModal, slides up over profile)
   user/
     [id].tsx           — View-only profile page for other users
+  notifications.tsx    — In-app activity inbox (likes / comments / new followers on YOUR content)
 ```
 
 ### ⚠️ Register every off-`(tabs)` route in the root Stack
 `src/app/_layout.tsx` renders a `<Stack>` with an explicit `<Stack.Screen>` for
 each off-tab route (`(tabs)`, `auth`, `gym/[id]`, `log-flow`, `user/[id]`,
-`session/[id]`). When you add a NEW dynamic route, you MUST add a matching
+`session/[id]`, `notifications`). When you add a NEW dynamic route, you MUST add a matching
 `<Stack.Screen name="..." />` here — otherwise `router.push` to it silently
 no-ops. (This was the cause of the username-tap navigation bug: `user/[id]`
 existed as a file but was never registered, so every push to it did nothing.)
@@ -488,6 +489,8 @@ src/components/
   StartHoldPicker.tsx  — Full-screen pinch-to-zoom + pan modal for marking a climb's starting hold. Native iOS-zoomable ScrollView (maximumZoomScale/pinchGestureEnabled); the tap layer is a child of the content rect so tap locationX/Y are zoom-invariant → map straight to 0–1 proportional image coords. Snaps to the nearest detected hold box. Shared by both Screen-1 log entries ((tabs)/log.tsx + gym/[id]/log.tsx).
   DefaultCover.tsx     — Branded fallback "cover" for a media-less climb: warm ink gradient + centered Grade / Gym / Date + Deadpoint dot-grid motif + wordmark. Full-bleed (absoluteFill); the card's own overlays render on top. Used by the feed FullScreenCard and session/[id] no-media branch.
   MentionText.tsx      — Renders a notes string with `@username` tokens as tappable links → resolves the handle to profiles.id on tap and routes to /(tabs)/profile (self) or /user/[id] (other). Plain "tag in the description" — no table; the handle is just typed into sessions.notes. Used by the feed card + session/[id] notes.
+src/app/
+  notifications.tsx    — In-app activity inbox. NO notifications table — derived live from existing data: likes/comments on the user's sessions + follows where following_id = me, merged + sorted newest-first. Each row: actor avatar/name (→ profile) + message + timestamp; like/comment rows show a post thumbnail (→ /session/[id], video posts show a ▶ placeholder), follow rows show a Follow-back toggle. Opening it stamps `NOTIF_LAST_SEEN_KEY` (AsyncStorage). The Profile header bell shows a SAND unread dot when the latest activity is newer than that stamp (computed in a lightweight 3×limit-1 focus query).
   SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
 ```
 
@@ -845,6 +848,7 @@ Therefore:
 - **Full-screen start-hold picker** — `src/components/StartHoldPicker.tsx`: tap the recognition photo → full-screen pinch-zoom + pan modal to place the start hold precisely (snaps to nearest detected hold); shared by both Screen-1 log entries
 - **Video cover preview** — selecting a video on the log screen shows its real first frame (paused expo-video) as the cover, not a text placeholder
 - **Tap-to-mute video** — tap a video card (feed or session detail) to toggle sound; feed mute is global (TikTok-style), with a speaker badge showing the state. Default sound ON.
+- **In-app notifications inbox** (`/notifications`) — Instagram-style activity list: who liked/commented on your climbs (with post thumbnail → the post) and who started following you (with Follow-back). Derived live from `likes`/`comments`/`follows` — no notifications table. Opened from a bell in the Profile header that shows a SAND unread dot. (Device **push** notifications are still Phase 2.)
 - **Branded default cover** — media-less climbs render `DefaultCover` (Grade / Gym / Date + Deadpoint motif) instead of a blank gradient (`src/components/DefaultCover.tsx`)
 - **@username tagging** — type `@handle` in a climb's notes and it renders as a tappable link to that profile (`src/components/MentionText.tsx`); no schema, resolves the handle on tap
 - **Co-sessions** (combine with a friend) — from a session's overflow, "Combine with a friend's send" picks a followed climber's recent public send and merges the two (via the `combine_sessions` SECURITY DEFINER RPC + `sessions.co_session_id`). The feed folds co-sessions into one cross-user card (`@a + @b · co-session`); `groupPosts`/`isCoSession` handle the grouping

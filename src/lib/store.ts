@@ -6,6 +6,9 @@ const POSTS_KEY = 'deadpoint_user_posts';
 const AVATAR_KEY = 'deadpoint_profile_avatar';
 const BANNER_KEY = 'deadpoint_profile_banner';
 
+// Timestamp the user last opened the Notifications screen — drives the unread dot.
+export const NOTIF_LAST_SEEN_KEY = 'deadpoint_notif_last_seen';
+
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 const BUCKET = 'session-media';

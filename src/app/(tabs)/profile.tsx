@@ -26,7 +26,9 @@ import {
   getProfileBanner,
   uploadProfileBanner,
   saveUserPost,
+  NOTIF_LAST_SEEN_KEY,
 } from '../../lib/store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { monthStats, highestGrade, weekStreak } from '../../lib/stats';
@@ -240,6 +242,7 @@ export default function ProfileScreen() {
 
   const [avatarUri, setAvatarUri]   = useState<string | null>(null);
   const [bannerUri, setBannerUri]   = useState<string | null>(null);
+  const [hasUnreadNotif, setHasUnreadNotif] = useState(false);
   const [sessions,  setSessions]    = useState<SupabaseSession[]>([]);
   const [chartData, setChartData]   = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
@@ -331,6 +334,34 @@ export default function ProfileScreen() {
     getProfileAvatar().then(setAvatarUri);
     getProfileBanner().then(setBannerUri);
   }, []);
+
+  // Unread-notification dot: is the latest activity on my content newer than the
+  // last time I opened the Notifications screen? (Lightweight: 3 limit-1 queries.)
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const { data: mySess } = await supabase.from('sessions').select('id').eq('user_id', user.id);
+          const ids = (mySess ?? []).map((s) => s.id);
+          const [lk, cm, fl] = await Promise.all([
+            ids.length ? supabase.from('likes').select('created_at').in('session_id', ids).neq('user_id', user.id).order('created_at', { ascending: false }).limit(1) : Promise.resolve({ data: [] as any[] }),
+            ids.length ? supabase.from('comments').select('created_at').in('session_id', ids).neq('user_id', user.id).order('created_at', { ascending: false }).limit(1) : Promise.resolve({ data: [] as any[] }),
+            supabase.from('follows').select('created_at').eq('following_id', user.id).order('created_at', { ascending: false }).limit(1),
+          ]);
+          const times = [lk.data?.[0]?.created_at, cm.data?.[0]?.created_at, fl.data?.[0]?.created_at].filter(Boolean) as string[];
+          if (times.length === 0) { if (active) setHasUnreadNotif(false); return; }
+          const latest = Math.max(...times.map((t) => +new Date(t)));
+          const seen = await AsyncStorage.getItem(NOTIF_LAST_SEEN_KEY);
+          const seenMs = seen ? +new Date(seen) : 0;
+          if (active) setHasUnreadNotif(latest > seenMs);
+        } catch { /* ignore — dot just won't show */ }
+      })();
+      return () => { active = false; };
+    }, [])
+  );
 
   // Every time the Profile tab gains focus, fetch sessions + climbs fresh from
   // Supabase then derive all stats and chart data — no extra round-trips.
@@ -737,6 +768,10 @@ export default function ProfileScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.iconBtn} hitSlop={8} onPress={() => router.push('/notifications')} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={23} color={INK} />
+            {hasUnreadNotif && <View style={styles.notifDot} />}
+          </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.7}>
             <Ionicons name="add-circle-outline" size={24} color={SAND} />
           </TouchableOpacity>
@@ -1604,6 +1639,17 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notifDot: {
+    position: 'absolute',
+    top: 5,
+    right: 6,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: SAND,
+    borderWidth: 1.5,
+    borderColor: BG,
   },
 
   // ─── Banner ───────────────────────────────────────────────────
