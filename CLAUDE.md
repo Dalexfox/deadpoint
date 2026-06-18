@@ -878,7 +878,18 @@ Therefore:
 - [x] Follow infrastructure (`follows` table + RLS) — done
 - [x] Follower/following counts on profiles + bottom-sheet user lists — done
 - [x] Feed prioritises followed users — their posts appear first, then others by likes — done
-- [ ] Push notifications
+- [x] In-app notifications inbox (`/notifications`) — likes/comments/follows, derived (no table) — done
+- [ ] **Device push notifications** (TODO — deferred 2026-06-18, do later). The in-app
+      inbox above is the visible "Activity" list; this is the separate piece that sends a
+      banner to the phone when the app is **closed**. Plan when we pick it up:
+      1. `npx expo install expo-notifications`; add the config plugin in app.json.
+      2. Add `profiles.push_token text` (`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_token text`);
+         on login, request permission + `getExpoPushTokenAsync()` and upsert it to the row.
+      3. Server-side **sender** — a Supabase Edge Function (or DB triggers on `likes`/`comments`/`follows`
+         insert) that looks up the target owner's `push_token` and POSTs to Expo's Push API
+         (`https://exp.host/--/api/v2/push/send`). Don't notify self-actions.
+      4. APNs key in App Store Connect / EAS credentials; **needs a new build** (native module).
+      5. Tapping a push should deep-link to `/notifications` (or the specific `/session/[id]`).
 - [ ] More gyms (expand beyond NYC Vital locations)
 
 ### 🔜 Phase 3
