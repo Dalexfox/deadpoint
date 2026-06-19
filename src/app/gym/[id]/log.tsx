@@ -349,8 +349,8 @@ export default function GymLogScreen() {
         onConfirm={(p) => {
           setStartHold(p);
           setStartPickerOpen(false);
-          // Auto-select the hold colour from the marked start hold (only if none chosen).
-          if (p && photoUri && !holdColor) {
+          // Auto-select the hold colour from the marked start hold.
+          if (p && photoUri) {
             sampleHoldColor(photoUri, p.x, p.y).then(c => { if (c) handleSelectColor(c); });
           }
         }}

@@ -395,10 +395,9 @@ export default function LogScreen() {
         onConfirm={(p) => {
           setStartHold(p);
           setStartPickerOpen(false);
-          // Auto-select the hold colour from the marked start hold (only if the
-          // climber hasn't already picked one — reading the colour at the tapped
-          // point is reliable where whole-image detection isn't).
-          if (p && photoUri && !holdColor) {
+          // Auto-select the hold colour from the marked start hold — reading the
+          // colour at the tapped point is reliable where whole-image detection isn't.
+          if (p && photoUri) {
             sampleHoldColor(photoUri, p.x, p.y).then(c => { if (c) handleSelectColor(c); });
           }
         }}
