@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchGyms, gymName, type Gym } from '../../lib/gyms';
-import { detectHolds, type BoundingBox } from '../../lib/holdDetection';
+import { detectHolds, sampleHoldColor, type BoundingBox } from '../../lib/holdDetection';
 import { ensureCameraPermission } from '../../lib/permissions';
 import { StartHoldPicker } from '../../components/StartHoldPicker';
 
@@ -392,7 +392,16 @@ export default function LogScreen() {
         boxes={boxes}
         initial={startHold}
         onCancel={() => setStartPickerOpen(false)}
-        onConfirm={(p) => { setStartHold(p); setStartPickerOpen(false); }}
+        onConfirm={(p) => {
+          setStartHold(p);
+          setStartPickerOpen(false);
+          // Auto-select the hold colour from the marked start hold (only if the
+          // climber hasn't already picked one — reading the colour at the tapped
+          // point is reliable where whole-image detection isn't).
+          if (p && photoUri && !holdColor) {
+            sampleHoldColor(photoUri, p.x, p.y).then(c => { if (c) handleSelectColor(c); });
+          }
+        }}
       />
     </SafeAreaView>
   );

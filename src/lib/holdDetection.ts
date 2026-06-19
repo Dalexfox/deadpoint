@@ -258,3 +258,57 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
     return [];
   }
 }
+
+// ─── Sample the hold color at a single point ──────────────────────────────────
+// FAR more reliable than detectHolds(): instead of searching a noisy image for
+// all holds of a colour, we read the colour at ONE known point (the start hold the
+// climber tapped, x/y are 0–1 proportional) and vote a small window around it
+// against the colour ranges. Used to auto-select the hold-colour chip once a start
+// hold is marked. Returns the best colour id, or null if the sample is ambiguous.
+async function sampleColorPipeline(imageUri: string, x: number, y: number): Promise<string | null> {
+  const resized = await ImageManipulator.manipulateAsync(
+    imageUri, [{ resize: { width: 480 } }],
+    { format: ImageManipulator.SaveFormat.PNG, base64: true },
+  );
+  if (!resized.base64) return null;
+  const parsed = parsePNGPixels(decodeBase64(resized.base64));
+  if (!parsed) return null;
+
+  const { width, height, rgb } = parsed;
+  const cx = clamp(Math.round(x * width),  0, width  - 1);
+  const cy = clamp(Math.round(y * height), 0, height - 1);
+  const R = 10; // tight window around the tapped point — mostly the hold itself
+
+  const votes: Record<string, number> = {};
+  let total = 0;
+  for (let py = Math.max(0, cy - R); py <= Math.min(height - 1, cy + R); py++) {
+    for (let px = Math.max(0, cx - R); px <= Math.min(width - 1, cx + R); px++) {
+      const idx = (py * width + px) * 3;
+      const [h, s, l] = rgbToHsl(rgb[idx], rgb[idx + 1], rgb[idx + 2]);
+      total++;
+      for (const color in BASE_RANGES) {            // colored ranges first, black/white last
+        if (matchesRange(h, s, l, color, BASE_RANGES[color])) {
+          votes[color] = (votes[color] ?? 0) + 1;
+          break;
+        }
+      }
+    }
+  }
+
+  let best: string | null = null, bestN = 0;
+  for (const color in votes) {
+    if (votes[color] > bestN) { bestN = votes[color]; best = color; }
+  }
+  // Require a clear signal so we don't auto-fill from a mostly-background sample.
+  return best && total > 0 && bestN >= total * 0.15 ? best : null;
+}
+
+export async function sampleHoldColor(imageUri: string, x: number, y: number): Promise<string | null> {
+  const timeout = new Promise<string | null>(resolve => setTimeout(() => resolve(null), 4000));
+  try {
+    return await Promise.race([sampleColorPipeline(imageUri, x, y), timeout]);
+  } catch (err) {
+    console.warn('[holdDetection] sampleHoldColor error:', err);
+    return null;
+  }
+}
