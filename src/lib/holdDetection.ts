@@ -1,4 +1,3 @@
-import { Image } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { decode as decodeBase64 } from 'base64-arraybuffer';
 import pako from 'pako';
@@ -266,22 +265,20 @@ export async function detectHolds(imageUri: string, color: string): Promise<Boun
 // climber tapped, x/y are 0–1 proportional) and vote a small window around it
 // against the colour ranges. Used to auto-select the hold-colour chip once a start
 // hold is marked. Returns the best colour id, or null if the sample is ambiguous.
-function imageSize(uri: string): Promise<{ width: number; height: number } | null> {
-  return new Promise(resolve => {
-    Image.getSize(uri, (width, height) => resolve({ width, height }), () => resolve(null));
-  });
-}
-
 async function sampleColorPipeline(imageUri: string, x: number, y: number): Promise<string | null> {
-  const size = await imageSize(imageUri);
-  if (!size) return null;
-  const { width: W, height: H } = size;
+  // Reliable dimensions: resize to a known width and read the result's own
+  // width/height. (Image.getSize is flaky for local file:// URIs on iOS — when it
+  // failed it returned null and the whole sample silently bailed, so the chip was
+  // never auto-picked. Manipulator dims always come back.) We then crop THIS
+  // resized image around the tapped point.
+  const base = await ImageManipulator.manipulateAsync(imageUri, [{ resize: { width: 800 } }], {});
+  const W = base.width, H = base.height;
+  if (!W || !H) return null;
 
-  // Crop a tight region centred on the tapped point (~10% of the smaller side) and
-  // sample THAT at full res — so the hold fills most of the sample no matter how
-  // zoomed-out the original photo is (a fixed window in a 480px downscale missed
-  // small holds). Then vote every pixel of the crop against the colour ranges.
-  const cropSize = clamp(Math.round(Math.min(W, H) * 0.10), 48, 400);
+  // Crop a small region centred on the tapped point so the hold fills most of the
+  // sample no matter how zoomed-out the photo is, then vote every pixel of the
+  // crop against the colour ranges.
+  const cropSize = clamp(Math.round(W * 0.09), 40, 200);
   const originX  = clamp(Math.round(x * W - cropSize / 2), 0, Math.max(0, W - cropSize));
   const originY  = clamp(Math.round(y * H - cropSize / 2), 0, Math.max(0, H - cropSize));
   const cw = Math.min(cropSize, W - originX);
@@ -289,8 +286,8 @@ async function sampleColorPipeline(imageUri: string, x: number, y: number): Prom
   if (cw < 2 || ch < 2) return null;
 
   const cropped = await ImageManipulator.manipulateAsync(
-    imageUri,
-    [{ crop: { originX, originY, width: cw, height: ch } }, { resize: { width: 64 } }],
+    base.uri,
+    [{ crop: { originX, originY, width: cw, height: ch } }, { resize: { width: 48 } }],
     { format: ImageManipulator.SaveFormat.PNG, base64: true },
   );
   if (!cropped.base64) return null;
@@ -315,8 +312,10 @@ async function sampleColorPipeline(imageUri: string, x: number, y: number): Prom
   for (const color in votes) {
     if (votes[color] > bestN) { bestN = votes[color]; best = color; }
   }
-  // Require the winning colour to cover a meaningful share of the crop.
-  return best && n > 0 && bestN >= n * 0.15 ? best : null;
+  // Require the winning colour to cover a meaningful share of the crop. Lenient,
+  // because the climber tapped the hold's centre — the crop is mostly hold, so a
+  // best-guess colour the user can correct beats silently picking nothing.
+  return best && n > 0 && bestN >= n * 0.10 ? best : null;
 }
 
 export async function sampleHoldColor(imageUri: string, x: number, y: number): Promise<string | null> {
