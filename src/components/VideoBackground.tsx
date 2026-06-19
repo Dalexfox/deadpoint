@@ -13,7 +13,9 @@ import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
-export function VideoBackground({ uri, isActive, muted = false }: { uri: string; isActive: boolean; muted?: boolean }) {
+export function VideoBackground({
+  uri, isActive, muted = false, rate = 1,
+}: { uri: string; isActive: boolean; muted?: boolean; rate?: number }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
   });
@@ -26,6 +28,11 @@ export function VideoBackground({ uri, isActive, muted = false }: { uri: string;
   useEffect(() => {
     player.muted = muted;
   }, [muted, player]);
+
+  // Playback speed — press-and-hold the feed card boosts this to 2× (TikTok-style).
+  useEffect(() => {
+    player.playbackRate = rate;
+  }, [rate, player]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">

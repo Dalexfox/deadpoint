@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -269,6 +270,9 @@ function FullScreenCard({
 
   const displayName = post.username ? `@${post.username}` : post.name;
 
+  // Press-and-hold the card to speed the video to 2× (TikTok-style); release restores 1×.
+  const [boosting, setBoosting] = useState(false);
+
   // Animated follow-confirmation overlay
   const followAnim = useRef(new Animated.Value(0)).current;
 
@@ -298,7 +302,7 @@ function FullScreenCard({
       {hasMedia ? (
         isVideo ? (
           // Inline video — autoplays/loops while this card is the active one.
-          <VideoBackground uri={mediaItem!.uri} isActive={isActive} muted={muted} />
+          <VideoBackground uri={mediaItem!.uri} isActive={isActive} muted={muted} rate={boosting ? 2 : 1} />
         ) : (
           <Image
             source={{ uri: mediaItem!.uri }}
@@ -324,13 +328,30 @@ function FullScreenCard({
         pointerEvents="none"
       />
 
-      {/* ── Tap-to-mute (video only) — a tap anywhere on the card toggles sound ── */}
+      {/* ── Video gestures (video only) ──────────────────────────────────────────
+          Tap anywhere toggles sound; press-and-hold speeds playback to 2× and
+          releasing restores 1× (TikTok-style). A long press doesn't also fire the
+          tap, so holding never toggles mute. */}
       {isVideo && (
         <>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onToggleMute} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onToggleMute}
+            onLongPress={() => setBoosting(true)}
+            delayLongPress={180}
+            onPressOut={() => setBoosting(false)}
+          />
           <View style={card.muteBadge} pointerEvents="none">
             <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={15} color="#ffffff" />
           </View>
+          {boosting && (
+            <View style={card.speedWrap} pointerEvents="none">
+              <View style={card.speedBadge}>
+                <Ionicons name="play-forward" size={13} color="#ffffff" />
+                <Text style={card.speedText}>2×</Text>
+              </View>
+            </View>
+          )}
         </>
       )}
 
@@ -1690,6 +1711,30 @@ const card = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // 2× speed indicator — centred near the top while the card is held down.
+  speedWrap: {
+    position: 'absolute',
+    top: 72,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 12,
+  },
+  speedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  speedText: {
+    color: '#ffffff',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
   quietBadge: {
     position: 'absolute',
