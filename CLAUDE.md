@@ -904,6 +904,14 @@ Therefore:
          (`https://exp.host/--/api/v2/push/send`). Don't notify self-actions.
       4. APNs key in App Store Connect / EAS credentials; **needs a new build** (native module).
       5. Tapping a push should deep-link to `/notifications` (or the specific `/session/[id]`).
+- [ ] **Improve on-device hold detection** (TODO — deferred 2026-06-18, revisit later). The
+      outlines from `src/lib/holdDetection.ts` (HSL color matching + flood-fill) are a
+      **best-effort snapping aid, NOT required** — real gym photos (LED lighting, mixed-color
+      holds, angle) defeat the color matching often, so outlines frequently come up empty.
+      Per-climb identity does NOT depend on it: you still tap to place the start hold, and
+      Screen 2's photo disambiguation works regardless. When we pick it up, options to explore:
+      better/adaptive color sampling, letting the user lasso/confirm the hold region, or a
+      server-side / ML detector. Decision: leave as a nicety for now (2026-06-18).
 - [ ] More gyms (expand beyond NYC Vital locations)
 
 ### 🔜 Phase 3
