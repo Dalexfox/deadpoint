@@ -314,7 +314,10 @@ export default function GymDetailScreen() {
               style={styles.tabItem}
               onPress={() => setActiveTab(tab)}
               activeOpacity={0.7}>
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              <Text
+                style={[styles.tabLabel, isActive && styles.tabLabelActive]}
+                numberOfLines={1}
+                adjustsFontSizeToFit>
                 {label}
               </Text>
               {isActive && <View style={styles.tabIndicator} />}
@@ -726,13 +729,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 6,        // guaranteed gap so adjacent labels never touch
     position: 'relative',
   },
   tabLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Syne_800ExtraBold',
     color: INK3,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
+    textAlign: 'center',
+    alignSelf: 'stretch',        // fill the column so adjustsFontSizeToFit has a width bound
   },
   tabLabelActive: { color: SAND },
   tabIndicator: {
