@@ -70,12 +70,12 @@ DIVIDER    = 'rgba(26,20,8,0.08)'   // Hairline dividers
 - Inputs: CARD (`#f4f1eb`) fill, `borderRadius: 14`, text INK
 - Wordmark / accent: SAND (`#c8a84a`)
 - Submit button: SAND
-- **Brand mark:** both login + signup open with the shared `src/components/AuthBrand.tsx` — the `DEADPOINT` wordmark (SAND, 18px, letterSpacing 4) + a SAND dot-grid motif. ⚠️ NEVER put "DEADPOINT" inside the big 58px heading — at that size it's wider than the screen and **wraps mid-word** (this was the signup bug). The wordmark is its own small mark; the 58px heading is a short ≤8-char-per-line phrase ("WELCOME / BACK.", "CREATE / ACCOUNT.") with `numberOfLines={2} adjustsFontSizeToFit` as a small-screen safety net.
+- **Brand mark:** both login + signup open with the shared `src/components/AuthBrand.tsx` — the `DEADPOINT` wordmark (SAND, 18px, letterSpacing 4) + a SAND dot-grid motif. ⚠️ NEVER put "DEADPOINT" inside the big 58px heading — at that size it's wider than the screen and **wraps mid-word** (this was the signup bug). The wordmark is its own small mark; the heading is a short two-line phrase ("WELCOME / BACK.", "JOIN / DEADPOINT."). ⚠️ Render each line as its OWN single-line `<Text numberOfLines={1} adjustsFontSizeToFit>` — NOT one `<Text>` with a `\n`. `adjustsFontSizeToFit` + a hard `\n` is buggy on iOS and wraps a word mid-word even when it fits (that was the "WELCOME on two lines" bug). Heading is **52px** (lineHeight 54) so the widest line ("DEADPOINT.") fits at full size on normal phones — both lines stay the same size instead of one auto-shrinking.
 
 ### Typography
 - **Display / Headings:** `Syne_800ExtraBold` — bold, editorial, tight tracking
   - Screen titles: 42px, letterSpacing: -1.5
-  - Auth headings: 58px, letterSpacing: -2
+  - Auth headings: 52px (lineHeight 54), letterSpacing: -2 — one `<Text numberOfLines={1} adjustsFontSizeToFit>` per line
   - Profile name: 28px, letterSpacing: -1
 - **Body / UI:** Space Grotesk family
   - `SpaceGrotesk_700Bold` — gym names, action counts, dates, button labels

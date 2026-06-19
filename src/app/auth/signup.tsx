@@ -97,11 +97,14 @@ export default function SignupScreen() {
           {/* Brand */}
           <AuthBrand />
 
-          {/* Heading */}
+          {/* Heading — one <Text> per line so a word never wraps mid-word
+              (adjustsFontSizeToFit + a hard \n is buggy on iOS). DEADPOINT is wide,
+              so its line auto-shrinks to fit on narrow screens. */}
           <View style={styles.headingBlock}>
-            <Text style={styles.heading} numberOfLines={2} adjustsFontSizeToFit>
-              JOIN{'\n'}DEADPOINT.
-            </Text>
+            <View>
+              <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit>JOIN</Text>
+              <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit>DEADPOINT.</Text>
+            </View>
             <Text style={styles.subheading}>Track your climbs. Share your sessions.</Text>
           </View>
 
@@ -232,11 +235,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   heading: {
-    fontSize: 58,
+    fontSize: 52,
     fontFamily: 'Syne_800ExtraBold',
     color: INK,
     letterSpacing: -2,
-    lineHeight: 58,
+    lineHeight: 54,
   },
   subheading: {
     fontSize: 15,

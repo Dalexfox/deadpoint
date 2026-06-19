@@ -58,11 +58,13 @@ export default function LoginScreen() {
           {/* Brand */}
           <AuthBrand />
 
-          {/* Heading */}
+          {/* Heading — one <Text> per line so a word never wraps mid-word
+              (adjustsFontSizeToFit + a hard \n is buggy on iOS). */}
           <View style={styles.headingBlock}>
-            <Text style={styles.heading} numberOfLines={2} adjustsFontSizeToFit>
-              WELCOME{'\n'}BACK.
-            </Text>
+            <View>
+              <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit>WELCOME</Text>
+              <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit>BACK.</Text>
+            </View>
             <Text style={styles.subheading}>Log in to see what your crew is climbing.</Text>
           </View>
 
@@ -166,11 +168,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   heading: {
-    fontSize: 58,
+    fontSize: 52,
     fontFamily: 'Syne_800ExtraBold',
     color: INK,
     letterSpacing: -2,
-    lineHeight: 58,
+    lineHeight: 54,
   },
   subheading: {
     fontSize: 15,
