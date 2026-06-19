@@ -656,6 +656,8 @@ The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "
 
 Logging a climb is split across three screens. Both `(tabs)/log.tsx` (tab entry) and `gym/[id]/log.tsx` (gym detail entry) are Screen 1. Screens 2 and 3 live in `src/app/log-flow/` and cover the full screen (no tab bar).
 
+**⚡ Quick Log** — a shortcut button at the top of both Screen-1 entries jumps straight to Screen 3 (`/log-flow/send?quick=true`), skipping the recognition photo, hold-color/wall, and catalog matching entirely. In quick mode `send.tsx` hides the problem context pill, labels the step header "Quick log", and defaults the gym to the user's `home_gym_id`. The submit needs no changes — with no `problemId`/`newProblem` params, `finalProblemId` is null, so the climb logs with `problem_id: null` (no catalog attribution → can't be conflated with another same-color/grade/wall climb) and `recompute_problem_cover` is skipped. Best for fast bulk / quiet logging; the full identify flow stays for contributing a problem to the catalog.
+
 **Route params flow:**
 ```
 Screen 1 → always:          router.push('/log-flow/match?gymId=&gymName=&holdColor=&wallSection=&grade=')
@@ -848,6 +850,7 @@ Therefore:
 - **Follow system on profiles** — own profile shows "Invite Friends" (Share.share) + follower/following counts with bottom-sheet lists (following sheet has Unfollow buttons); other users' profiles show Follow/Following toggle + same count sheets
 - **Gym detail three-tab layout** — "Log a Climb" (gym info + CTA), "Current Climbs" (community climbs browser with grade slider, problem cards, video grid modal), and **"The Scene"** (this-week leaderboard + recent sends — `src/components/GymLeaderboard.tsx`)
 - **Gym leaderboard / The Scene** — per-gym this-week leaderboard (rank by Sends or Top grade) + recent-sends activity strip; local competition/FOMO for the seed. Derived live from sessions/climbs (public, non-project) — no schema.
+- **Quick Log** — ⚡ shortcut on the Log tab + gym-page log → `/log-flow/send?quick=true`: log a grade (+ optional media/notes/send-style) with no recognition photo, hold-color/wall, or catalog matching. Logs `problem_id: null` (no attribution → no conflation), defaults to home gym. For fast bulk / quiet logging.
 - **Current Climbs grade slider** — always shows V0–V10; filters section to selected grade; "No climbs logged" empty state per grade; defaults to V0 (no auto-snap)
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.

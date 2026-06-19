@@ -172,6 +172,19 @@ export default function LogScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
+        {/* Quick log — skip identification, just log a grade (+ optional media) */}
+        <TouchableOpacity
+          style={styles.quickLogBtn}
+          activeOpacity={0.85}
+          onPress={() => router.push('/log-flow/send?quick=true')}>
+          <Text style={styles.quickLogBolt}>⚡</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.quickLogTitle}>Quick log</Text>
+            <Text style={styles.quickLogSub}>Skip the details — just log a grade</Text>
+          </View>
+          <Text style={styles.quickLogChevron}>›</Text>
+        </TouchableOpacity>
+
         {/* 1 ── Recognition photo */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>RECOGNITION PHOTO</Text>
@@ -413,6 +426,20 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 14,
   },
+  quickLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 0.5,
+    borderColor: DIVIDER,
+  },
+  quickLogBolt: { fontSize: 18 },
+  quickLogTitle: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: -0.2 },
+  quickLogSub: { fontSize: 12, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginTop: 1 },
+  quickLogChevron: { fontSize: 22, fontFamily: 'SpaceGrotesk_300Light', color: INK3 },
   section: { gap: 8 },
   sectionLabel: {
     fontSize: 9,

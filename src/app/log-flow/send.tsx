@@ -36,7 +36,15 @@ const GRADES = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
 
 type SendMedia = { type: 'image' | 'video'; uri: string };
 
-function StepIndicator() {
+function StepIndicator({ quick }: { quick?: boolean }) {
+  if (quick) {
+    return (
+      <View style={si.row}>
+        <View style={[si.dot, si.dotActive, si.dotCurrent]} />
+        <Text style={si.label}>Quick log — just the grade</Text>
+      </View>
+    );
+  }
   return (
     <View style={si.row}>
       {([1, 2, 3] as const).map((step, i) => (
@@ -76,6 +84,7 @@ export default function SendScreen() {
     photoUri?:    string;   // recognition photo + start-hold coords (for new problems)
     startX?:      string;
     startY?:      string;
+    quick?:       string;   // 'true' = Quick Log — no problem matching/attribution
   }>();
 
   const {
@@ -92,7 +101,10 @@ export default function SendScreen() {
     photoUri,
     startX,
     startY,
+    quick,
   } = params;
+
+  const isQuick = quick === 'true';
 
   // Grade comes from Screen 2 (problemGrade) if a match was selected,
   // or from Screen 1 (screen1Grade) if skipped / no match found.
@@ -130,12 +142,22 @@ export default function SendScreen() {
   const nicknameRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    fetchGyms().then(gyms => {
+    fetchGyms().then(async gyms => {
       setGyms(gyms);
-      const match = gyms.find(g => g.id === gymId);
+      let match = gyms.find(g => g.id === gymId);
+      // Quick Log arrives with no gym in the route → default to the user's home gym.
+      if (!match && isQuick) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: prof } = await supabase.from('profiles').select('home_gym_id').eq('id', user.id).single();
+            if (prof?.home_gym_id) match = gyms.find(g => g.id === prof.home_gym_id);
+          }
+        } catch { /* user picks the gym manually */ }
+      }
       if (match) setSelectedGym(match);
     });
-  }, [gymId]);
+  }, [gymId, isQuick]);
 
   // Auto-focus the nickname field when arriving from the "you're the first" celebration.
   // Delayed so the screen-transition animation settles before the keyboard opens.
@@ -357,7 +379,7 @@ export default function SendScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StepIndicator />
+      <StepIndicator quick={isQuick} />
 
       {/* Nav */}
       <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
@@ -375,17 +397,19 @@ export default function SendScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
-        {/* Context pill */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>THE CLIMB</Text>
-          <View style={styles.contextPill}>
-            <View style={[styles.colorDot, { backgroundColor: swatch }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.pillName} numberOfLines={1}>{displayName}</Text>
-              <Text style={styles.pillGym} numberOfLines={1}>{paramGymName} · {wallSection}</Text>
+        {/* Context pill — the matched/new problem. Hidden for Quick Log (no problem). */}
+        {!isQuick && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>THE CLIMB</Text>
+            <View style={styles.contextPill}>
+              <View style={[styles.colorDot, { backgroundColor: swatch }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pillName} numberOfLines={1}>{displayName}</Text>
+                <Text style={styles.pillGym} numberOfLines={1}>{paramGymName} · {wallSection}</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Custom name (new problems only) */}
         {isNew && (
