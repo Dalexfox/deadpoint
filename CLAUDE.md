@@ -912,6 +912,14 @@ Therefore:
       Screen 2's photo disambiguation works regardless. When we pick it up, options to explore:
       better/adaptive color sampling, letting the user lasso/confirm the hold region, or a
       server-side / ML detector. Decision: leave as a nicety for now (2026-06-18).
+- [ ] **Consensus grading** (TODO — deferred 2026-06-19, build once there's log volume). Grades
+      are subjective (±1 is normal; color-band gyms make a "grade" an explicit range). The
+      climbing-authentic model: each climber logs THEIR perceived V-grade (their truth — drives
+      their own stats, never "wrong"); a shared problem then shows the **consensus** (median of
+      all logged grades) + the **spread** ("V4–V6 · most say V5"). Needs volume to be meaningful.
+      ⚠️ Implication for catalog matching: make grade a **±1 soft filter, not a hard key** (match
+      by color + wall + photo; grade is fuzzy) so the same climb logged V4 vs V5 doesn't split
+      into two entries. For now: climbers just log their honest read; no consensus UI yet.
 - [ ] More gyms (expand beyond NYC Vital locations)
 
 ### 🔜 Phase 3

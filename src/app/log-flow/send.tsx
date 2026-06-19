@@ -370,7 +370,7 @@ export default function SendScreen() {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.successScreen}>
           <Text style={styles.successEmoji}>🧗</Text>
-          <Text style={styles.successTitle}>CLIMB LOGGED</Text>
+          <Text style={styles.successTitle} numberOfLines={1} adjustsFontSizeToFit>CLIMB LOGGED</Text>
           <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
         </View>
       </SafeAreaView>
