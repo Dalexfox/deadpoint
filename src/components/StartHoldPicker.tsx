@@ -11,9 +11,9 @@
  * picker did, but now you can zoom in first to place it precisely when several
  * same-colour holds sit close together.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Modal, View, Text, Image, Pressable, ScrollView, StyleSheet,
+  Modal, View, Text, Image, ScrollView, StyleSheet,
   TouchableOpacity, useWindowDimensions, type GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,10 +67,28 @@ export function StartHoldPicker({
     return { x: best.x + best.width / 2, y: best.y + best.height / 2 };
   };
 
-  const handleTap = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    const x = Math.max(0, Math.min(1, locationX / contentW));
-    const y = Math.max(0, Math.min(1, locationY / contentH));
+  // Tap detection via raw touch events on the content layer. A Pressable here is
+  // swallowed by the zoomable ScrollView's gestures, so we track the touch
+  // ourselves and only place the hold on a clean single-finger tap (not a pan or
+  // pinch). locationX/Y are relative to the content rect → zoom-invariant.
+  const touchRef = useRef<{ x: number; y: number; multi: boolean } | null>(null);
+
+  const onTouchStart = (e: GestureResponderEvent) => {
+    if (e.nativeEvent.touches.length > 1) {
+      if (touchRef.current) touchRef.current.multi = true; // pinch
+      return;
+    }
+    touchRef.current = { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, multi: false };
+  };
+
+  const onTouchEnd = (e: GestureResponderEvent) => {
+    const t = touchRef.current;
+    touchRef.current = null;
+    if (!t || t.multi) return;                              // was a pinch
+    const ex = e.nativeEvent.locationX, ey = e.nativeEvent.locationY;
+    if (Math.hypot(ex - t.x, ey - t.y) > 14) return;        // was a pan/scroll
+    const x = Math.max(0, Math.min(1, ex / contentW));
+    const y = Math.max(0, Math.min(1, ey / contentH));
     setPoint(snap(x, y));
   };
 
@@ -106,7 +124,12 @@ export function StartHoldPicker({
               showsHorizontalScrollIndicator={false}
               showsVerticalScrollIndicator={false}
               bouncesZoom>
-              <View style={{ width: contentW, height: contentH }}>
+              {/* Touch handlers on the content rect itself — they bubble through the
+                  Image/boxes and survive the ScrollView's pan/zoom gestures. */}
+              <View
+                style={{ width: contentW, height: contentH }}
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}>
                 <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 {boxes.map((b, i) => (
                   <View
@@ -120,8 +143,6 @@ export function StartHoldPicker({
                     }]}
                   />
                 ))}
-                {/* Tap layer — child of the content rect, so locationX/Y are zoom-invariant. */}
-                <Pressable style={StyleSheet.absoluteFill} onPress={handleTap} />
                 {point && (
                   <View
                     pointerEvents="none"
