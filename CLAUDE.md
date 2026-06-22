@@ -422,14 +422,17 @@ const res = await FileSystem.uploadAsync(
 
 ### Auth Flow
 - Unauthenticated → `/auth/login`
-- Authenticated → `/(tabs)`
+- Authenticated, intro not yet seen → `/onboarding` (3-card intro, once per install)
+- Authenticated, intro seen → `/(tabs)`
 - Auth state managed in `src/app/_layout.tsx` via `supabase.auth.onAuthStateChange`
 - Root layout also calls `getUser()` to verify session validity on startup; signs out if stale
+- **Onboarding gate** (`src/app/_layout.tsx` + `src/app/onboarding.tsx` + `src/lib/onboarding.ts`): the root layout reads a `hasSeenOnboarding` AsyncStorage flag into `seenOnboarding` state (null = still loading → don't redirect yet, so the feed never flashes). The redirect effect: not-logged-in → `/auth/login`; logged-in + `!seen` → `/onboarding`; logged-in + `seen` + (in auth or onboarding) → `/(tabs)`. The intro shows AFTER auth, never before. ⚠️ Completion calls `markSeen()` from `OnboardingContext` (provided by `_layout`, owns the flag) — it flips the **in-memory** flag AND persists to AsyncStorage. The in-memory update is essential: without it the redirect would still see `false` after "Get started" and **bounce the user straight back to `/onboarding`**. `onboarding` is registered in the root Stack with `gestureEnabled:false` (can't swipe back to auth).
 
 ### Route Structure
 ```
 src/app/
-  _layout.tsx          — Root layout: font loading, auth state, redirect logic
+  _layout.tsx          — Root layout: font loading, auth state, onboarding gate, redirect logic
+  onboarding.tsx       — 3-card swipeable intro (post-auth, once per install). See "Auth Flow"
   auth/
     _layout.tsx        — Auth stack (fade animation)
     login.tsx          — Email + password login
@@ -482,6 +485,7 @@ src/lib/
   gyms.ts              — fetchGyms() + gymName() helper; in-process cache; SINGLE SOURCE OF TRUTH for gym data
   holdDetection.ts     — On-device hold color work. `detectHolds(uri, color)`: downscale to max 480px wide PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching (red hue wraps 345–15), flood-fill cluster detection (≥0.15% of pixels), one relaxed-bounds retry, 4s timeout → BoundingBox[] (0–1). ⚠️ Whole-image detection is unreliable on real photos (best-effort only). `sampleHoldColor(uri, x, y)`: the RELIABLE one — reads the colour at ONE known point (the marked start hold): resize once for dependable dims (NOT `Image.getSize`, which is flaky for local `file://` URIs and silently bailed the whole sample → the chip never auto-picked), crop a small window (~9%) centred on the point, vote its pixels against the colour ranges (winner needs ≥10% share) → best hold-colour id or null. Powers start-hold → auto-colour-chip.
   homeGym.ts           — syncHomeGymAfterSubmit(userId, justLoggedGymId): silent home-gym inference. Sets profiles.home_gym_id to the just-logged gym when null; from the 3rd session onward syncs to the most-logged gym (only writes if the leader differs). Best-effort, swallows errors. Called post-submit in send.tsx.
+  onboarding.ts        — Onboarding intro context + `ONBOARDING_KEY` ('hasSeenOnboarding'). `OnboardingContext` exposes `markSeen()` (provided by `_layout`, which owns the flag state); `useOnboarding()` hook. The flag state lives in `_layout` so the post-auth redirect can read it; the context only hands `markSeen` down to `onboarding.tsx`. See "Auth Flow".
   stats.ts             — Pure, unit-testable progress helpers: gradeValue, highestGrade, isNewHighPoint, monthStats, weekStreak. All date math is LOCAL time; weekStreak gives the in-progress current week a one-week grace so a streak isn't shown broken mid-week. No Supabase, no React.
   constants.ts         — OFFICIAL_ACCOUNT_ID (string | null). When non-null, signup creates an auto-follow to it; currently null (no auto-follow). The follow is ordinary and unfollowable.
   groupPosts.ts        — Pure render-time feed fold: groupPosts(posts) → (Post | GroupedPost)[]. Groups same user_id + gym_id + LOCAL day; cover = hardest grade, pages = cover-first or feed_rank order. See "Feed Session Grouping".
@@ -548,7 +552,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
 - `post.userId` is set from `session.user_id` in `fetchSessionPosts` and stored as `userId?: string` on the `Post` type in `store.ts`.
 
 ### Feed First-Run Cards (zero-onboarding personalization)
-There is NO onboarding flow — a new user lands directly in the feed. The feed renders a single `FeedItem[]` list (a discriminated union: `post` | `gymPicker` | `gymConfirm` | `suggestions` | `empty`). All first-run cards are **full-height items in the same snap FlatList**, so vertical snap behaviour is identical for every item. The whole load is wrapped so any failed query shows a quiet inline retry card (`FeedErrorCard`), never a blank/crashed screen.
+Beyond the one-time intro cards (`/onboarding`, shown once per install right after auth — see "Auth Flow"), there is NO in-feed onboarding gating: a new user lands directly in the feed and is personalized inline. The feed renders a single `FeedItem[]` list (a discriminated union: `post` | `gymPicker` | `gymConfirm` | `suggestions` | `empty`). All first-run cards are **full-height items in the same snap FlatList**, so vertical snap behaviour is identical for every item. The whole load is wrapped so any failed query shows a quiet inline retry card (`FeedErrorCard`), never a blank/crashed screen.
 - **Gym picker** (`gymPicker`) — first item while `home_gym_id` is null: "YOUR GYM" label + "Where do you climb?" (SAND on INK) + gym chips (name + neighborhood) from `fetchGyms()`. Tapping a chip writes `profiles.home_gym_id`.
 - **Confirmation** (`gymConfirm`) — replaces the picker in place after a selection ("{gym} set as your gym…", taps to `/gym/[id]`). Driven by transient `gymJustSet` state; cleared on the next feed refresh and never returns.
 - **Suggestions** (`suggestions`) — injected after the 3rd post ONLY when `home_gym_id` is set AND the user follows < 3 people AND another profile shares their home gym. Horizontal row of avatar + @username + Follow button; reuses the feed's own `handleFollowToggle` mutation (never duplicated). Dismissible ✕.
@@ -873,7 +877,8 @@ Therefore:
 - **"You're the first." celebration** (Screen 2) — when both match passes return zero, Screen 2 shows a full-card first-logger celebration (SAND dot-grid motif, `NEW PROBLEM` label, headline + gym-name subline, `NAME YOUR CLIMB` / `Log without naming` CTAs) instead of a dead-end empty state. A Supabase query failure shows a quiet retry state instead — never the celebration.
 - **Close-matches pass** — before declaring "first", Screen 2 runs a broadened query (same gym + color + grade, any wall section) and surfaces those under a `CLOSE MATCHES` label above the YES/NO actions.
 - "CLIMB LOGGED" success screen (centered) after submitting a send
-- **Zero-onboarding first-run experience** — signup lands straight in the feed; in-feed gym picker → confirmation cards (sets `profiles.home_gym_id`); silent home-gym inference on submit (`src/lib/homeGym.ts`); in-feed CLIMBERS-AT-gym suggestion card; "QUIET IN HERE" empty state; `OFFICIAL_ACCOUNT_ID` auto-follow scaffolding (off). See "Feed First-Run Cards".
+- **Onboarding intro cards** (`src/app/onboarding.tsx`) — a 3-card swipeable intro (Track your climbs / See what's sending / Build your story) shown ONCE per install, AFTER auth and before the feed. Paged horizontal FlatList + fixed page dots + a single CTA that switches "Next" → "Get started". Completion persists `hasSeenOnboarding` (AsyncStorage) via `markSeen()` and routes to the feed. Routing + bounce-fix live in `_layout.tsx` (`OnboardingContext` / `src/lib/onboarding.ts`). See "Auth Flow".
+- **Zero-onboarding first-run experience** (in-feed) — after the intro, signup lands straight in the feed; in-feed gym picker → confirmation cards (sets `profiles.home_gym_id`); silent home-gym inference on submit (`src/lib/homeGym.ts`); in-feed CLIMBERS-AT-gym suggestion card; "QUIET IN HERE" empty state; `OFFICIAL_ACCOUNT_ID` auto-follow scaffolding (off). See "Feed First-Run Cards".
 - **New high point celebration** — first-ever / new-hardest send shows a full-screen SAND-on-INK grade celebration after submit (computed on read; `src/lib/stats.ts`)
 - **Profile PROGRESS section** — own-profile-only row: This month (sends + days), High point (grade chip), Streak (consecutive weeks). Pure helpers in `src/lib/stats.ts`.
 - **Canonical profile navigation** — every username/avatar (feed, comments, followers/following, suggestion card, explore rows, session detail, group header) routes to `/user/[id]` (other) or `/(tabs)/profile` (own), each with `hitSlop`. `user/[id]` is registered in the root Stack.
