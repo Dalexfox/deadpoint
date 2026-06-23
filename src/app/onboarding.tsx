@@ -1,8 +1,10 @@
 /**
  * Onboarding — a 3-card swipeable intro shown ONCE per install, AFTER auth and
- * before the feed. Swipeable content (paged horizontal FlatList) + a fixed bottom
- * row of page dots and a single CTA whose label/action switch on the active card
- * ("Next" advances; "Get started" on the last card finishes).
+ * before the feed. Editorial direction: left-aligned, oversized Syne headline,
+ * a small index label ("01 — 03") + a short SAND rule, no icon. Swipeable content
+ * (paged horizontal FlatList) + a fixed bottom row of page dots and a single CTA
+ * whose label/action switch on the active card ("Next" advances; "Get started"
+ * on the last card finishes).
  *
  * Completion calls markSeen() from OnboardingContext — that persists
  * `hasSeenOnboarding=true` AND updates the root layout's in-memory flag, so the
@@ -22,7 +24,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useOnboarding } from '../lib/onboarding';
 
@@ -33,12 +34,12 @@ const WHITE = '#ffffff';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type Card = { icon: keyof typeof Ionicons.glyphMap; title: string; body: string };
+type Card = { title: string; body: string };
 
 const CARDS: Card[] = [
-  { icon: 'triangle-outline',    title: 'Track your climbs',  body: 'Log every problem you send. Your progress, always with you.' },
-  { icon: 'people-outline',      title: "See what's sending", body: 'Follow climbers at your gym. Discover problems worth projecting.' },
-  { icon: 'trending-up-outline', title: 'Build your story',   body: 'Your grade history, streaks, and high points — all in one place.' },
+  { title: 'Track your climbs',  body: 'Log every problem you send. Your progress, always with you.' },
+  { title: "See what's sending", body: 'Follow climbers at your gym. Discover problems worth projecting.' },
+  { title: 'Build your story',   body: 'Your grade history, streaks, and high points — all in one place.' },
 ];
 
 export default function Onboarding() {
@@ -78,12 +79,11 @@ export default function Onboarding() {
           keyExtractor={(_, i) => String(i)}
           onMomentumScrollEnd={onMomentumEnd}
           getItemLayout={(_, i) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * i, index: i })}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View style={[styles.card, { width: SCREEN_WIDTH, height: cardH }]}>
-              <View style={styles.iconBox}>
-                <Ionicons name={item.icon} size={36} color={SAND} />
-              </View>
+              <Text style={styles.index}>{String(index + 1).padStart(2, '0')} — 03</Text>
               <Text style={styles.headline}>{item.title}</Text>
+              <View style={styles.rule} />
               <Text style={styles.body}>{item.body}</Text>
             </View>
           )}
@@ -109,32 +109,36 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: WHITE },
   listArea:  { flex: 1 },
   card: {
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 32,
   },
-  iconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: '#f5f0e8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 28,
+  index: {
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 12,
+    letterSpacing: 2.5,
+    color: SAND,
+    marginBottom: 18,
   },
   headline: {
-    fontFamily: 'Syne_700Bold',
-    fontSize: 24,
+    fontFamily: 'Syne_800ExtraBold',
+    fontSize: 40,
+    lineHeight: 44,
+    letterSpacing: -1.5,
     color: INK,
-    textAlign: 'center',
-    marginBottom: 12,
+  },
+  rule: {
+    width: 40,
+    height: 3,
+    backgroundColor: SAND,
+    marginTop: 22,
+    marginBottom: 22,
   },
   body: {
     fontFamily: 'SpaceGrotesk_400Regular',
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 23,
     color: INK3,
-    textAlign: 'center',
-    lineHeight: 22,
+    maxWidth: 300,
   },
   controls: {
     paddingHorizontal: 32,
@@ -142,7 +146,7 @@ const styles = StyleSheet.create({
   },
   dotsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: 8,
     marginBottom: 20,
   },

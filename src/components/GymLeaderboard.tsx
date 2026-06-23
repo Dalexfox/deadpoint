@@ -11,8 +11,6 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { gradeValue } from '../lib/stats';
 
-const BG      = '#ffffff';
-const CARD    = '#f4f1eb';
 const SURFACE = '#ece8df';
 const INK     = '#1a1408';
 const INK2    = '#3d3320';
@@ -156,14 +154,16 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
     );
   }
 
-  const Avatar = ({ uri, name, size = 38 }: { uri: string | null; name: string; size?: number }) =>
-    uri ? (
-      <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#2a2010' }} />
+  const Avatar = ({ uri, name, size = 36 }: { uri: string | null; name: string; size?: number }) => {
+    const radius = Math.round(size * 0.26); // soft-square chips, matching the app's square-avatar convention
+    return uri ? (
+      <Image source={{ uri }} style={{ width: size, height: size, borderRadius: radius, backgroundColor: '#2a2010' }} />
     ) : (
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#2a2010', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: size, height: size, borderRadius: radius, backgroundColor: '#2a2010', alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: size * 0.36, fontFamily: 'Syne_800ExtraBold', color: SAND_LT }}>{toInitials(name)}</Text>
       </View>
     );
+  };
 
   return (
     <ScrollView contentContainerStyle={st.scroll} showsVerticalScrollIndicator={false}>
@@ -180,21 +180,34 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
         ))}
       </View>
 
-      {/* Leaderboard */}
+      {/* Leaderboard — flat rows, hairline separators, #1 in SAND. The right-hand
+          value is whatever you're ranking by (sends count or top grade); the
+          secondary metric sits under the name. */}
       <View style={st.board}>
-        {sorted.map((r, i) => (
-          <TouchableOpacity key={r.userId} style={st.row} activeOpacity={0.7} onPress={() => openUser(r.userId)}>
-            <Text style={[st.rank, i === 0 && st.rankTop]}>{i + 1}</Text>
-            <Avatar uri={r.avatar} name={r.name} />
-            <View style={st.rowBody}>
-              <Text style={st.rowName} numberOfLines={1}>{r.username ? `@${r.username}` : r.name}</Text>
-              <Text style={st.rowMeta}>{r.sends} send{r.sends !== 1 ? 's' : ''}</Text>
-            </View>
-            {r.topGrade ? (
-              <View style={st.gradePill}><Text style={st.gradePillText}>{r.topGrade}</Text></View>
-            ) : null}
-          </TouchableOpacity>
-        ))}
+        {sorted.map((r, i) => {
+          const last = i === sorted.length - 1;
+          return (
+            <TouchableOpacity
+              key={r.userId}
+              style={[st.row, last && st.rowLast]}
+              activeOpacity={0.7}
+              onPress={() => openUser(r.userId)}>
+              <Text style={[st.rank, i === 0 && st.rankTop]}>{i + 1}</Text>
+              <Avatar uri={r.avatar} name={r.name} />
+              <View style={st.rowBody}>
+                <Text style={st.rowName} numberOfLines={1}>{r.username ? `@${r.username}` : r.name}</Text>
+                <Text style={st.rowMeta} numberOfLines={1}>
+                  {sort === 'sends'
+                    ? (r.topGrade ? `Top ${r.topGrade}` : '—')
+                    : `${r.sends} send${r.sends !== 1 ? 's' : ''}`}
+                </Text>
+              </View>
+              <Text style={[st.rowVal, i === 0 && st.rowValTop]}>
+                {sort === 'sends' ? r.sends : (r.topGrade ?? '—')}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* Recent sends */}
@@ -232,15 +245,16 @@ const st = StyleSheet.create({
   toggleChipActive: { backgroundColor: INK },
   toggleText: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: INK3 },
   toggleTextActive: { color: '#ffffff' },
-  board: { backgroundColor: CARD, borderRadius: 16, borderWidth: 0.5, borderColor: DIVIDER, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DIVIDER },
-  rank: { width: 22, fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: INK3, textAlign: 'center' },
+  board: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: DIVIDER },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DIVIDER },
+  rowLast: { borderBottomWidth: 0 },
+  rank: { width: 16, fontSize: 14, fontFamily: 'Syne_800ExtraBold', color: INK3, textAlign: 'center' },
   rankTop: { color: SAND },
   rowBody: { flex: 1 },
   rowName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
   rowMeta: { fontSize: 12, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginTop: 1 },
-  gradePill: { backgroundColor: INK, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
-  gradePillText: { fontSize: 13, fontFamily: 'Syne_800ExtraBold', color: SAND_LT },
+  rowVal: { fontSize: 18, fontFamily: 'Syne_800ExtraBold', color: INK, letterSpacing: -0.5 },
+  rowValTop: { color: SAND },
   recent: { marginTop: 8, gap: 2 },
   recentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   recentText: { flex: 1, fontSize: 14, color: INK2 },
