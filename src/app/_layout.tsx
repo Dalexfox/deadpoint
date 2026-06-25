@@ -15,10 +15,12 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { SplashGate } from '../components/SplashGate';
 import { OnboardingContext, ONBOARDING_KEY } from '../lib/onboarding';
+import { registerForPushNotifications } from '../lib/push';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,6 +41,8 @@ export default function RootLayout() {
   // Onboarding intro flag. null = still reading from AsyncStorage (don't decide
   // feed-vs-intro yet, so we never flash the feed before redirecting).
   const [seenOnboarding, setSeenOnboarding] = useState<boolean | null>(null);
+  // A deep-link from a tapped push notification, held until the user is authed.
+  const [pendingNotifUrl, setPendingNotifUrl] = useState<string | null>(null);
   const segments = useSegments();
   const router = useRouter();
 
@@ -119,6 +123,33 @@ export default function RootLayout() {
       }
     }
   }, [session, initialized, segments, fontsLoaded, fontError, seenOnboarding]);
+
+  // Register this device for push once the user is authenticated.
+  useEffect(() => {
+    if (session?.user?.id) registerForPushNotifications(session.user.id);
+  }, [session?.user?.id]);
+
+  // Capture notification taps — both while running and from a cold start — and
+  // stash the deep-link URL to navigate once the user is authed.
+  useEffect(() => {
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      const url = response?.notification.request.content.data?.url;
+      if (typeof url === 'string') setPendingNotifUrl(url);
+    });
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const url = response.notification.request.content.data?.url;
+      if (typeof url === 'string') setPendingNotifUrl(url);
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Once authed, follow a pending notification deep-link (then clear it).
+  useEffect(() => {
+    if (pendingNotifUrl && session && initialized) {
+      router.push(pendingNotifUrl as never);
+      setPendingNotifUrl(null);
+    }
+  }, [pendingNotifUrl, session, initialized, router]);
 
   if (!fontsLoaded && !fontError) return null;
 

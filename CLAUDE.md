@@ -170,11 +170,13 @@ profiles (
   avatar_url text,           -- public Supabase Storage URL for profile photo
   bio text,                  -- optional short bio, shown below @username in profile header
   home_gym_id text,          -- the user's home gym (gyms.id); null until set by the picker or inferred
+  push_token text,           -- Expo push token for device notifications (src/lib/push.ts)
   created_at timestamp with time zone default now()
 )
--- ⚠️ bio + home_gym_id columns must be added manually if not present:
+-- ⚠️ bio + home_gym_id + push_token columns must be added manually if not present:
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio text;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS home_gym_id text;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_token text;
 
 -- Climbing sessions
 sessions (
@@ -486,6 +488,7 @@ src/lib/
   holdDetection.ts     — On-device hold color work. `detectHolds(uri, color)`: downscale to max 480px wide PNG via expo-image-manipulator, decode PNG binary, pako.inflate IDAT, reconstruct filter bytes, HSL color range matching (red hue wraps 345–15), flood-fill cluster detection (≥0.15% of pixels), one relaxed-bounds retry, 4s timeout → BoundingBox[] (0–1). ⚠️ Whole-image detection is unreliable on real photos (best-effort only). `sampleHoldColor(uri, x, y)`: the RELIABLE one — reads the colour at ONE known point (the marked start hold): resize once for dependable dims (NOT `Image.getSize`, which is flaky for local `file://` URIs and silently bailed the whole sample → the chip never auto-picked), crop a small window (~9%) centred on the point, vote its pixels against the colour ranges (winner needs ≥10% share) → best hold-colour id or null. Powers start-hold → auto-colour-chip.
   homeGym.ts           — syncHomeGymAfterSubmit(userId, justLoggedGymId): silent home-gym inference. Sets profiles.home_gym_id to the just-logged gym when null; from the 3rd session onward syncs to the most-logged gym (only writes if the leader differs). Best-effort, swallows errors. Called post-submit in send.tsx.
   onboarding.ts        — Onboarding intro context + `ONBOARDING_KEY` ('hasSeenOnboarding'). `OnboardingContext` exposes `markSeen()` (provided by `_layout`, which owns the flag state); `useOnboarding()` hook. The flag state lives in `_layout` so the post-auth redirect can read it; the context only hands `markSeen` down to `onboarding.tsx`. See "Auth Flow".
+  push.ts              — `registerForPushNotifications(userId)`: requests notification permission, gets the Expo push token (`getExpoPushTokenAsync` with the EAS projectId), upserts it to `profiles.push_token`. Sets the foreground notification handler. Best-effort, no-ops on simulators / when denied. Called from `_layout.tsx` on auth; taps are deep-linked in `_layout`. Server sender = `supabase/functions/notify`. See "Device push notifications".
   stats.ts             — Pure, unit-testable progress helpers: gradeValue, highestGrade, isNewHighPoint, monthStats, weekStreak. All date math is LOCAL time; weekStreak gives the in-progress current week a one-week grace so a streak isn't shown broken mid-week. No Supabase, no React.
   constants.ts         — OFFICIAL_ACCOUNT_ID (string | null). When non-null, signup creates an auto-follow to it; currently null (no auto-follow). The follow is ordinary and unfollowable.
   groupPosts.ts        — Pure render-time feed fold: groupPosts(posts) → (Post | GroupedPost)[]. Groups same user_id + gym_id + LOCAL day; cover = hardest grade, pages = cover-first or feed_rank order. See "Feed Session Grouping".
@@ -869,7 +872,7 @@ Therefore:
 - **Video cover preview** — selecting a video on the log screen shows its real first frame (paused expo-video) as the cover, not a text placeholder
 - **Tap-to-mute video** — tap a video card (feed or session detail) to toggle sound; feed mute is global (TikTok-style), with a speaker badge showing the state. Default sound ON.
 - **Hold-to-speed video** (feed) — press-and-hold a feed video card plays it at 2× while held (TikTok/Reels-style); releasing restores 1×. A centred `2×` badge shows while held. Implemented via the `VideoBackground` `rate` prop + a `Pressable` long-press in `FullScreenCard` (holding never toggles mute).
-- **In-app notifications inbox** (`/notifications`) — Instagram-style activity list: who liked/commented on your climbs (with post thumbnail → the post) and who started following you (with Follow-back). Derived live from `likes`/`comments`/`follows` — no notifications table. Opened from a bell in the Profile header that shows a SAND unread dot. (Device **push** notifications are still Phase 2.)
+- **In-app notifications inbox** (`/notifications`) — Instagram-style activity list: who liked/commented on your climbs (with post thumbnail → the post) and who started following you (with Follow-back). Derived live from `likes`/`comments`/`follows` — no notifications table. Opened from a bell in the Profile header that shows a SAND unread dot. (Device **push** notifications — the phone banner when the app is closed — are now built too: `src/lib/push.ts` + `supabase/functions/notify`; see "Device push notifications".)
 - **Shareable IG card** (Strava-style) — the feed + session-detail Share button opens `ShareCardSheet`: a branded portrait card (video still / photo + Grade / Gym / Date + Deadpoint mark) captured with `react-native-view-shot` and handed to the native share sheet (`expo-sharing`) for Instagram story/feed, Messages, or Save to Photos. **Video posts get a cover/frame picker** (Instagram-style filmstrip of sampled frames) + a **"Share full video"** option; images just use the image. Stills via `expo-video-thumbnails`. **Needs a build** (native modules). The growth flywheel for the gym seed.
 - **Branded video** (🔬 shipped to build, pending on-device verification) — `modules/branded-video` Swift/AVFoundation module burns the Deadpoint overlay onto a climb's clip so the *shared video* carries the brand (the real answer for a video-first sport). Primary share action for videos when linked; card + full-video remain fallbacks. ⚠️ Untestable without a build — first device test is the gate; likely needs a round or two on orientation/overlay-flip (`isGeometryFlipped`) and export.
 - **Branded default cover** — media-less climbs render `DefaultCover` (Grade / Gym / Date + Deadpoint motif) instead of a blank gradient (`src/components/DefaultCover.tsx`)
@@ -903,17 +906,23 @@ Therefore:
 - [x] Follower/following counts on profiles + bottom-sheet user lists — done
 - [x] Feed prioritises followed users — their posts appear first, then others by likes — done
 - [x] In-app notifications inbox (`/notifications`) — likes/comments/follows, derived (no table) — done
-- [ ] **Device push notifications** (TODO — deferred 2026-06-18, do later). The in-app
-      inbox above is the visible "Activity" list; this is the separate piece that sends a
-      banner to the phone when the app is **closed**. Plan when we pick it up:
-      1. `npx expo install expo-notifications`; add the config plugin in app.json.
-      2. Add `profiles.push_token text` (`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_token text`);
-         on login, request permission + `getExpoPushTokenAsync()` and upsert it to the row.
-      3. Server-side **sender** — a Supabase Edge Function (or DB triggers on `likes`/`comments`/`follows`
-         insert) that looks up the target owner's `push_token` and POSTs to Expo's Push API
-         (`https://exp.host/--/api/v2/push/send`). Don't notify self-actions.
-      4. APNs key in App Store Connect / EAS credentials; **needs a new build** (native module).
-      5. Tapping a push should deep-link to `/notifications` (or the specific `/session/[id]`).
+- [x] **Device push notifications** — built (code complete; needs the one-time setup below + a build to go live).
+      The in-app inbox is the visible "Activity" list; this is the separate piece that banners the
+      phone when the app is **closed**. Architecture:
+      - **Client:** `expo-notifications` (config plugin in app.json, SAND accent). `src/lib/push.ts`
+        `registerForPushNotifications(userId)` requests permission + `getExpoPushTokenAsync({projectId})`
+        and upserts `profiles.push_token`; `_layout.tsx` calls it once authed and handles notification
+        taps (runtime + cold start) → stashes `data.url` and `router.push`es it once authed.
+      - **Server:** a Supabase Edge Function `supabase/functions/notify` fired by **Database Webhooks**
+        on INSERT into `likes`/`comments`/`follows`. It resolves recipient (session owner / followed
+        user) + actor name, skips self-actions, looks up the recipient's `push_token` (service role),
+        and POSTs to Expo's Push API. Deep-links: likes/comments → `/session/[id]`, follows →
+        `/notifications`. Optional `WEBHOOK_SECRET` header guard.
+      - **One-time setup (the user does):** see `supabase/functions/notify/README.md` —
+        (1) `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_token text`;
+        (2) `supabase functions deploy notify --no-verify-jwt`;
+        (3) add 3 Database Webhooks (likes/comments/follows → notify);
+        (4) APNs key via `eas credentials` / next build; (5) rebuild (native module).
 - [ ] **Improve on-device hold detection** (TODO — deferred 2026-06-18, revisit later). The
       outlines from `src/lib/holdDetection.ts` (HSL color matching + flood-fill) are a
       **best-effort snapping aid, NOT required** — real gym photos (LED lighting, mixed-color
