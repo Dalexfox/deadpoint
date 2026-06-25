@@ -1159,6 +1159,10 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
+              {/* Clarify feed vs. logged climbs — they're the same thing unless quiet (beta #6) */}
+              <Text style={styles.myClimbsHint}>
+                Everything you&apos;ve logged lives here. Public climbs also appear on your feed; &ldquo;Only You&rdquo; climbs don&apos;t.
+              </Text>
               {/* ── Date picker trigger ── */}
               <Text style={styles.myClimbsSearchTitle}>Choose a Date:</Text>
               <TouchableOpacity
@@ -2177,6 +2181,14 @@ const styles = StyleSheet.create({
   // ─── My Climbs grid ──────────────────────────────────────────
 
   // Header row: slider on left, hamburger on right
+  myClimbsHint: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    color: INK3,
+    lineHeight: 17,
+    marginHorizontal: 16,
+    marginTop: 14,
+  },
   myClimbsSearchTitle: {
     fontSize: 13,
     fontFamily: 'SpaceGrotesk_700Bold',

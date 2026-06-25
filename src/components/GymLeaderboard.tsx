@@ -56,7 +56,8 @@ function toInitials(name: string): string {
 export function GymLeaderboard({ gymId }: { gymId: string }) {
   const router = useRouter();
   const [loading, setLoading]   = useState(true);
-  const [rows, setRows]         = useState<Row[]>([]);
+  const [rows, setRows]         = useState<Row[]>([]);       // this-week leaderboard
+  const [allClimbers, setAllClimbers] = useState<Row[]>([]); // all-time roster (everyone who's logged here)
   const [recent, setRecent]     = useState<Recent[]>([]);
   const [meId, setMeId]         = useState<string | null>(null);
   const [sort, setSort]         = useState<'sends' | 'grade'>('sends');
@@ -74,15 +75,15 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
       weekStart.setDate(now.getDate() - daysFromMon);
       weekStart.setHours(0, 0, 0, 0);
 
-      // Public sends at this gym this week (quiet never counts on a public board).
+      // Public sends at this gym, all-time (quiet never counts on a public board).
+      // We derive BOTH the this-week leaderboard and the all-time roster from this.
       const { data: sessions } = await supabase
         .from('sessions')
         .select('id, user_id, created_at, climbs(grade, send_style)')
         .eq('gym_id', gymId)
         .eq('visibility', 'public')
-        .gte('created_at', weekStart.toISOString())
         .order('created_at', { ascending: false })
-        .limit(300);
+        .limit(500);
 
       const sends = (sessions ?? []).map((s) => {
         const climb = ((s.climbs ?? []) as { grade: string; send_style: string | null }[])[0];
@@ -95,25 +96,31 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
         : { data: [] as any[] };
       const pm = new Map((profiles ?? []).map((p: any) => [p.id, p]));
 
-      // Aggregate per user.
-      const byUser = new Map<string, Row>();
-      sends.forEach((s) => {
-        const p: any = pm.get(s.userId);
-        const cur = byUser.get(s.userId) ?? {
-          userId: s.userId,
-          name: p?.full_name || p?.username || 'Climber',
-          username: p?.username ?? null,
-          avatar: p?.avatar_url ?? null,
-          sends: 0, topGrade: null, topVal: -1,
-        };
-        cur.sends += 1;
-        const v = s.grade ? gradeValue(s.grade) : -1;
-        if (v > cur.topVal) { cur.topVal = v; cur.topGrade = s.grade; }
-        byUser.set(s.userId, cur);
-      });
-      setRows([...byUser.values()]);
+      // Aggregate a list of sends into rows (per user: send count + top grade).
+      const aggregate = (list: typeof sends): Row[] => {
+        const byUser = new Map<string, Row>();
+        list.forEach((s) => {
+          const p: any = pm.get(s.userId);
+          const cur = byUser.get(s.userId) ?? {
+            userId: s.userId,
+            name: p?.full_name || p?.username || 'Climber',
+            username: p?.username ?? null,
+            avatar: p?.avatar_url ?? null,
+            sends: 0, topGrade: null, topVal: -1,
+          };
+          cur.sends += 1;
+          const v = s.grade ? gradeValue(s.grade) : -1;
+          if (v > cur.topVal) { cur.topVal = v; cur.topGrade = s.grade; }
+          byUser.set(s.userId, cur);
+        });
+        return [...byUser.values()];
+      };
 
-      // Recent sends strip (latest few).
+      // This week → competitive leaderboard; all-time → the full roster.
+      setRows(aggregate(sends.filter((s) => new Date(s.createdAt) >= weekStart)));
+      setAllClimbers(aggregate(sends));
+
+      // Recent sends strip (latest few, all-time).
       setRecent(sends.slice(0, 8).map((s) => {
         const p: any = pm.get(s.userId);
         return {
@@ -124,7 +131,7 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
         };
       }));
     } catch {
-      setRows([]); setRecent([]);
+      setRows([]); setRecent([]); setAllClimbers([]);
     } finally {
       setLoading(false);
     }
@@ -140,16 +147,18 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
       : (b.topVal - a.topVal) || (b.sends - a.sends),
   );
   const totalSends = rows.reduce((sum, r) => sum + r.sends, 0);
+  // All-time roster, ranked by total sends (then top grade).
+  const allRoster = [...allClimbers].sort((a, b) => (b.sends - a.sends) || (b.topVal - a.topVal));
 
   if (loading) {
     return <View style={st.center}><ActivityIndicator color={SAND} /></View>;
   }
 
-  if (rows.length === 0) {
+  if (allClimbers.length === 0) {
     return (
       <View style={st.center}>
-        <Text style={st.emptyTitle}>Quiet week so far</Text>
-        <Text style={st.emptySub}>No public sends here yet this week — log one and you&apos;re on the board.</Text>
+        <Text style={st.emptyTitle}>No climbers yet</Text>
+        <Text style={st.emptySub}>No public sends logged here yet — be the first and you&apos;ll start the scene.</Text>
       </View>
     );
   }
@@ -167,48 +176,54 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
 
   return (
     <ScrollView contentContainerStyle={st.scroll} showsVerticalScrollIndicator={false}>
-      {/* Headline */}
+      {/* This week — competitive leaderboard (or a quiet-week note) */}
       <Text style={st.kicker}>THIS WEEK</Text>
-      <Text style={st.headline}>{rows.length} climber{rows.length !== 1 ? 's' : ''} · {totalSends} send{totalSends !== 1 ? 's' : ''}</Text>
+      {rows.length > 0 ? (
+        <>
+          <Text style={st.headline}>{rows.length} climber{rows.length !== 1 ? 's' : ''} · {totalSends} send{totalSends !== 1 ? 's' : ''}</Text>
 
-      {/* Sort toggle */}
-      <View style={st.toggle}>
-        {(['sends', 'grade'] as const).map((k) => (
-          <TouchableOpacity key={k} style={[st.toggleChip, sort === k && st.toggleChipActive]} onPress={() => setSort(k)} activeOpacity={0.8}>
-            <Text style={[st.toggleText, sort === k && st.toggleTextActive]}>{k === 'sends' ? 'Sends' : 'Top grade'}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          {/* Sort toggle */}
+          <View style={st.toggle}>
+            {(['sends', 'grade'] as const).map((k) => (
+              <TouchableOpacity key={k} style={[st.toggleChip, sort === k && st.toggleChipActive]} onPress={() => setSort(k)} activeOpacity={0.8}>
+                <Text style={[st.toggleText, sort === k && st.toggleTextActive]}>{k === 'sends' ? 'Sends' : 'Top grade'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-      {/* Leaderboard — flat rows, hairline separators, #1 in SAND. The right-hand
-          value is whatever you're ranking by (sends count or top grade); the
-          secondary metric sits under the name. */}
-      <View style={st.board}>
-        {sorted.map((r, i) => {
-          const last = i === sorted.length - 1;
-          return (
-            <TouchableOpacity
-              key={r.userId}
-              style={[st.row, last && st.rowLast]}
-              activeOpacity={0.7}
-              onPress={() => openUser(r.userId)}>
-              <Text style={[st.rank, i === 0 && st.rankTop]}>{i + 1}</Text>
-              <Avatar uri={r.avatar} name={r.name} />
-              <View style={st.rowBody}>
-                <Text style={st.rowName} numberOfLines={1}>{r.username ? `@${r.username}` : r.name}</Text>
-                <Text style={st.rowMeta} numberOfLines={1}>
-                  {sort === 'sends'
-                    ? (r.topGrade ? `Top ${r.topGrade}` : '—')
-                    : `${r.sends} send${r.sends !== 1 ? 's' : ''}`}
-                </Text>
-              </View>
-              <Text style={[st.rowVal, i === 0 && st.rowValTop]}>
-                {sort === 'sends' ? r.sends : (r.topGrade ?? '—')}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+          {/* Leaderboard — flat rows, hairline separators, #1 in SAND. The right-hand
+              value is whatever you're ranking by (sends count or top grade); the
+              secondary metric sits under the name. */}
+          <View style={st.board}>
+            {sorted.map((r, i) => {
+              const last = i === sorted.length - 1;
+              return (
+                <TouchableOpacity
+                  key={r.userId}
+                  style={[st.row, last && st.rowLast]}
+                  activeOpacity={0.7}
+                  onPress={() => openUser(r.userId)}>
+                  <Text style={[st.rank, i === 0 && st.rankTop]}>{i + 1}</Text>
+                  <Avatar uri={r.avatar} name={r.name} />
+                  <View style={st.rowBody}>
+                    <Text style={st.rowName} numberOfLines={1}>{r.username ? `@${r.username}` : r.name}</Text>
+                    <Text style={st.rowMeta} numberOfLines={1}>
+                      {sort === 'sends'
+                        ? (r.topGrade ? `Top ${r.topGrade}` : '—')
+                        : `${r.sends} send${r.sends !== 1 ? 's' : ''}`}
+                    </Text>
+                  </View>
+                  <Text style={[st.rowVal, i === 0 && st.rowValTop]}>
+                    {sort === 'sends' ? r.sends : (r.topGrade ?? '—')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : (
+        <Text style={st.quietWeek}>No public sends here yet this week — log one and you&apos;re on the board.</Text>
+      )}
 
       {/* Recent sends */}
       {recent.length > 0 && (
@@ -229,6 +244,25 @@ export function GymLeaderboard({ gymId }: { gymId: string }) {
           </View>
         </>
       )}
+
+      {/* All climbers — the full all-time roster at this gym (everyone who's logged here) */}
+      <Text style={[st.kicker, { marginTop: 26 }]}>ALL CLIMBERS · {allRoster.length}</Text>
+      <View style={st.board}>
+        {allRoster.map((r, i) => (
+          <TouchableOpacity
+            key={r.userId}
+            style={[st.row, i === allRoster.length - 1 && st.rowLast]}
+            activeOpacity={0.7}
+            onPress={() => openUser(r.userId)}>
+            <Avatar uri={r.avatar} name={r.name} />
+            <View style={st.rowBody}>
+              <Text style={st.rowName} numberOfLines={1}>{r.username ? `@${r.username}` : r.name}</Text>
+              <Text style={st.rowMeta} numberOfLines={1}>{r.topGrade ? `Top ${r.topGrade}` : '—'}</Text>
+            </View>
+            <Text style={st.rowVal}>{r.sends}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </ScrollView>
   );
 }
@@ -240,6 +274,7 @@ const st = StyleSheet.create({
   emptySub: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK3, textAlign: 'center', lineHeight: 19 },
   kicker: { fontSize: 9, fontFamily: 'SpaceGrotesk_600SemiBold', letterSpacing: 2.5, color: INK3 },
   headline: { fontSize: 26, fontFamily: 'Syne_800ExtraBold', letterSpacing: -1, color: INK, marginTop: 6, marginBottom: 16 },
+  quietWeek: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK3, lineHeight: 19, marginTop: 6 },
   toggle: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   toggleChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: SURFACE },
   toggleChipActive: { backgroundColor: INK },

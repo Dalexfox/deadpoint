@@ -562,15 +562,24 @@ export default function SendScreen() {
           />
         </View>
 
-        {/* Visibility — Public (eye, SAND) ↔ Quiet (eye-off, INK3). Defaults Public. */}
+        {/* Visibility — Public (eye, SAND) ↔ Quiet (eye-off, INK3). Defaults Public.
+            Copy makes the feed connection explicit: logging publicly = posting to
+            your feed; quiet = logged to your climbs only (beta feedback #6). */}
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.visibilityRow}
             onPress={() => setIsPublic(v => !v)}
             activeOpacity={0.7}>
-            <Text style={styles.visibilityLabel}>
-              {isPublic ? 'WHO CAN SEE THIS' : 'ONLY YOU'}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.visibilityLabel}>
+                {isPublic ? 'SHARE TO FEED' : 'ONLY YOU'}
+              </Text>
+              <Text style={styles.soloHint}>
+                {isPublic
+                  ? 'Posts to your feed for everyone to see'
+                  : 'Logged to your climbs — not shared to the feed'}
+              </Text>
+            </View>
             <Ionicons
               name={isPublic ? 'eye-outline' : 'eye-off-outline'}
               size={22}

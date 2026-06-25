@@ -500,7 +500,7 @@ src/components/
   BrandedVideoOverlay.tsx — The TRANSPARENT version of the card (scrim + Grade/Gym/Date + Deadpoint mark, no opaque bg), rendered at the video's aspect and captured as a PNG (alpha) → fed to the `BrandedVideo` native module to burn onto the clip. forwardRef for capture.
   ShareCardSheet.tsx   — Full-screen preview + share flow. **Image** post → the photo is the hero. **Video** post → samples ~6 frames across the clip (`expo-video-thumbnails.getThumbnailAsync` at fixed times; out-of-range times drop) into an Instagram-style **cover filmstrip** — tap a frame to set the card's still. Share options for video: **Share branded video** (primary when the `BrandedVideo` native module is linked — captures `BrandedVideoOverlay` PNG, downloads the clip, `BrandedVideo.compose` burns the overlay on, shares the mp4), **Share as card** (the still), **Share full video** (raw clip). **Media-less** → branded card. `Image.prefetch`es remote stills so the capture isn't blank; "Share card" does `captureRef` → `expo-sharing.shareAsync` (IG story/feed, Messages, Save to Photos…). Opened from the feed + session-detail share buttons via a `ShareInput`.
   MentionText.tsx      — Renders a notes string with `@username` tokens as tappable links → resolves the handle to profiles.id on tap and routes to /(tabs)/profile (self) or /user/[id] (other). Plain "tag in the description" — no table; the handle is just typed into sessions.notes. Used by the feed card + session/[id] notes.
-  GymLeaderboard.tsx   — "The Scene" tab on the gym page: this-week leaderboard (Sends / Top-grade toggle) + recent-sends strip. Pure render from sessions/climbs/profiles (public, non-project, since Monday). No schema. Restrained styling: flat hairline-separated rows (no card box), soft-square avatar chips, #1 rank + value in SAND, and the right-hand value is the active ranking metric (send count or top grade) with the secondary metric under the name.
+  GymLeaderboard.tsx   — "The Scene" tab on the gym page: this-week leaderboard (Sends / Top-grade toggle) + recent-sends strip + an **all-time "All Climbers" roster** (everyone who's ever logged here, ranked by total sends; beta feedback "see all climbers in a gym"). One all-time query feeds all three (week board = client-filtered to this week; roster = all-time). Quiet-week → the board collapses to a one-line note but the roster still shows. Pure render from sessions/climbs/profiles (public, non-project). No schema. Restrained styling: flat hairline-separated rows (no card box), soft-square avatar chips, #1 rank + value in SAND, and the right-hand value is the active ranking metric (send count or top grade) with the secondary metric under the name.
   AuthBrand.tsx        — Shared DEADPOINT wordmark + dot-grid motif at the top of login + signup. Keeps the brand out of the big heading (where it wrapped mid-word).
 src/app/
   notifications.tsx    — In-app activity inbox. NO notifications table — derived live from existing data: likes/comments on the user's sessions + follows where following_id = me, merged + sorted newest-first. Each row: actor avatar/name (→ profile) + message + timestamp; like/comment rows show a post thumbnail (→ /session/[id], video posts show a ▶ placeholder), follow rows show a Follow-back toggle. Opening it stamps `NOTIF_LAST_SEEN_KEY` (AsyncStorage). The Profile header bell shows a SAND unread dot when the latest activity is newer than that stamp (computed in a lightweight 3×limit-1 focus query).
@@ -565,10 +565,14 @@ Beyond the one-time intro cards (`/onboarding`, shown once per install right aft
 A session is `'public'` (everyone) or `'quiet'` (only the owner). Quiet still
 counts in the owner's own stats, charts, streak and high-point — it's hidden
 only from *other* people.
-- **On log** (`log-flow/send.tsx`) — a toggle below Notes: `WHO CAN SEE THIS` +
-  `eye-outline` (SAND) when public, `ONLY YOU` + `eye-off-outline` (INK3) when
-  quiet. Defaults to Public every launch (`useState(true)`). Submit inserts
-  `visibility` + `feed_rank: null`.
+- **On log** (`log-flow/send.tsx`) — a toggle below Notes: `SHARE TO FEED` +
+  `eye-outline` (SAND) + hint "Posts to your feed for everyone to see" when
+  public; `ONLY YOU` + `eye-off-outline` (INK3) + hint "Logged to your climbs —
+  not shared to the feed" when quiet. The explicit copy makes the
+  logging-is-posting relationship clear (beta feedback: feed vs logged confusion).
+  Defaults to Public every launch (`useState(true)`). Submit inserts `visibility`
+  + `feed_rank: null`. (The My Climbs tab also shows a one-line explainer: public
+  climbs appear on your feed, "Only You" climbs don't.)
 - **After the fact** — own session cards (feed `FullScreenCard`, grouped pages,
   and `session/[id]`) show an `ellipsis-vertical` overflow → bottom sheet
   ("Make quiet"/"Make public") → **confirm step** → updates `sessions.visibility`.
@@ -634,7 +638,7 @@ posting. Posts hit the feed instantly and are only *visually* clustered.
 ### Gym Detail (`/gym/[id]`)
 The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "The Scene".
 
-**The Scene tab** (`src/components/GymLeaderboard.tsx`) — the local community/competition view: a **this-week leaderboard** of climbers at this gym (rank by **Sends** or **Top grade** via a toggle; #1 in SAND; tap a climber → their profile) + a **recent-sends** strip ("@user sent V6 · 2h" → `/session/[id]`). Pure render from `sessions` + `climbs` + `profiles` (public sends only, projects excluded, since Monday local) — **no schema**. Drives the local FOMO/competition that makes a single-gym seed feel alive. Re-fetches each time the tab is opened (the component mounts only when active).
+**The Scene tab** (`src/components/GymLeaderboard.tsx`) — the local community/competition view: a **this-week leaderboard** of climbers at this gym (rank by **Sends** or **Top grade** via a toggle; #1 in SAND; tap a climber → their profile) + a **recent-sends** strip ("@user sent V6 · 2h" → `/session/[id]`) + an **All Climbers** roster (every climber who's ever logged here, all-time, ranked by total sends — "see all climbers in a gym"). One all-time `sessions` query feeds all three: the week board is client-filtered to since-Monday-local, the roster uses everything; on a quiet week the board collapses to a note while the roster persists. Pure render from `sessions` + `climbs` + `profiles` (public sends only, projects excluded) — **no schema**. Drives the local FOMO/competition that makes a single-gym seed feel alive. Re-fetches each time the tab is opened (the component mounts only when active).
 
 **Route structure:** `src/app/gym/[id]/` (Stack layout)
 - `index.tsx` — two-tab gym detail screen (info + Current Climbs)
