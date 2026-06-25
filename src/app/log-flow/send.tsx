@@ -395,7 +395,9 @@ export default function SendScreen() {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled">
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive">
 
         {/* Context pill — the matched/new problem. Hidden for Quick Log (no problem). */}
         {!isQuick && (

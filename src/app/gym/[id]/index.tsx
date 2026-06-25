@@ -421,9 +421,6 @@ export default function GymDetailScreen() {
                   <Text style={styles.clubName}>{club.name}</Text>
                   <Text style={styles.clubMembers}>{club.members} members</Text>
                 </View>
-                <View style={styles.clubJoinBtn}>
-                  <Text style={styles.clubJoinLabel}>View</Text>
-                </View>
               </View>
             ))}
           </View>
