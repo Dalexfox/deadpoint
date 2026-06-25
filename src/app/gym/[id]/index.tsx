@@ -4,7 +4,6 @@ import {
   Dimensions,
   Image,
   Linking,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,9 +11,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import { GymLeaderboard } from '../../../components/GymLeaderboard';
+import { ClimbReel } from '../../../components/ClimbReel';
 
 // ── Design tokens ────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -33,7 +34,6 @@ const SCREEN_W = Dimensions.get('window').width;
 // V-scale grades — all 11 steps
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
 
-const PROB_CARD_GAP = 8;
 
 // ── Types ────────────────────────────────────────────────────
 type TabKey = 'log' | 'climbs' | 'scene';
@@ -134,18 +134,6 @@ const AMENITY_ICONS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-/** Convert a full name to 1–2 uppercase initials. */
-function toInitials(name: string): string {
-  return name.split(' ').filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('');
-}
-
-/** Chunk an array into rows of `size` for the 3-column row-first grid. */
-function toRows<T>(arr: T[], size = 3): T[][] {
-  const rows: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) rows.push(arr.slice(i, i + size));
-  return rows;
-}
-
 // ── Main component ───────────────────────────────────────────
 export default function GymDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -165,7 +153,8 @@ export default function GymDetailScreen() {
   // Index into the full GRADES array (V0–V10); slider always shows all 11
   const [sliderIndex,   setSliderIndex]   = useState(0);
   // Bottom-sheet modal for the video grid
-  const [modalGroup,    setModalGroup]    = useState<GradeGroup | null>(null);
+  // Immersive viewer (B): the selected grade's sessions + which one was tapped.
+  const [reel, setReel] = useState<{ sessions: SessionData[]; start: number } | null>(null);
 
   // ── Data loading ─────────────────────────────────────────────
   useFocusEffect(
@@ -265,7 +254,13 @@ export default function GymDetailScreen() {
             }));
 
           setGradeGroups(groups);
-          // Leave sliderIndex at 0 (V0) — don't auto-snap to first grade with data
+          // Snap to the first grade WITH climbs only if the current selection is
+          // empty — never land on an empty grade, but keep the user's pick across
+          // refocus when it's still valid.
+          if (groups.length) {
+            setSliderIndex((cur) =>
+              groups.some((g) => g.grade === GRADES[cur]) ? cur : GRADES.indexOf(groups[0].grade));
+          }
         } catch (err) {
           console.error('CurrentClimbs load error:', err);
         } finally {
@@ -452,47 +447,31 @@ export default function GymDetailScreen() {
       {activeTab === 'climbs' && (
         <View style={{ flex: 1 }}>
 
-          {/* ── Grade step-slider — always shows all V0–V10 ── */}
+          {/* ── Grade chips — big tap targets; grades with no climbs are dimmed ── */}
           {!climbsLoading && (
-            <View style={styles.sliderCard}>
-              {/* Selected grade in ACCENT pink */}
-              <Text style={styles.sliderValue}>{GRADES[sliderIndex]}</Text>
-              {/* Step track */}
-              <View style={styles.stepTrack}>
-                <View style={styles.stepTrackLine} />
-                <View
-                  style={[
-                    styles.stepTrackLineFilled,
-                    { width: `${(sliderIndex / (GRADES.length - 1)) * 100}%` },
-                  ]}
-                />
-                {GRADES.map((grade, i) => {
-                  const active = i === sliderIndex;
-                  return (
-                    <TouchableOpacity
-                      key={grade}
-                      style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
-                      onPress={() => handleSliderGrade(i)}
-                      activeOpacity={0.7}>
-                      <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {/* Grade labels */}
-              <View style={styles.stepLabels}>
-                {GRADES.map((grade, i) => (
-                  <Text
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsRow}>
+              {GRADES.map((grade, i) => {
+                const has    = gradeGroups.some((g) => g.grade === grade);
+                const active = i === sliderIndex;
+                return (
+                  <TouchableOpacity
                     key={grade}
-                    style={[styles.stepLabelText, i === sliderIndex && styles.stepLabelActive]}>
-                    {grade}
-                  </Text>
-                ))}
-              </View>
-            </View>
+                    style={[styles.chip, active && styles.chipActive, !has && !active && styles.chipEmpty]}
+                    onPress={() => handleSliderGrade(i)}
+                    activeOpacity={0.8}>
+                    <Text style={[styles.chipText, active && styles.chipTextActive, !has && !active && styles.chipTextEmpty]}>
+                      {grade}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           )}
 
-          {/* ── Single grade section (filtered by slider) ────── */}
+          {/* ── Selected grade → 2-up photo grid of logged climbs ── */}
           {climbsLoading ? (
             <View style={styles.loadingCenter}>
               <ActivityIndicator color={SAND} size="large" />
@@ -508,93 +487,56 @@ export default function GymDetailScreen() {
               </TouchableOpacity>
             </View>
           ) : (() => {
-            // Look up the grade group for the currently selected grade (may be null)
             const selectedGrade = GRADES[sliderIndex];
             const activeGroup = gradeGroups.find((g) => g.grade === selectedGrade) ?? null;
-            return (
-            <ScrollView
-              contentContainerStyle={styles.climbsScroll}
-              showsVerticalScrollIndicator={false}>
-
-              {activeGroup === null ? (
-                /* No data for this grade */
+            if (!activeGroup) {
+              return (
                 <View style={styles.gradeEmptyState}>
                   <Text style={styles.gradeEmptyGrade}>{selectedGrade}</Text>
                   <Text style={styles.gradeEmptyText}>No climbs logged at this grade yet.</Text>
                 </View>
-              ) : (
-              /* Grade section with data */
-              [activeGroup].map((group) => (
-                <View key={group.grade}>
-
-                  {/* Section header: grade pill + counts */}
-                  <View style={styles.gradeSectionHeader}>
-                    <View style={styles.gradePill}>
-                      <Text style={styles.gradePillText}>{group.grade}</Text>
-                    </View>
-                    <Text style={styles.gradeSectionMeta}>
-                      {group.sendCount} send{group.sendCount !== 1 ? 's' : ''}
-                    </Text>
-                    <Text style={styles.gradeSectionLikes}>
-                      ♥ {group.totalLikes}
-                    </Text>
-                  </View>
-
-                  {/*
-                    3-column row grid (grid-auto-flow: row):
-                    toRows chunks problems into groups of 3 — each group is one row.
-                    Rows stack vertically inside the outer ScrollView.
-                    Currently one aggregated card per grade.
-                    TODO (named problems): replace [group] with the problems array.
-                  */}
-                  <View style={styles.probGrid}>
-                    {toRows([group]).map((row, rowIdx) => (
-                      <View key={rowIdx} style={styles.probRow}>
-                        {row.map((g) => (
-                          <TouchableOpacity
-                            key={g.grade}
-                            style={styles.probCard}
-                            onPress={() => setModalGroup(g)}
-                            activeOpacity={0.85}>
-
-                            {/* Cover photo */}
-                            {g.coverMediaUrl ? (
-                              <Image
-                                source={{ uri: g.coverMediaUrl }}
-                                style={styles.probCardImage}
-                                resizeMode="cover"
-                              />
-                            ) : (
-                              <View style={[styles.probCardImage, styles.probCardNoPhoto]}>
-                                <Text style={styles.probCardNoPhotoIcon}>🧗</Text>
-                              </View>
-                            )}
-
-                            {/* Like count overlay — bottom left */}
-                            <View style={styles.probCardLikeOverlay}>
-                              <Text style={styles.probCardLikeText}>♥ {g.totalLikes}</Text>
-                            </View>
-
-                            {/* Send count label */}
-                            <View style={styles.probCardFooter}>
-                              <Text style={styles.probCardSends}>
-                                {g.sendCount} send{g.sendCount !== 1 ? 's' : ''}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                        {/* Pad incomplete rows so cards stay equal width */}
-                        {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => (
-                          <View key={`pad-${i}`} style={styles.probCardPad} />
-                        ))}
-                      </View>
-                    ))}
-                  </View>
+              );
+            }
+            return (
+              <ScrollView contentContainerStyle={styles.gridScroll} showsVerticalScrollIndicator={false}>
+                <Text style={styles.gridCount}>
+                  <Text style={styles.gridCountGrade}>{selectedGrade}</Text>
+                  {`  ·  ${activeGroup.sendCount} climb${activeGroup.sendCount !== 1 ? 's' : ''} on the wall`}
+                </Text>
+                <View style={styles.grid}>
+                  {activeGroup.sessions.map((s, idx) => {
+                    const handle = s.profile?.username
+                      ? `@${s.profile.username}`
+                      : (s.profile?.full_name || 'Climber');
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={styles.gcard}
+                        activeOpacity={0.88}
+                        onPress={() => setReel({ sessions: activeGroup.sessions, start: idx })}>
+                        {s.media_url ? (
+                          <Image source={{ uri: s.media_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                        ) : (
+                          <LinearGradient colors={['#2a2010', '#1a1408']} style={StyleSheet.absoluteFill} />
+                        )}
+                        <LinearGradient
+                          colors={['transparent', 'rgba(0,0,0,0.72)']}
+                          style={StyleSheet.absoluteFill}
+                          pointerEvents="none"
+                        />
+                        <View style={styles.gcardOverlay} pointerEvents="none">
+                          <View style={styles.gcardInfo}>
+                            <Text style={styles.gcardGrade}>{s.grade}</Text>
+                            <Text style={styles.gcardHandle} numberOfLines={1}>{handle}</Text>
+                          </View>
+                          <Text style={styles.gcardLike}>♥ {s.likeCount}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              )))}
-
-              <View style={{ height: 32 }} />
-            </ScrollView>
+                <View style={{ height: 32 }} />
+              </ScrollView>
             );
           })()}
         </View>
@@ -606,99 +548,17 @@ export default function GymDetailScreen() {
       {activeTab === 'scene' && <GymLeaderboard gymId={id as string} />}
 
       {/* ══════════════════════════════════════════════════════
-          VIDEO GRID MODAL
-          Conditionally rendered so it fully unmounts on close
-          and never blocks touches on the screen behind it.
+          IMMERSIVE VIEWER (B) — swipe through the selected grade's climbs.
+          Conditionally rendered so it fully unmounts on close.
       ══════════════════════════════════════════════════════ */}
-      {modalGroup !== null && (
-        <Modal
+      {reel && (
+        <ClimbReel
           visible
-          animationType="slide"
-          transparent
-          onRequestClose={() => setModalGroup(null)}>
-          <View style={styles.modalBackdrop}>
-            {/* Tap backdrop to close */}
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={() => setModalGroup(null)}
-            />
-
-            <View style={styles.modalPanel}>
-              {/* Handle */}
-              <View style={styles.modalHandle} />
-
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <View style={{ gap: 2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={styles.modalGradePill}>
-                      <Text style={styles.modalGradePillText}>{modalGroup.grade}</Text>
-                    </View>
-                    <Text style={styles.modalGymName}>{gym.name}</Text>
-                  </View>
-                  <Text style={styles.modalSendCount}>
-                    {modalGroup.sendCount} send{modalGroup.sendCount !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setModalGroup(null)} activeOpacity={0.7}>
-                  <Text style={styles.modalCloseBtn}>×</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* 3-column session grid — sorted by most liked (already sorted in gradeGroup) */}
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.videoGrid}>
-                {/* Chunk sessions into rows of 3 */}
-                {modalGroup.sessions
-                  .reduce<SessionData[][]>((rows, s, i) => {
-                    const rowIdx = Math.floor(i / 3);
-                    if (!rows[rowIdx]) rows[rowIdx] = [];
-                    rows[rowIdx].push(s);
-                    return rows;
-                  }, [])
-                  .map((row, rowIdx) => (
-                    <View key={rowIdx} style={styles.videoGridRow}>
-                      {row.map((session) => {
-                        const name = session.profile?.full_name ?? '';
-                        const initials = name ? toInitials(name) : '?';
-                        return (
-                          // TODO: wire tap to open this session in the feed
-                          <View key={session.id} style={styles.videoCell}>
-                            {session.media_url ? (
-                              <Image
-                                source={{ uri: session.media_url }}
-                                style={styles.videoCellImage}
-                                resizeMode="cover"
-                              />
-                            ) : (
-                              <View style={[styles.videoCellImage, styles.videoCellNoPhoto]}>
-                                <Text style={styles.videoCellNoPhotoGrade}>{session.grade}</Text>
-                              </View>
-                            )}
-
-                            {/* Climber initials chip — top left */}
-                            <View style={styles.videoCellInitials}>
-                              <Text style={styles.videoCellInitialsText}>{initials}</Text>
-                            </View>
-
-                            {/* Like count — bottom left */}
-                            <View style={styles.videoCellLike}>
-                              <Text style={styles.videoCellLikeText}>♥ {session.likeCount}</Text>
-                            </View>
-                          </View>
-                        );
-                      })}
-                      {/* Pad incomplete rows so the last row aligns left */}
-                      {row.length < 3 &&
-                        Array.from({ length: 3 - row.length }).map((_, i) => (
-                          <View key={`pad-${i}`} style={styles.videoCellPad} />
-                        ))}
-                    </View>
-                  ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+          gymName={gym.name}
+          sessions={reel.sessions}
+          startIndex={reel.start}
+          onClose={() => setReel(null)}
+        />
       )}
 
     </SafeAreaView>
@@ -830,32 +690,17 @@ const styles = StyleSheet.create({
   eventTime: { fontSize: 12, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND, letterSpacing: 0.1 },
   eventDesc: { fontSize: 13, fontFamily: 'SpaceGrotesk_400Regular', color: INK2, lineHeight: 18, marginTop: 2 },
 
-  // ── Current Climbs: grade step-slider ────────────────────────
-  sliderCard: {
-    backgroundColor: SURFACE,
-    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
-    borderRadius: 14, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
-    alignItems: 'center',
+  // ── Current Climbs: grade chips ──────────────────────────────
+  chipsRow: { paddingHorizontal: 20, paddingVertical: 14, gap: 8 },
+  chip: {
+    height: 38, paddingHorizontal: 18, borderRadius: 19,
+    backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center',
   },
-  sliderValue: {
-    fontSize: 28,
-    fontFamily: 'Syne_800ExtraBold',
-    color: ACCENT,      // selected grade in ACCENT pink per spec
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  stepTrack: { width: '100%', height: 32, justifyContent: 'center', marginBottom: 6 },
-  stepTrackLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: '#c2d9e3', borderRadius: 2 },
-  stepTrackLineFilled: { position: 'absolute', left: 0, height: 3, backgroundColor: SAND, borderRadius: 2 },
-  stepHitArea: {
-    position: 'absolute', width: 32, height: 32,
-    marginLeft: -16, alignItems: 'center', justifyContent: 'center',
-  },
-  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c2d9e3', borderWidth: 2, borderColor: '#ffffff' },
-  stepDotActive: { width: 20, height: 20, borderRadius: 10, backgroundColor: SAND, borderWidth: 3, borderColor: '#ffffff' },
-  stepLabels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
-  stepLabelText: { fontSize: 10, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, textAlign: 'center' },
-  stepLabelActive: { color: ACCENT, fontFamily: 'Syne_800ExtraBold' },
+  chipActive: { backgroundColor: INK },
+  chipEmpty: { backgroundColor: 'transparent', borderWidth: 0.5, borderColor: DIVIDER },
+  chipText: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: 0.2 },
+  chipTextActive: { color: '#ffffff' },
+  chipTextEmpty: { color: INK3 },
 
   // ── Current Climbs: loading / empty ─────────────────────────
   loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32 },
@@ -870,99 +715,22 @@ const styles = StyleSheet.create({
   },
   emptyLogBtnLabel: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
 
-  // ── Current Climbs: grade sections ──────────────────────────
-  climbsScroll: { paddingTop: 8, paddingBottom: 16 },
-
-  gradeSectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, marginTop: 20, marginBottom: 10,
-  },
-  gradePill: {
-    backgroundColor: ACCENT, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 4,
-  },
-  gradePillText: { fontSize: 14, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: 0.2 },
-  gradeSectionMeta: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2 },
-  gradeSectionLikes: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: ACCENT, marginLeft: 'auto' as any },
-
-  // Problem card grid — 3-column row-first layout
-  probGrid: { paddingHorizontal: 16, gap: PROB_CARD_GAP },
-  probRow: { flexDirection: 'row', gap: PROB_CARD_GAP },
-  probCard: {
-    flex: 1,                        // 3 cards divide the row width evenly
-    aspectRatio: 0.85,              // keeps cards a consistent height
+  // ── Current Climbs: 2-up photo grid ─────────────────────────
+  gridScroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
+  gridCount: { fontSize: 13, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginBottom: 14 },
+  gridCountGrade: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: INK },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  gcard: {
+    width: '48.5%', aspectRatio: 0.82,
     borderRadius: 14, overflow: 'hidden',
-    backgroundColor: SURFACE,
-    borderWidth: 1.5, borderColor: DIVIDER,
+    backgroundColor: SURFACE, marginBottom: 12,
   },
-  probCardPad: { flex: 1 },        // invisible filler for incomplete last rows
-  probCardImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  probCardNoPhoto: { alignItems: 'center', justifyContent: 'center' },
-  probCardNoPhotoIcon: { fontSize: 28 },
-  probCardLikeOverlay: {
-    position: 'absolute', bottom: 28, left: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 2,
+  gcardOverlay: {
+    position: 'absolute', left: 10, right: 10, bottom: 9,
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
   },
-  probCardLikeText: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: ACCENT },
-  probCardFooter: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.50)',
-    paddingHorizontal: 6, paddingVertical: 5,
-  },
-  probCardSends: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: '#ffffff' },
-
-  // ── Video grid modal ─────────────────────────────────────────
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalPanel: {
-    backgroundColor: BG,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: 32,
-  },
-  modalHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: DIVIDER, alignSelf: 'center', marginTop: 10, marginBottom: 4,
-  },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: DIVIDER,
-  },
-  modalGradePill: {
-    backgroundColor: ACCENT, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 3,
-  },
-  modalGradePillText: { fontSize: 13, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
-  modalGymName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: -0.2 },
-  modalSendCount: { fontSize: 13, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK3, marginTop: 2 },
-  modalCloseBtn: { fontSize: 26, color: INK3, lineHeight: 28, fontFamily: 'SpaceGrotesk_300Light' },
-
-  // 3-column video grid
-  videoGrid: { paddingHorizontal: 12, paddingTop: 12, gap: 4 },
-  videoGridRow: { flexDirection: 'row', gap: 4 },
-  videoCell: {
-    flex: 1,
-    aspectRatio: 0.75,     // portrait thumbnail (3:4)
-    borderRadius: 10, overflow: 'hidden',
-    backgroundColor: SURFACE,
-  },
-  videoCellImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  videoCellNoPhoto: { alignItems: 'center', justifyContent: 'center' },
-  videoCellNoPhotoGrade: { fontSize: 22, fontFamily: 'Syne_800ExtraBold', color: INK3 },
-  // Climber initials chip — top left
-  videoCellInitials: {
-    position: 'absolute', top: 6, left: 6,
-    backgroundColor: 'rgba(0,0,0,0.50)', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  videoCellInitialsText: { fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
-  // Like count — bottom left
-  videoCellLike: {
-    position: 'absolute', bottom: 6, left: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  videoCellLikeText: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: ACCENT },
-  videoCellPad: { flex: 1 },
+  gcardInfo: { flex: 1, marginRight: 6 },
+  gcardGrade: { fontSize: 18, fontFamily: 'Syne_800ExtraBold', color: SAND_LT },
+  gcardHandle: { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  gcardLike: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', color: '#ffffff' },
 });
