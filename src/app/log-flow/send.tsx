@@ -236,12 +236,16 @@ export default function SendScreen() {
         if (pErr) throw pErr;
         finalProblemId = newP.id;
 
-        // Upload the recognition photo as this problem's start-hold reference image.
+        // Upload the recognition photo as this problem's start-hold reference image
+        // — in the BACKGROUND so logging doesn't wait on it (it's only used later,
+        // on the match screen for the next logger of this problem).
         if (photoUri && sx != null && sy != null) {
-          const startUrl = await uploadProblemStartPhoto(photoUri, newP.id);
-          if (startUrl) {
-            await supabase.from('problems').update({ start_photo_url: startUrl }).eq('id', newP.id);
-          }
+          const newProblemId = newP.id;
+          uploadProblemStartPhoto(photoUri, newProblemId)
+            .then((startUrl) => {
+              if (startUrl) supabase.from('problems').update({ start_photo_url: startUrl }).eq('id', newProblemId);
+            })
+            .catch(() => {});
         }
       }
 
@@ -273,32 +277,37 @@ export default function SendScreen() {
         });
       if (cErr) throw cErr;
 
-      // 4. Upload send media and save to session
-      let mediaUrl: string | null = null;
+      // 4. Upload send media + recompute the cover — in the BACKGROUND.
+      //    The climb is already saved (steps 1–3); a big video upload must NOT make
+      //    "logged" wait. We fire-and-forget so the success screen + feed appear
+      //    instantly; media_url fills in when the upload lands (shows on the next
+      //    feed load). The promise survives navigation (it's not tied to component
+      //    state), and Alert is global so an upload failure still surfaces.
+      const sessionId = session.id;
+      const coverProblemId = finalProblemId;
       if (sendMedia) {
-        const up = await uploadSessionMedia(sendMedia.uri, sendMedia.type);
-        mediaUrl = up.url;
-        if (mediaUrl) {
-          await supabase.from('sessions').update({ media_url: mediaUrl }).eq('id', session.id);
-        } else {
-          // Don't fail silently — the climb still saves, but tell the user the
-          // media was rejected and why (large videos / disallowed type are common).
-          Alert.alert(
-            `Your ${sendMedia.type} didn't upload`,
-            `${up.error ?? 'Unknown error'}\n\nThe climb was logged, but without the ${sendMedia.type}. Videos over the storage size limit are the usual cause.`,
-          );
-        }
+        const media = sendMedia;
+        (async () => {
+          const up = await uploadSessionMedia(media.uri, media.type);
+          if (up.url) {
+            await supabase.from('sessions').update({ media_url: up.url }).eq('id', sessionId);
+            // Recompute the problem cover (SECURITY DEFINER + visibility filter live
+            // in the DB function — quiet sessions can never become a cover).
+            if (coverProblemId) await supabase.rpc('recompute_problem_cover', { problem_id: coverProblemId });
+          } else {
+            Alert.alert(
+              `Your ${media.type} didn't upload`,
+              `${up.error ?? 'Unknown error'}\n\nThe climb was logged, but without the ${media.type}. Videos over the storage size limit are the usual cause.`,
+            );
+          }
+        })().catch(() => {});
+      } else if (coverProblemId) {
+        // No media to upload — still refresh the cover in the background.
+        supabase.rpc('recompute_problem_cover', { problem_id: coverProblemId });
       }
 
-      // 5. Recompute the problem cover via RPC. SECURITY DEFINER + visibility
-      //    filter live in the DB function — quiet sessions can never become a
-      //    cover. Best-effort: a failure here must not block the success flow.
-      if (finalProblemId) {
-        await supabase.rpc('recompute_problem_cover', { problem_id: finalProblemId });
-      }
-
-      // Silent home-gym inference — best-effort, never blocks the success flow.
-      await syncHomeGymAfterSubmit(user.id, gymId);
+      // Silent home-gym inference — best-effort, fire-and-forget so it never blocks.
+      syncHomeGymAfterSubmit(user.id, gymId);
 
       // New high point? Compare this grade against the user's previous hardest
       // send, computed on read (no denormalized max stored). First-ever log
@@ -340,7 +349,7 @@ export default function SendScreen() {
         // Show the existing success path first, then the celebration overlay.
         setTimeout(() => setShowHighPoint(true), 1400);
       } else {
-        setTimeout(() => router.navigate('/(tabs)'), 2500);
+        setTimeout(() => router.navigate('/(tabs)'), 1800);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
