@@ -2219,7 +2219,7 @@ const overflow = StyleSheet.create({
 const grp = StyleSheet.create({
   header: {
     position: 'absolute',
-    top: 30,
+    top: 76,          // sit BELOW the Following | For You tabs (top:32, ~36px tall)
     left: 16,
     right: 60,        // clear the overflow button
     zIndex: 11,
