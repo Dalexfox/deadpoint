@@ -52,13 +52,7 @@
       ],
       "expo-video",
       "expo-image",
-      "expo-sharing",
-      [
-        "expo-notifications",
-        {
-          "color": "#c8a84a"
-        }
-      ]
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

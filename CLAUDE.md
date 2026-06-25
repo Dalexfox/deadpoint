@@ -910,6 +910,17 @@ Therefore:
 - [x] **Device push notifications** — built (code complete; needs the one-time setup below + a build to go live).
       The in-app inbox is the visible "Activity" list; this is the separate piece that banners the
       phone when the app is **closed**. Architecture:
+      - **⚠️ CURRENT STATE: the `expo-notifications` config plugin is REMOVED from app.json** so
+        production builds pass `--non-interactive`. Adding it back adds the **Push Notifications
+        capability / `aps-environment` entitlement**, which the existing provisioning profile lacks →
+        the Xcode build FAILS in non-interactive mode ("Provisioning profile … doesn't include the
+        Push Notifications capability"). The push *code* (push.ts + _layout wiring) stays in but
+        no-ops without the plugin. **To turn push ON:** re-add `["expo-notifications", { "color":
+        "#c8a84a" }]` to app.json `plugins`, then build ONCE **interactively** (`eas build -p ios
+        --profile production --auto-submit`, NO `--non-interactive`) so EAS registers the Push
+        capability on the App ID + regenerates the provisioning profile (uses the stored ASC API key;
+        just confirm the prompts). After that one interactive build, future `--non-interactive` builds
+        work. Plus the backend setup below.
       - **Client:** `expo-notifications` (config plugin in app.json, SAND accent). `src/lib/push.ts`
         `registerForPushNotifications(userId)` requests permission + `getExpoPushTokenAsync({projectId})`
         and upserts `profiles.push_token`; `_layout.tsx` calls it once authed and handles notification
