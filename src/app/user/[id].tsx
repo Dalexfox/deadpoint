@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { ClimbDatePicker, climbDayKey } from '../../components/ClimbDatePicker';
+import { ClimbThumb } from '../../components/ClimbThumb';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -515,13 +516,7 @@ export default function UserProfileScreen() {
                         activeOpacity={0.75}
                         onPress={() => router.push(`/session/${c.sessionId}`)}>
                         <View style={styles.climbCard}>
-                          {c.mediaUrl ? (
-                            <Image source={{ uri: c.mediaUrl }} style={styles.climbThumb} resizeMode="cover" />
-                          ) : (
-                            <View style={styles.climbThumbEmpty}>
-                              <Text style={styles.climbEmptyIcon}>🧗</Text>
-                            </View>
-                          )}
+                          <ClimbThumb uri={c.mediaUrl} grade={c.grade} style={styles.climbThumb} />
                           {c.sendStyle && (
                             <View style={[styles.climbStyleTag, c.sendStyle === 'project' && styles.climbStyleTagMuted]}>
                               <Text style={[styles.climbStyleTagText, c.sendStyle === 'project' && styles.climbStyleTagTextMuted]}>

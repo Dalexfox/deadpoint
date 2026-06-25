@@ -33,6 +33,7 @@ import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
 import { monthStats, highestGrade, weekStreak } from '../../lib/stats';
 import { ensureCameraPermission } from '../../lib/permissions';
 import { ClimbDatePicker, climbDayKey } from '../../components/ClimbDatePicker';
+import { ClimbThumb } from '../../components/ClimbThumb';
 
 // V-scale order used to determine hardest grade sent
 const GRADES = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10'];
@@ -163,13 +164,7 @@ const CLIMB_CARD_GAP = 8;
 function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
   return (
     <View style={styles.gridCard}>
-      {entry.mediaUrl ? (
-        <Image source={{ uri: entry.mediaUrl }} style={styles.gridCardThumb} resizeMode="cover" />
-      ) : (
-        <View style={styles.gridCardThumbEmpty}>
-          <Text style={styles.gridCardEmptyIcon}>🧗</Text>
-        </View>
-      )}
+      <ClimbThumb uri={entry.mediaUrl} grade={entry.grade} style={styles.gridCardThumb} />
       {entry.visibility === 'quiet' && (
         <View style={styles.gridCardQuiet}>
           <Ionicons name="eye-off-outline" size={12} color="#ffffff" />
