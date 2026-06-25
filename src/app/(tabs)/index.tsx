@@ -217,16 +217,11 @@ async function fetchSessionPosts(
     return post;
   });
 
-  // Followed users' posts first (already sorted by created_at desc from the query),
-  // then everyone else sorted by like count descending.
-  const followedPosts = allPosts.filter(p => p.userId && followingSet.has(p.userId));
-  const otherPosts    = allPosts
-    .filter(p => !p.userId || !followingSet.has(p.userId))
-    .sort((a, b) => b.likes - a.likes);
-
-  const posts = [...followedPosts, ...otherPosts];
-
-  return { posts, followingSet };
+  // Chronological — most-recent-first (the query already orders by created_at
+  // desc). Both tabs are time-sorted, so a fresh post leads For You + Following
+  // instead of getting buried. (Previously: followed-first, then everyone else by
+  // like count — which pushed new posts down under high-like ones.)
+  return { posts: allPosts, followingSet };
 }
 
 // ─── Full-screen card ─────────────────────────────────────────────────────────
