@@ -508,7 +508,7 @@ src/components/
   AuthBrand.tsx        — Shared DEADPOINT wordmark + dot-grid motif at the top of login + signup. Keeps the brand out of the big heading (where it wrapped mid-word).
 src/app/
   notifications.tsx    — In-app activity inbox. NO notifications table — derived live from existing data: likes/comments on the user's sessions + follows where following_id = me, merged + sorted newest-first. Each row: actor avatar/name (→ profile) + message + timestamp; like/comment rows show a post thumbnail (→ /session/[id], video posts show a ▶ placeholder), follow rows show a Follow-back toggle. Opening it stamps `NOTIF_LAST_SEEN_KEY` (AsyncStorage). The Profile header bell shows a SAND unread dot when the latest activity is newer than that stamp (computed in a lightweight 3×limit-1 focus query).
-  SplashGate.tsx       — Animated "two doors" launch overlay. Icon on #0d0a05 holds briefly, then two panels (each half the logo) slide apart to reveal the app, then unmounts. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
+  SplashGate.tsx       — Animated "two doors" launch overlay. The WHOLE screen is the Deadpoint speckled gold-dot pattern (a jittered grid of SAND/SAND_LT rounded dots — the same dots the "D" mark is built from, rendered via react-native-svg) on #0d0a05, with the D logo centred on top. Holds briefly, then two panels each carrying their half of the full-screen speckle + logo slide apart to reveal the app, then unmounts. The dot field is generated once (memoised) and both doors render the identical field clipped to their half, so the seam is seamless when closed. Sits under the static native splash so there's no flash. Rendered once at root (_layout.tsx).
 ```
 
 ### 5 Main Tabs
@@ -895,7 +895,7 @@ Therefore:
 - **Other users' climbs grid** — `/user/[id]` lists the user's public climbs (RLS-filtered) with the same grade slider, Date/Gym sort, and calendar date picker as My Climbs.
 - **Climb date picker** — `src/components/ClimbDatePicker.tsx`, a zero-dependency calendar used by My Climbs + `/user/[id]` to filter climbs to an exact day.
 - **Inline video** — `expo-video` via `src/components/VideoBackground.tsx`; autoplays on the active feed card / visible group page / session detail (replaced removed `expo-av`).
-- **Real app icon + animated splash** — dotted-D marker icon; static native splash on `#0d0a05`; `SplashGate` "two doors" launch reveal.
+- **Real app icon + animated splash** — dotted-D marker icon; static native splash on `#0d0a05`; `SplashGate` "two doors" launch reveal — the full screen is the speckled gold-dot brand pattern (+ centred D logo) that splits open.
 - **Live on TestFlight** — EAS production builds (`eas build … --auto-submit`), Supabase keys as EAS env vars, remote auto-incrementing build numbers. See "EAS Build + TestFlight".
 - Supabase database connection
 - User authentication — sign up (creates profile record) and log in
