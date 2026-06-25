@@ -945,6 +945,12 @@ bundle id `com.foxcollective.deadpoint`, App Store Connect app id `6780744569`.
 - **Build + submit:** `npx eas-cli build --platform ios --profile production --auto-submit`
   (build profiles in `eas.json`). `eas.json` uses `appVersionSource: "remote"` so EAS
   **auto-increments the iOS build number** — `ios.buildNumber` is NOT in app.json (remove it; it's ignored).
+- **⚠️ `--auto-submit` in `--non-interactive` mode needs `submit.production.ios.ascAppId`
+  in `eas.json`** (the App Store Connect app id, `6780744569`). Without it the build
+  still succeeds but the submit step fails ("Set ascAppId in the submit profile … or
+  re-run in interactive mode"). It's now set in `eas.json`; the ASC API key itself lives
+  in the EAS credentials service. To submit an already-built build:
+  `npx eas-cli submit -p ios --latest` (or `--id <buildId>`).
 - **⚠️ ENV VARS — the #1 launch-crash cause.** `.env` is gitignored, so EAS cloud builds
   do NOT get `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` → `createClient()`
   throws on the first line → instant crash at launch. They are set as **EAS environment
