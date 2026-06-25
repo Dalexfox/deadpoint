@@ -498,7 +498,7 @@ export default function GymDetailScreen() {
               );
             }
             return (
-              <ScrollView contentContainerStyle={styles.gridScroll} showsVerticalScrollIndicator={false}>
+              <ScrollView style={styles.gridFill} contentContainerStyle={styles.gridScroll} showsVerticalScrollIndicator={false}>
                 <Text style={styles.gridCount}>
                   <Text style={styles.gridCountGrade}>{selectedGrade}</Text>
                   {`  ·  ${activeGroup.sendCount} climb${activeGroup.sendCount !== 1 ? 's' : ''} on the wall`}
@@ -716,6 +716,7 @@ const styles = StyleSheet.create({
   emptyLogBtnLabel: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: '#ffffff' },
 
   // ── Current Climbs: 2-up photo grid ─────────────────────────
+  gridFill: { flex: 1 },   // bound the ScrollView to remaining height so it scrolls
   gridScroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
   gridCount: { fontSize: 13, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginBottom: 14 },
   gridCountGrade: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: INK },
