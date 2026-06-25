@@ -24,22 +24,31 @@ supabase functions deploy notify --no-verify-jwt
 `--no-verify-jwt` lets the Database Webhook call it. The function does its own
 auth with the service-role key (auto-injected) and the optional secret below.
 
-### 3. Add 3 Database Webhooks (Supabase → Database → Webhooks → Create)
-Create one webhook for **each** table — `likes`, `comments`, `follows`:
-- **Events:** Insert
-- **Type:** Supabase Edge Functions → choose **`notify`**
-- **Method:** POST
+### 3. Wire the triggers (likes / comments / follows → notify)
+Done via **`webhooks.sql`** (next to this file) — `pg_net` triggers that POST a
+`{ type, table, record }` payload to the function on every insert. It's the SQL
+equivalent of the dashboard's "Database Webhooks", but version-controlled and
+idempotent. Apply it with:
+```bash
+npx supabase db query --linked -f supabase/functions/notify/webhooks.sql
+```
+(Or paste it into Supabase → SQL Editor. The dashboard's Database Webhooks UI is
+an equivalent alternative — one hook each for `likes`/`comments`/`follows`,
+Insert → Edge Function `notify`.)
 
-### 4. Turn on iOS push delivery (APNs)
-Expo's push service delivers to iOS using an APNs key held by EAS. Either:
-- run `eas credentials` → iOS → **Push Notifications Key** → set one up, or
-- just run the next `eas build` — it will offer to create/manage the key.
+> ✅ For the live `deadpoint` project, steps 1 (column) and 3 (triggers) are
+> already applied, and step 2 (deploy) is done.
 
-### 5. Rebuild the app
-`expo-notifications` is a native module, so it needs a fresh build:
+### 4. Turn on iOS push delivery (APNs) — **the remaining step**
+The Push Notifications capability + APNs key are set up by EAS during a build, but
+the **first** production build after adding the `expo-notifications` plugin must be
+run **interactively** so EAS can register the capability + regenerate the
+provisioning profile (a non-interactive build fails — that killed build #18):
 ```bash
 npx eas-cli build --platform ios --profile production --auto-submit
 ```
+(No `--non-interactive`. Answer **Yes** to any Push Notifications / provisioning
+prompts.) After this one interactive build, future `--non-interactive` builds work.
 
 ## Optional hardening (recommended once live)
 Stop randoms from POSTing fake payloads to the function:

@@ -927,11 +927,12 @@ Therefore:
         user) + actor name, skips self-actions, looks up the recipient's `push_token` (service role),
         and POSTs to Expo's Push API. Deep-links: likes/comments → `/session/[id]`, follows →
         `/notifications`. Optional `WEBHOOK_SECRET` header guard.
-      - **One-time setup (the user does):** see `supabase/functions/notify/README.md` —
-        (1) `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_token text`;
-        (2) `supabase functions deploy notify --no-verify-jwt`;
-        (3) add 3 Database Webhooks (likes/comments/follows → notify);
-        (4) APNs key via `eas credentials` / next build; (5) rebuild (native module).
+      - **Setup status (live `deadpoint` project):** ✅ (1) `push_token` column added;
+        ✅ (2) `notify` function deployed; ✅ (3) the like/comment/follow triggers wired via
+        `supabase/functions/notify/webhooks.sql` (pg_net triggers POSTing `{type,table,record}` —
+        applied with `npx supabase db query --linked -f …`). ⏳ REMAINING: (4) the interactive
+        production build that sets up the APNs key + Push capability (see the BUILD GOTCHA above).
+        Once that build is on TestFlight, push is fully live.
 - [ ] **Improve on-device hold detection** (TODO — deferred 2026-06-18, revisit later). The
       outlines from `src/lib/holdDetection.ts` (HSL color matching + flood-fill) are a
       **best-effort snapping aid, NOT required** — real gym photos (LED lighting, mixed-color
