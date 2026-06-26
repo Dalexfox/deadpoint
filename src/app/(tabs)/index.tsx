@@ -519,6 +519,9 @@ function GroupedCard({
       {/* Horizontal paged carousel — one full session card per page */}
       <FlatList
         data={pages}
+        // Re-render pages when the group's active state, visible page, or mute
+        // changes — so a page that scrolls off (or whose group scrolls off) pauses.
+        extraData={`${isActive}|${activePage}|${muted}`}
         keyExtractor={(p) => p.id}
         horizontal
         pagingEnabled
@@ -1261,6 +1264,9 @@ export default function FeedScreen() {
           <FlatList
             ref={flatListRef}
             data={feedItems}
+            // Re-render cells when the active card or mute changes — otherwise the
+            // scrolled-away card keeps isActive=true and its video/audio keeps playing.
+            extraData={`${activeIndex}|${videoMuted}`}
             keyExtractor={item => item.key}
             renderItem={({ item, index }) => {
               switch (item.kind) {

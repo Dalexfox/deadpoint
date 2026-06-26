@@ -73,6 +73,9 @@ export function ClimbReel({
         {height > 0 && (
           <FlatList
             data={sessions}
+            // Re-render pages when the active page or mute changes — otherwise the
+            // page you scroll away from keeps isActive=true and its audio plays on.
+            extraData={`${active}|${muted}`}
             keyExtractor={(s) => s.id}
             pagingEnabled
             showsVerticalScrollIndicator={false}
