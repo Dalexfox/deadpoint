@@ -50,14 +50,17 @@ npx eas-cli build --platform ios --profile production --auto-submit
 (No `--non-interactive`. Answer **Yes** to any Push Notifications / provisioning
 prompts.) After this one interactive build, future `--non-interactive` builds work.
 
-## Optional hardening (recommended once live)
-Stop randoms from POSTing fake payloads to the function:
-```bash
-supabase secrets set WEBHOOK_SECRET=<some-long-random-string>
-```
-Then on each of the 3 webhooks add an HTTP header
-`x-webhook-secret: <same-random-string>`. With no secret set, the check is
-skipped (fine for early testing).
+## Hardening — ✅ DONE
+The function is deployed `--no-verify-jwt`, so it was a public endpoint anyone
+could POST fake payloads to (push spam). It's now locked behind a shared secret:
+- A random `WEBHOOK_SECRET` is set on the function (`supabase secrets set`).
+- The same value lives in `app_private.config` (a private, non-API-exposed table),
+  and the triggers in `webhooks.sql` read it and send it as the `x-webhook-secret`
+  header. The function rejects any request without the matching secret (401).
+
+The secret value is **only** in the function's secrets + `app_private.config` —
+never in git. To rotate it: set a new `WEBHOOK_SECRET`, update the
+`app_private.config` row to match, then redeploy `notify`.
 
 ## Test it
 Have a friend (or a 2nd account on a 2nd device) like one of your climbs — you

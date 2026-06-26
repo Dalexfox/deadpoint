@@ -927,12 +927,15 @@ Therefore:
         user) + actor name, skips self-actions, looks up the recipient's `push_token` (service role),
         and POSTs to Expo's Push API. Deep-links: likes/comments → `/session/[id]`, follows →
         `/notifications`. Optional `WEBHOOK_SECRET` header guard.
-      - **Setup status (live `deadpoint` project):** ✅ (1) `push_token` column added;
-        ✅ (2) `notify` function deployed; ✅ (3) the like/comment/follow triggers wired via
-        `supabase/functions/notify/webhooks.sql` (pg_net triggers POSTing `{type,table,record}` —
-        applied with `npx supabase db query --linked -f …`). ⏳ REMAINING: (4) the interactive
-        production build that sets up the APNs key + Push capability (see the BUILD GOTCHA above).
-        Once that build is on TestFlight, push is fully live.
+      - **Setup status (live `deadpoint` project): ✅ FULLY LIVE.** (1) `push_token` column added;
+        (2) `notify` function deployed; (3) like/comment/follow triggers wired via
+        `supabase/functions/notify/webhooks.sql` (pg_net triggers POSTing `{type,table,record}`);
+        (4) interactive build #19 set up the APNs key + Push capability and is on TestFlight (push
+        confirmed working on-device); (5) **hardened** — a random `WEBHOOK_SECRET` is set on the
+        function and stored in `app_private.config` (private, non-API-exposed); the triggers send it
+        as the `x-webhook-secret` header and the function 401s anything without it. The secret value
+        lives only in the function secrets + `app_private.config`, never in git. To rotate: new
+        `WEBHOOK_SECRET` + update the `app_private.config` row + redeploy `notify`.
 - [ ] **Improve on-device hold detection** (TODO — deferred 2026-06-18, revisit later). The
       outlines from `src/lib/holdDetection.ts` (HSL color matching + flood-fill) are a
       **best-effort snapping aid, NOT required** — real gym photos (LED lighting, mixed-color

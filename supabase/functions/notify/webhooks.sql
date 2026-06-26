@@ -1,27 +1,38 @@
 -- Push-notification triggers — fire the `notify` Edge Function on every new
--- like / comment / follow. This is the SQL equivalent of the dashboard's
--- "Database Webhooks" (which are themselves triggers under the hood); doing it as
--- one idempotent script means it's version-controlled and re-runnable.
+-- like / comment / follow, with a shared-secret header so the function only
+-- accepts calls from THESE triggers (the WEBHOOK_SECRET hardening).
 --
--- Run it against the deadpoint project (either is fine):
+-- The secret VALUE is NOT in this file — it lives in `app_private.config` (set
+-- out-of-band) and in the function's `WEBHOOK_SECRET` secret. So this file is
+-- safe to commit and re-run:
 --   npx supabase db query --linked -f supabase/functions/notify/webhooks.sql
---   …or paste it into Supabase → SQL Editor.
 
 create extension if not exists pg_net;
 
+-- Private config (NOT in the `public` schema → never exposed via the REST API).
+-- Holds the webhook shared secret; the value is inserted separately, never committed.
+create schema if not exists app_private;
+create table if not exists app_private.config (key text primary key, value text);
+
 -- POSTs a Database-Webhook-shaped payload ({ type, table, record }) to `notify`,
--- which resolves the recipient + actor and sends the push. SECURITY DEFINER so it
--- can call net.http_post regardless of the inserting user.
+-- with the shared secret header. SECURITY DEFINER so it can read the private
+-- config + call net.http_post regardless of the inserting user.
 create or replace function public.notify_on_insert()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, app_private
 as $$
+declare
+  v_secret text;
 begin
+  select value into v_secret from app_private.config where key = 'webhook_secret';
   perform net.http_post(
     url     := 'https://fpjpcnlhxpahvyeidirz.supabase.co/functions/v1/notify',
-    headers := jsonb_build_object('Content-Type', 'application/json'),
+    headers := jsonb_build_object(
+      'Content-Type',     'application/json',
+      'x-webhook-secret', coalesce(v_secret, '')
+    ),
     body    := jsonb_build_object('type', 'INSERT', 'table', tg_table_name, 'record', to_jsonb(new))
   );
   return new;
