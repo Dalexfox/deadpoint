@@ -73,6 +73,7 @@ export default function GymsScreen() {
   const [gyms, setGyms]               = useState<Gym[]>([]);
   const [loading, setLoading]         = useState(true);
   const [visitedGymIds, setVisitedGymIds] = useState<Set<string>>(new Set());
+  const [homeGymId, setHomeGymId]         = useState<string | null>(null);
   const [selectedGymId, setSelectedGymId] = useState<string | null>(null);
 
   const handleZoom = (direction: 'in' | 'out') => {
@@ -99,12 +100,13 @@ export default function GymsScreen() {
       (async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user || !active) return;
-        const { data } = await supabase
-          .from('sessions')
-          .select('gym_id')
-          .eq('user_id', user.id);
+        const [{ data }, { data: prof }] = await Promise.all([
+          supabase.from('sessions').select('gym_id').eq('user_id', user.id),
+          supabase.from('profiles').select('home_gym_id').eq('id', user.id).single(),
+        ]);
         if (!active) return;
         setVisitedGymIds(new Set((data ?? []).map((s: any) => s.gym_id)));
+        setHomeGymId(prof?.home_gym_id ?? null);
       })();
       return () => { active = false; };
     }, [])
@@ -112,6 +114,7 @@ export default function GymsScreen() {
 
   const yourGyms     = gyms.filter(g => visitedGymIds.has(g.id));
   const discoverGyms = gyms.filter(g => !visitedGymIds.has(g.id));
+  const homeGym      = homeGymId ? gyms.find(g => g.id === homeGymId) ?? null : null;
 
   const handleCardPress = (gym: Gym) => {
     if (gym.latitude && gym.longitude) {
@@ -216,6 +219,20 @@ export default function GymsScreen() {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
+
+        {/* Home gym → straight to its Scene (the local leaderboard opens first). */}
+        {homeGym && (
+          <TouchableOpacity
+            style={styles.sceneCard}
+            onPress={() => handleCardPress(homeGym)}
+            activeOpacity={0.88}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sceneCardLabel}>YOUR GYM · THE SCENE</Text>
+              <Text style={styles.sceneCardName} numberOfLines={1}>{homeGym.name}</Text>
+              <Text style={styles.sceneCardSub}>See who&apos;s crushing this week  →</Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {yourGyms.length > 0 && (
           <View style={styles.sectionBlock}>
@@ -399,6 +416,31 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 32,
     gap: 28,
+  },
+  // Home-gym "The Scene" hero card — leads the Gyms tab.
+  sceneCard: {
+    backgroundColor: INK,
+    borderRadius: 16,
+    padding: 16,
+  },
+  sceneCardLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    letterSpacing: 2.4,
+    color: SAND,
+  },
+  sceneCardName: {
+    fontSize: 21,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.6,
+    marginTop: 5,
+  },
+  sceneCardSub: {
+    fontSize: 12.5,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: 'rgba(255,255,255,0.72)',
+    marginTop: 4,
   },
   sectionBlock: {
     gap: 12,

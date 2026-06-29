@@ -141,7 +141,9 @@ export default function GymDetailScreen() {
   const gym     = GYMS[id as string] ?? null;
 
   // ── Tab ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>('log');
+  // Default to The Scene — the community/leaderboard is the "is this gym alive?"
+  // surface, so it leads when you open a gym (beta strategy: surface the local FOMO).
+  const [activeTab, setActiveTab] = useState<TabKey>('scene');
 
   // ── Log tab: gym stats ───────────────────────────────────────
   const [totalSessions, setTotalSessions] = useState(0);
