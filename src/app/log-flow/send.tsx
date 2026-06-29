@@ -408,6 +408,20 @@ export default function SendScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive">
 
+        {/* Quick log → opt-in to the detailed identify flow (tag a specific problem
+            in the gym's catalog). Most logs don't need this; it's here for the
+            climbers who want their send attributed to a specific climb. */}
+        {isQuick && (
+          <TouchableOpacity
+            style={styles.identifyLink}
+            onPress={() => router.push('/(tabs)/log')}
+            activeOpacity={0.7}>
+            <Ionicons name="locate-outline" size={15} color={SAND} />
+            <Text style={styles.identifyLinkText}>Identify the exact climb</Text>
+            <Text style={styles.identifyLinkChevron}>›</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Context pill — the matched/new problem. Hidden for Quick Log (no problem). */}
         {!isQuick && (
           <View style={styles.section}>
@@ -726,6 +740,20 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: DIVIDER,
   },
+  // Quick-log → "identify the exact climb" opt-in link
+  identifyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: SURFACE,
+    marginBottom: 18,
+  },
+  identifyLinkText: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
+  identifyLinkChevron: { fontSize: 16, fontFamily: 'SpaceGrotesk_300Light', color: INK3 },
   colorDot: {
     width: 10,
     height: 10,

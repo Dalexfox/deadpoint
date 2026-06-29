@@ -1,4 +1,4 @@
-import { DefaultTheme, ThemeProvider, Tabs, usePathname } from 'expo-router';
+import { DefaultTheme, ThemeProvider, Tabs, usePathname, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ColorValue } from 'react-native';
@@ -33,6 +33,7 @@ function ProfileIcon({ color, focused }: IconProps) {
 
 export default function TabsLayout() {
   const pathname = usePathname();
+  const router   = useRouter();
   const isFeed   = pathname === '/';
 
   const tabBarStyle = isFeed ? styles.tabBarDark : styles.tabBarLight;
@@ -65,6 +66,14 @@ export default function TabsLayout() {
           options={{
             title: '',
             tabBarIcon: () => <LogIcon ringColor={logRing} />,
+          }}
+          listeners={{
+            // Don't switch to the heavy "identify" tab — open the fast composer
+            // (quick log) directly. The identify flow is an opt-in link inside it.
+            tabPress: (e) => {
+              e.preventDefault();
+              router.push({ pathname: '/log-flow/send', params: { quick: 'true' } });
+            },
           }}
         />
         <Tabs.Screen
