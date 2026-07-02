@@ -18,21 +18,32 @@ export function VideoBackground({
 }: { uri: string; isActive: boolean; muted?: boolean; rate?: number }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
+    p.muted = muted;
   });
 
+  // Play ONLY the active card; pause every other one — AND force-mute any card
+  // that isn't active. expo-video's player.pause() alone did NOT reliably silence
+  // a scrolled-away card in the production build (its audio kept playing under the
+  // next card), so muting is the hard guarantee that an off-screen card can never
+  // be heard. Effective mute = the user's mute OR "this isn't the active card".
   useEffect(() => {
-    if (isActive) player.play();
-    else player.pause();
-  }, [isActive, player]);
-
-  useEffect(() => {
-    player.muted = muted;
-  }, [muted, player]);
+    try {
+      player.muted = muted || !isActive;
+      if (isActive) player.play();
+      else player.pause();
+    } catch {}
+  }, [isActive, muted, player]);
 
   // Playback speed — press-and-hold the feed card boosts this to 2× (TikTok-style).
   useEffect(() => {
-    player.playbackRate = rate;
+    try { player.playbackRate = rate; } catch {}
   }, [rate, player]);
+
+  // Hard stop on teardown — when a card scrolls out of the render window and
+  // unmounts, expo-video otherwise keeps the player looping (and audible).
+  useEffect(() => {
+    return () => { try { player.pause(); player.muted = true; } catch {} };
+  }, [player]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
