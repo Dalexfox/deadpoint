@@ -359,10 +359,11 @@ export default function GymDetailScreen() {
             </View>
           </View>
 
-          {/* Log CTA */}
+          {/* Log CTA — quick composer with this gym pre-filled (same fast default
+              as the tab Log button); the identify flow is the opt-in link inside it. */}
           <TouchableOpacity
             style={styles.logBtn}
-            onPress={() => router.push(`/gym/${id}/log`)}
+            onPress={() => router.push({ pathname: '/log-flow/send', params: { quick: 'true', gymId: id } })}
             activeOpacity={0.85}>
             <Text style={styles.logBtnLabel}>Log a Climb</Text>
             <Text style={styles.logBtnArrow}>→</Text>
@@ -483,7 +484,7 @@ export default function GymDetailScreen() {
               <Text style={styles.emptyText}>No climbs logged at this gym yet.</Text>
               <TouchableOpacity
                 style={styles.emptyLogBtn}
-                onPress={() => router.push(`/gym/${id}/log`)}
+                onPress={() => router.push({ pathname: '/log-flow/send', params: { quick: 'true', gymId: id } })}
                 activeOpacity={0.85}>
                 <Text style={styles.emptyLogBtnLabel}>Be the first → Log a Climb</Text>
               </TouchableOpacity>

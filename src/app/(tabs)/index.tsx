@@ -31,6 +31,7 @@ import { type Post } from '../../lib/store';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName, type Gym } from '../../lib/gyms';
 import { groupPosts, isGroupedPost, isCoSession, type GroupedPost } from '../../lib/groupPosts';
+import { drainPendingLogs } from '../../lib/pendingLogs';
 import { VideoBackground } from '../../components/VideoBackground';
 import { DefaultCover } from '../../components/DefaultCover';
 import { ShareCardSheet, type ShareInput } from '../../components/ShareCardSheet';
@@ -907,11 +908,14 @@ export default function FeedScreen() {
     }
   }, []);
 
-  // Load feed on every focus
+  // Load feed on every focus — first posting any logs queued while offline,
+  // so a "save & post later" climb shows up in this very load.
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      runLoad(() => active);
+      drainPendingLogs()
+        .catch(() => 0)
+        .then(() => { if (active) runLoad(() => active); });
       return () => { active = false; };
     }, [runLoad])
   );

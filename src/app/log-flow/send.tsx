@@ -10,16 +10,20 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { uploadSessionMedia, uploadProblemStartPhoto } from '../../lib/store';
 import { syncHomeGymAfterSubmit } from '../../lib/homeGym';
 import { isNewHighPoint } from '../../lib/stats';
 import { ensureCameraPermission } from '../../lib/permissions';
 import { fetchGyms, type Gym } from '../../lib/gyms';
+import { track } from '../../lib/analytics';
+import { queuePendingLog, drainPendingLogs } from '../../lib/pendingLogs';
 import { VideoBackground } from '../../components/VideoBackground';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
@@ -34,7 +38,30 @@ const DIVIDER = 'rgba(26,20,8,0.08)';
 
 const GRADES = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
 
+// Sticky smart defaults (Strava's "you'll probably do what you did last time"):
+// the last grade + gym you logged pre-fill the next log, so the common case —
+// another climb at your level at your gym — is zero setup taps.
+const LAST_GRADE_KEY = 'deadpoint:lastGrade';
+const LAST_GYM_KEY   = 'deadpoint:lastGymId';
+
 type SendMedia = { type: 'image' | 'video'; uri: string };
+
+// Recent-problems shortlist — problems logged at this gym in the last 14 days.
+// Tapping one attributes the log to that problem AND sets the grade. Community
+// logging becomes the autocomplete; quick logs regain catalog attribution.
+type ShortlistProblem = {
+  id: string;
+  label: string;
+  grade: string;
+  holdColor: string;
+  sends: number;
+};
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+}
 
 function StepIndicator({ quick }: { quick?: boolean }) {
   if (quick) {
@@ -70,6 +97,7 @@ const si = StyleSheet.create({
 
 export default function SendScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     gymId:        string;
     gymName:      string;
@@ -141,19 +169,79 @@ export default function SendScreen() {
   const [sendStyle, setSendStyle] = useState<'flash' | 'send' | 'project' | null>(null);
   const nicknameRef = useRef<TextInput>(null);
 
+  // ── Reward-screen + log-another state ─────────────────────────────
+  // "+ Log another" keeps the composer mounted for the next climb of the same
+  // session; the follow-up log is always a quick log (no problem attribution
+  // carried over from the identify flow).
+  const [quickAgain,   setQuickAgain]   = useState(false);
+  const [loggedGrade,  setLoggedGrade]  = useState('');          // grade shown on the reward screen
+  const [monthCount,   setMonthCount]   = useState<number | null>(null);
+  const [offlineSaved, setOfflineSaved] = useState(false);       // reward variant: queued for later
+  const [shortlist,    setShortlist]    = useState<ShortlistProblem[]>([]);
+  const [shortlistSel, setShortlistSel] = useState<ShortlistProblem | null>(null);
+
+  const effQuick     = isQuick || quickAgain;
+  const effIsNew     = isNew && !quickAgain;
+  const effProblemId = quickAgain ? null : (problemId ?? null);
+
+  // Instrumentation: log_started on mount, log_abandoned if unmounted unsaved.
+  const mountTs           = useRef(Date.now());
+  const submittedRef      = useRef(false);
+  const gradeTouchedRef   = useRef(false);
+  const identifySwitchRef = useRef(false);
+
   useEffect(() => {
-    fetchGyms().then(async gyms => {
-      setGyms(gyms);
-      let match = gyms.find(g => g.id === gymId);
-      // Quick Log arrives with no gym in the route → default to the user's home gym.
+    track('log_started', { mode: isQuick ? 'quick' : 'identify' });
+    drainPendingLogs().catch(() => {}); // post anything queued while offline
+    return () => {
+      if (!submittedRef.current) {
+        track(identifySwitchRef.current ? 'log_switched_identify' : 'log_abandoned', {
+          ms: Date.now() - mountTs.current,
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sticky grade — quick logs default to the last grade you logged, not V0
+  // (nobody warms up on V0 every session; most logs are at your level ±1).
+  useEffect(() => {
+    if (!isQuick || problemGrade || screen1Grade) return;
+    AsyncStorage.getItem(LAST_GRADE_KEY)
+      .then((g) => {
+        if (!g || gradeTouchedRef.current) return;
+        const idx = GRADES.indexOf(g);
+        if (idx >= 0) setGradeIndex(idx);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setGrade = (i: number) => {
+    gradeTouchedRef.current = true;
+    setGradeIndex(i);
+  };
+
+  useEffect(() => {
+    fetchGyms().then(async (fetched) => {
+      setGyms(fetched);
+      let match = fetched.find(g => g.id === gymId);
       if (!match && isQuick) {
+        // Instant default: last gym you logged at (device cache — no network)…
         try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const { data: prof } = await supabase.from('profiles').select('home_gym_id').eq('id', user.id).single();
-            if (prof?.home_gym_id) match = gyms.find(g => g.id === prof.home_gym_id);
-          }
-        } catch { /* user picks the gym manually */ }
+          const lastId = await AsyncStorage.getItem(LAST_GYM_KEY);
+          if (lastId) match = fetched.find(g => g.id === lastId);
+        } catch { /* fall through */ }
+        // …falling back to the profile's home gym.
+        if (!match) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data: prof } = await supabase.from('profiles').select('home_gym_id').eq('id', user.id).single();
+              if (prof?.home_gym_id) match = fetched.find(g => g.id === prof.home_gym_id);
+            }
+          } catch { /* user picks the gym manually */ }
+        }
       }
       if (match) setSelectedGym(match);
     });
@@ -168,34 +256,89 @@ export default function SendScreen() {
     }
   }, [isNew, focusNickname]);
 
-  // ── Send media picker (completely separate from recognition photo) ──
+  // ── Recent-problems shortlist (quick mode) ──────────────────────
+  // What's been logged at this gym in the last 14 days, ranked by send count.
+  // Best-effort: hidden while loading or when the gym has no recent catalog logs.
+  useEffect(() => {
+    if (!selectedGym || !effQuick) { setShortlist([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const since = new Date(Date.now() - 14 * 86400000).toISOString();
+        const { data: sess } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('gym_id', selectedGym.id)
+          .gte('created_at', since)
+          .limit(200);
+        const ids = (sess ?? []).map(s => s.id);
+        if (ids.length === 0) { if (alive) setShortlist([]); return; }
+        const { data: climbs } = await supabase
+          .from('climbs')
+          .select('problem_id')
+          .in('session_id', ids)
+          .not('problem_id', 'is', null);
+        const counts = new Map<string, number>();
+        (climbs ?? []).forEach((c: { problem_id: string | null }) => {
+          if (c.problem_id) counts.set(c.problem_id, (counts.get(c.problem_id) ?? 0) + 1);
+        });
+        const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([pid]) => pid);
+        if (top.length === 0) { if (alive) setShortlist([]); return; }
+        const { data: probs } = await supabase
+          .from('problems')
+          .select('id, name, custom_name, grade, hold_color')
+          .in('id', top);
+        const byId = new Map((probs ?? []).map(p => [p.id, p]));
+        const list = top
+          .map(pid => {
+            const p = byId.get(pid);
+            return p
+              ? { id: p.id, label: p.custom_name || p.name, grade: p.grade, holdColor: p.hold_color, sends: counts.get(pid) ?? 0 }
+              : null;
+          })
+          .filter(Boolean) as ShortlistProblem[];
+        if (alive) setShortlist(list);
+      } catch {
+        if (alive) setShortlist([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [selectedGym, effQuick]);
 
-  const handleAddMedia = () => {
-    Alert.alert('Add to your post', '', [
-      { text: 'Take Photo',          onPress: () => launchCamera() },
-      { text: 'Choose Photo',        onPress: () => pickMedia('images') },
-      { text: 'Choose Video',        onPress: () => pickMedia('videos') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const toggleShortlist = (p: ShortlistProblem) => {
+    if (shortlistSel?.id === p.id) {
+      setShortlistSel(null);
+      return;
+    }
+    setShortlistSel(p);
+    const idx = GRADES.indexOf(p.grade);
+    if (idx >= 0) setGrade(idx);
+  };
+
+  // ── Send media picker (completely separate from recognition photo) ──
+  // One combined library picker (photos + videos, no forced crop/trim screens),
+  // plus a small "take a photo" shortcut. Long clips are rejected up front —
+  // they'd blow the storage limit and stall gym-Wi-Fi uploads.
+
+  const pickFromLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsEditing: false,
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.type === 'video' && (asset.duration ?? 0) > 120000) {
+      Alert.alert('Video too long', 'Keep clips under 2 minutes — trim it in Photos first.');
+      return;
+    }
+    setSendMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
   };
 
   const launchCamera = async () => {
     if (!(await ensureCameraPermission())) return;
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.85 });
     if (!result.canceled) setSendMedia({ type: 'image', uri: result.assets[0].uri });
-  };
-
-  const pickMedia = async (type: 'images' | 'videos') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [type],
-      allowsEditing: true,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setSendMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
-    }
   };
 
   // ── Submit ──────────────────────────────────────────────────────
@@ -208,19 +351,19 @@ export default function SendScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not logged in');
 
-      const gymId = selectedGym.id;
+      const gymIdSubmit = selectedGym.id;
       const grade = selectedGrade;
 
       // 1. Create problem if new
-      let finalProblemId = problemId ?? null;
-      if (isNew) {
+      let finalProblemId = shortlistSel?.id ?? effProblemId;
+      if (effIsNew) {
         const autoName = `${holdColor.charAt(0).toUpperCase() + holdColor.slice(1)} ${grade} ${wallSection}`;
         const sx = startX ? parseFloat(startX) : null;
         const sy = startY ? parseFloat(startY) : null;
         const { data: newP, error: pErr } = await supabase
           .from('problems')
           .insert({
-            gym_id:      gymId,
+            gym_id:      gymIdSubmit,
             name:        autoName,
             custom_name: customName.trim() || null,
             hold_color:  holdColor,
@@ -254,7 +397,7 @@ export default function SendScreen() {
         .from('sessions')
         .insert({
           user_id:        user.id,
-          gym_id:         gymId,
+          gym_id:         gymIdSubmit,
           total_problems: 1,
           visibility:     isPublic ? 'public' : 'quiet',
           feed_rank:      null,
@@ -277,12 +420,29 @@ export default function SendScreen() {
         });
       if (cErr) throw cErr;
 
+      // The climb is SAVED — show the reward screen NOW. Everything below is
+      // background work that must never delay the "logged" moment.
+      AsyncStorage.setItem(LAST_GRADE_KEY, grade).catch(() => {});
+      AsyncStorage.setItem(LAST_GYM_KEY, gymIdSubmit).catch(() => {});
+      track('log_submitted', {
+        ms:      Date.now() - mountTs.current,
+        mode:    effQuick ? 'quick' : 'identify',
+        media:   sendMedia?.type ?? 'none',
+        grade,
+        gym_id:  gymIdSubmit,
+        quiet:   !isPublic,
+        problem: !!finalProblemId,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setLoggedGrade(grade);
+      setMonthCount(null);
+      submittedRef.current = true;
+      setSubmitted(true);
+
       // 4. Upload send media + recompute the cover — in the BACKGROUND.
-      //    The climb is already saved (steps 1–3); a big video upload must NOT make
-      //    "logged" wait. We fire-and-forget so the success screen + feed appear
-      //    instantly; media_url fills in when the upload lands (shows on the next
-      //    feed load). The promise survives navigation (it's not tied to component
-      //    state), and Alert is global so an upload failure still surfaces.
+      //    A big video upload must NOT make "logged" wait. The promise survives
+      //    navigation (not tied to component state); Alert is global so an
+      //    upload failure still surfaces.
       const sessionId = session.id;
       const coverProblemId = finalProblemId;
       if (sendMedia) {
@@ -307,66 +467,134 @@ export default function SendScreen() {
       }
 
       // Silent home-gym inference — best-effort, fire-and-forget so it never blocks.
-      syncHomeGymAfterSubmit(user.id, gymId);
+      syncHomeGymAfterSubmit(user.id, gymIdSubmit);
 
-      // New high point? Compare this grade against the user's previous hardest
-      // send, computed on read (no denormalized max stored). First-ever log
-      // counts as a high point. Best-effort: never block submit on this.
-      let isHigh = false;
-      if (sendStyle === 'project') {
-        // A project isn't a send — never a high point, even if it's the hardest grade.
-        isHigh = false;
-      } else {
-        try {
-          const { data: userSessions } = await supabase
-            .from('sessions')
-            .select('id')
-            .eq('user_id', user.id);
-          const otherIds = (userSessions ?? [])
-            .map(s => s.id)
-            .filter((id: string) => id !== session.id);
-          if (otherIds.length === 0) {
-            isHigh = true; // first-ever log
-          } else {
-            const { data: prevClimbs } = await supabase
-              .from('climbs')
-              .select('grade, send_style')
-              .in('session_id', otherIds);
-            // Previous projects don't count as sends → exclude them from the prior max.
-            const prevSentGrades = (prevClimbs ?? [])
-              .filter((c: { send_style: string | null }) => c.send_style !== 'project')
-              .map((c: { grade: string }) => c.grade);
-            isHigh = isNewHighPoint(grade, prevSentGrades);
+      // Reward-screen stat: how many climbs this month (includes this one).
+      (async () => {
+        const start = new Date();
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        const { count } = await supabase
+          .from('sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .gte('created_at', start.toISOString());
+        if (count != null && submittedRef.current) setMonthCount(count);
+      })().catch(() => {});
+
+      // New high point? Computed in the BACKGROUND — the reward screen never
+      // waits on these queries; the celebration overlays when it resolves.
+      // A project isn't a send — never a high point. Query errors never
+      // celebrate falsely.
+      if (sendStyle !== 'project') {
+        (async () => {
+          let isHigh = false;
+          try {
+            const { data: userSessions } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('user_id', user.id);
+            const otherIds = (userSessions ?? [])
+              .map(s => s.id)
+              .filter((id: string) => id !== session.id);
+            if (otherIds.length === 0) {
+              isHigh = true; // first-ever log
+            } else {
+              const { data: prevClimbs } = await supabase
+                .from('climbs')
+                .select('grade, send_style')
+                .in('session_id', otherIds);
+              // Previous projects don't count as sends → exclude them from the prior max.
+              const prevSentGrades = (prevClimbs ?? [])
+                .filter((c: { send_style: string | null }) => c.send_style !== 'project')
+                .map((c: { grade: string }) => c.grade);
+              isHigh = isNewHighPoint(grade, prevSentGrades);
+            }
+          } catch {
+            isHigh = false;
           }
-        } catch {
-          isHigh = false; // never celebrate on an error — avoids a false high point
-        }
-      }
-
-      setHighPointGrade(grade);
-      setSubmitted(true);
-      if (isHigh) {
-        // Show the existing success path first, then the celebration overlay.
-        setTimeout(() => setShowHighPoint(true), 1400);
-      } else {
-        setTimeout(() => router.navigate('/(tabs)'), 1800);
+          if (isHigh && submittedRef.current) {
+            setHighPointGrade(grade);
+            setShowHighPoint(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          }
+        })().catch(() => {});
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
+      // Offline? Offer to queue the log and post it automatically later.
+      // (New-problem creation is never queued — keep the form open instead.)
+      const isNetworkErr = /network|fetch|internet|timed?\s?out/i.test(err?.message ?? '');
+      if (isNetworkErr && !effIsNew && selectedGym) {
+        const gymIdQueued = selectedGym.id;
+        Alert.alert(
+          'No connection',
+          "Couldn't reach the server. Save this climb and post it automatically when you're back online?",
+          [
+            {
+              text: 'Save & post later',
+              onPress: async () => {
+                try {
+                  await queuePendingLog({
+                    gymId:      gymIdQueued,
+                    grade:      selectedGrade,
+                    sendStyle,
+                    notes:      notes.trim(),
+                    visibility: isPublic ? 'public' : 'quiet',
+                    solo:       postSolo,
+                    problemId:  shortlistSel?.id ?? effProblemId,
+                    mediaUri:   sendMedia?.uri ?? null,
+                    mediaType:  sendMedia?.type ?? null,
+                  });
+                  setLoggedGrade(selectedGrade);
+                  setOfflineSaved(true);
+                  submittedRef.current = true;
+                  setSubmitted(true);
+                } catch {
+                  Alert.alert('Error', "Couldn't save the climb on this device either. Please try again.");
+                }
+              },
+            },
+            { text: 'Keep editing', style: 'cancel' },
+          ],
+        );
+      } else {
+        Alert.alert('Error', err.message ?? 'Could not save session. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Success screen ──────────────────────────────────────────────
+  // ── "+ Log another" — reset for the next climb of this session ─────
+  // Keeps gym + grade (sticky) and stays in the composer; the follow-up log is
+  // a quick log (no problem/new-problem context carried over).
+  const handleLogAnother = () => {
+    setQuickAgain(true);
+    setSubmitted(false);
+    setShowHighPoint(false);
+    setOfflineSaved(false);
+    setSendMedia(null);
+    setNotes('');
+    setSendStyle(null);
+    setCustomName('');
+    setPostSolo(false);
+    setMonthCount(null);
+    setShortlistSel(null);
+    submittedRef.current = false;
+    mountTs.current = Date.now();
+    track('log_started', { mode: 'again' });
+  };
 
-  // New-high-point celebration — full-screen, SAND on INK, auto-dismiss on tap.
+  // ── Success screens ─────────────────────────────────────────────
+
+  // New-high-point celebration — full-screen, SAND on INK; tap returns to the
+  // reward screen (where "+ Log another" lives).
   if (submitted && showHighPoint) {
     return (
       <TouchableOpacity
         style={styles.highPointScreen}
         activeOpacity={1}
-        onPress={() => router.navigate('/(tabs)')}>
+        onPress={() => setShowHighPoint(false)}>
         <Text style={styles.highPointLabel}>NEW HIGH POINT</Text>
         <Text style={styles.highPointGrade}>{highPointGrade}</Text>
         <Text style={styles.highPointSub}>Your hardest send yet.</Text>
@@ -374,13 +602,30 @@ export default function SendScreen() {
     );
   }
 
+  // Reward screen — the post-log moment. Guaranteed acknowledgment (grade +
+  // month stat) and the session loop: "+ Log another" or Done.
   if (submitted) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.successScreen}>
-          <Text style={styles.successEmoji}>🧗</Text>
-          <Text style={styles.successTitle} numberOfLines={1} adjustsFontSizeToFit>CLIMB LOGGED</Text>
-          <Text style={styles.successSub}>Your crew can see it on the feed.</Text>
+          <Text style={styles.rewardKicker}>{offlineSaved ? 'SAVED' : 'LOGGED'}</Text>
+          <Text style={styles.rewardGrade}>{loggedGrade}</Text>
+          {!offlineSaved && monthCount != null && (
+            <Text style={styles.rewardStat}>Your {ordinal(monthCount)} climb this month</Text>
+          )}
+          <Text style={styles.successSub}>
+            {offlineSaved
+              ? "You're offline — it'll post automatically when you're back."
+              : isPublic
+                ? 'Your crew can see it on the feed.'
+                : 'Logged to your climbs — only you can see it.'}
+          </Text>
+          <TouchableOpacity style={styles.logAnotherBtn} onPress={handleLogAnother} activeOpacity={0.85}>
+            <Text style={styles.logAnotherLabel}>+ LOG ANOTHER</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.doneBtn} onPress={() => router.navigate('/(tabs)')} activeOpacity={0.7}>
+            <Text style={styles.doneLabel}>Done</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -388,7 +633,7 @@ export default function SendScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StepIndicator quick={isQuick} />
+      <StepIndicator quick={effQuick} />
 
       {/* Nav */}
       <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
@@ -398,7 +643,9 @@ export default function SendScreen() {
 
       <View style={styles.header}>
         <Text style={styles.heading}>Log Your{'\n'}Send</Text>
-        <Text style={styles.subheading}>Fill in the details and submit</Text>
+        <Text style={styles.subheading}>
+          {effQuick ? 'Grade + go — everything else is optional' : 'Fill in the details and submit'}
+        </Text>
       </View>
 
       <ScrollView
@@ -411,10 +658,14 @@ export default function SendScreen() {
         {/* Quick log → opt-in to the detailed identify flow (tag a specific problem
             in the gym's catalog). Most logs don't need this; it's here for the
             climbers who want their send attributed to a specific climb. */}
-        {isQuick && (
+        {effQuick && (
           <TouchableOpacity
             style={styles.identifyLink}
-            onPress={() => router.push('/(tabs)/log')}
+            onPress={() => {
+              identifySwitchRef.current = true;
+              if (gymId) router.push(`/gym/${gymId}/log`);
+              else router.push('/(tabs)/log');
+            }}
             activeOpacity={0.7}>
             <Ionicons name="locate-outline" size={15} color={SAND} />
             <Text style={styles.identifyLinkText}>Identify the exact climb</Text>
@@ -423,7 +674,7 @@ export default function SendScreen() {
         )}
 
         {/* Context pill — the matched/new problem. Hidden for Quick Log (no problem). */}
-        {!isQuick && (
+        {!effQuick && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>THE CLIMB</Text>
             <View style={styles.contextPill}>
@@ -437,7 +688,7 @@ export default function SendScreen() {
         )}
 
         {/* Custom name (new problems only) */}
-        {isNew && (
+        {effIsNew && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>NICKNAME (OPTIONAL)</Text>
             <TextInput
@@ -451,6 +702,68 @@ export default function SendScreen() {
             />
           </View>
         )}
+
+        {/* Recent problems at this gym — tap to tag your send (sets the grade too) */}
+        {effQuick && shortlist.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>ON THE WALL — TAP TO TAG (OPTIONAL)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shortlistRow}>
+              {shortlist.map((p) => {
+                const active = shortlistSel?.id === p.id;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.shortlistChip, active && styles.shortlistChipActive]}
+                    onPress={() => toggleShortlist(p)}
+                    activeOpacity={0.8}>
+                    <View style={[styles.colorDot, { backgroundColor: HOLD_COLOR_SWATCHES[p.holdColor] ?? '#888' }]} />
+                    <Text style={[styles.shortlistName, active && styles.shortlistNameActive]} numberOfLines={1}>
+                      {p.label}
+                    </Text>
+                    <Text style={[styles.shortlistGrade, active && styles.shortlistGradeActive]}>{p.grade}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Grade — the one required decision, so it comes first */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>DIFFICULTY</Text>
+          <View style={styles.sliderCard}>
+            <Text style={styles.sliderValue}>{selectedGrade}</Text>
+            <View style={styles.stepTrack}>
+              <View style={styles.stepTrackLine} />
+              <View style={[styles.stepTrackLineFilled, { width: `${(gradeIndex / (GRADES.length - 1)) * 100}%` }]} />
+              {GRADES.map((grade, i) => {
+                const active = i === gradeIndex;
+                return (
+                  <TouchableOpacity
+                    key={grade}
+                    style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
+                    onPress={() => setGrade(i)}
+                    activeOpacity={0.7}>
+                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.stepLabels}>
+              {GRADES.map((grade, i) => (
+                <TouchableOpacity
+                  key={grade}
+                  onPress={() => setGrade(i)}
+                  hitSlop={{ top: 10, bottom: 12, left: 3, right: 3 }}
+                  activeOpacity={0.7}>
+                  <Text style={[styles.stepLabelText, i === gradeIndex && styles.stepLabelActive]}>
+                    {grade}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
 
         {/* Send media — separate from recognition photo */}
         <View style={styles.section}>
@@ -473,43 +786,18 @@ export default function SendScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.mediaArea} onPress={handleAddMedia} activeOpacity={0.85}>
-              <Text style={styles.mediaIcon}>🎬</Text>
-              <Text style={styles.mediaLabel}>Add photo or video</Text>
-              <Text style={styles.mediaSubLabel}>Posted to the feed</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.mediaArea} onPress={pickFromLibrary} activeOpacity={0.85}>
+                <Text style={styles.mediaIcon}>🎬</Text>
+                <Text style={styles.mediaLabel}>Add photo or video</Text>
+                <Text style={styles.mediaSubLabel}>Posted to the feed</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cameraLink} onPress={launchCamera} activeOpacity={0.7}>
+                <Ionicons name="camera-outline" size={15} color={INK3} />
+                <Text style={styles.cameraLinkText}>Or take a photo now</Text>
+              </TouchableOpacity>
+            </>
           )}
-        </View>
-
-        {/* Grade slider */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>DIFFICULTY</Text>
-          <View style={styles.sliderCard}>
-            <Text style={styles.sliderValue}>{selectedGrade}</Text>
-            <View style={styles.stepTrack}>
-              <View style={styles.stepTrackLine} />
-              <View style={[styles.stepTrackLineFilled, { width: `${(gradeIndex / (GRADES.length - 1)) * 100}%` }]} />
-              {GRADES.map((grade, i) => {
-                const active = i === gradeIndex;
-                return (
-                  <TouchableOpacity
-                    key={grade}
-                    style={[styles.stepHitArea, { left: `${(i / (GRADES.length - 1)) * 100}%` }]}
-                    onPress={() => setGradeIndex(i)}
-                    activeOpacity={0.7}>
-                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.stepLabels}>
-              {GRADES.map((grade, i) => (
-                <Text key={grade} style={[styles.stepLabelText, i === gradeIndex && styles.stepLabelActive]}>
-                  {grade}
-                </Text>
-              ))}
-            </View>
-          </View>
         </View>
 
         {/* Send style — optional per-climb tag */}
@@ -631,16 +919,19 @@ export default function SendScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Submit */}
+      </ScrollView>
+
+      {/* Fixed footer submit — always visible, no scrolling to log (the primary
+          action never hides below the fold). */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity
           style={[styles.submitBtn, (!selectedGym || submitting) && styles.submitBtnDisabled]}
           onPress={handleSubmit}
           activeOpacity={0.85}
           disabled={!selectedGym || submitting}>
-          {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitLabel}>LOG SESSION</Text>}
+          {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitLabel}>LOG SEND</Text>}
         </TouchableOpacity>
-
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -681,7 +972,7 @@ const styles = StyleSheet.create({
 
   scroll: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 24,
     gap: 14,
   },
   section: { gap: 8 },
@@ -692,6 +983,41 @@ const styles = StyleSheet.create({
     letterSpacing: 2.5,
     textTransform: 'uppercase',
   },
+
+  // ── Recent-problems shortlist ──────────────────────────────────
+  shortlistRow: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  shortlistChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+    maxWidth: 220,
+  },
+  shortlistChipActive: {
+    borderColor: SAND,
+    backgroundColor: 'rgba(200,168,74,0.10)',
+  },
+  shortlistName: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK2,
+    flexShrink: 1,
+  },
+  shortlistNameActive: { color: INK },
+  shortlistGrade: {
+    fontSize: 12,
+    fontFamily: 'Syne_800ExtraBold',
+    color: INK3,
+  },
+  shortlistGradeActive: { color: SAND },
 
   // ── Send style chips ───────────────────────────────────────────
   styleRow: {
@@ -750,7 +1076,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: SURFACE,
-    marginBottom: 18,
+    marginBottom: 4,
   },
   identifyLinkText: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: INK },
   identifyLinkChevron: { fontSize: 16, fontFamily: 'SpaceGrotesk_300Light', color: INK3 },
@@ -807,6 +1133,19 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_400Regular',
     color: INK3,
     opacity: 0.6,
+  },
+  cameraLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  cameraLinkText: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
   },
   mediaPreviewWrapper: {
     position: 'relative',
@@ -935,13 +1274,19 @@ const styles = StyleSheet.create({
     minHeight: 100,
   },
 
-  // ── Submit ─────────────────────────────────────────────────────
+  // ── Footer submit ──────────────────────────────────────────────
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: BG,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: DIVIDER,
+  },
   submitBtn: {
     backgroundColor: SAND,
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
-    marginTop: 4,
   },
   submitBtnDisabled: { opacity: 0.35 },
   submitLabel: {
@@ -980,9 +1325,56 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
 
-  // ── Success ────────────────────────────────────────────────────
-  successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  successEmoji: { fontSize: 64 },
-  successTitle: { fontSize: 52, fontFamily: 'Syne_800ExtraBold', color: SAND, letterSpacing: -2, textAlign: 'center', paddingHorizontal: 20 },
-  successSub: { fontSize: 16, fontFamily: 'SpaceGrotesk_600SemiBold', color: INK2, letterSpacing: 0.1, textAlign: 'center', paddingHorizontal: 20 },
+  // ── Reward screen ──────────────────────────────────────────────
+  successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+  rewardKicker: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+  rewardGrade: {
+    fontSize: 96,
+    fontFamily: 'Syne_800ExtraBold',
+    color: SAND,
+    letterSpacing: -4,
+    lineHeight: 104,
+  },
+  rewardStat: {
+    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK2,
+  },
+  successSub: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  logAnotherBtn: {
+    marginTop: 18,
+    backgroundColor: SAND,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 44,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  logAnotherLabel: {
+    fontSize: 15,
+    fontFamily: 'Syne_800ExtraBold',
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  doneBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  doneLabel: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: INK3,
+  },
 });
