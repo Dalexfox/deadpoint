@@ -316,29 +316,57 @@ export default function SendScreen() {
   };
 
   // ── Send media picker (completely separate from recognition photo) ──
-  // One combined library picker (photos + videos, no forced crop/trim screens),
-  // plus a small "take a photo" shortcut. Long clips are rejected up front —
-  // they'd blow the storage limit and stall gym-Wi-Fi uploads.
+  // ⚠️ Videos MUST keep `allowsEditing: true` + `videoMaxDuration: 60`: the
+  // trim-UI (UIImagePickerController) export is the PROVEN iOS path. The
+  // build-#24 combined picker (`allowsEditing: false` → PHPicker export) failed
+  // SILENTLY for videos on-device — no asset, no error, no preview. Photos keep
+  // `allowsEditing: false` (no forced crop screen — that part worked great).
+  // Every failure path now alerts + tracks; a picker failure is never silent.
 
-  const pickFromLibrary = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsEditing: false,
-      quality: 0.85,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    if (asset.type === 'video' && (asset.duration ?? 0) > 120000) {
-      Alert.alert('Video too long', 'Keep clips under 2 minutes — trim it in Photos first.');
-      return;
+  const handleAddMedia = () => {
+    Alert.alert('Add to your post', '', [
+      { text: 'Take Photo',   onPress: () => launchCamera() },
+      { text: 'Choose Photo', onPress: () => pickMedia('images') },
+      { text: 'Choose Video', onPress: () => pickMedia('videos') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const pickMedia = async (type: 'images' | 'videos') => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: [type],
+        allowsEditing: type === 'videos',
+        quality: 0.85,
+        ...(type === 'videos' ? { videoMaxDuration: 60 } : {}),
+      });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        track('media_pick_failed', { type, reason: 'no_asset' });
+        Alert.alert("Couldn't load that", 'Please try a different photo or video.');
+        return;
+      }
+      // Extension sniff as a backstop in case asset.type comes back null.
+      const isVideo = asset.type === 'video' || /\.(mp4|mov|m4v|avi)$/i.test(asset.uri);
+      setSendMedia({ type: isVideo ? 'video' : 'image', uri: asset.uri });
+    } catch (e: any) {
+      track('media_pick_failed', { type, reason: e?.message ?? 'threw' });
+      Alert.alert("Couldn't load that", 'Please try a different photo or video.');
     }
-    setSendMedia({ type: asset.type === 'video' ? 'video' : 'image', uri: asset.uri });
   };
 
   const launchCamera = async () => {
     if (!(await ensureCameraPermission())) return;
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.85 });
-    if (!result.canceled) setSendMedia({ type: 'image', uri: result.assets[0].uri });
+    try {
+      const result = await ImagePicker.launchCameraAsync({ allowsEditing: false, quality: 0.85 });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (asset?.uri) setSendMedia({ type: 'image', uri: asset.uri });
+    } catch (e: any) {
+      track('media_pick_failed', { type: 'camera', reason: e?.message ?? 'threw' });
+      Alert.alert("Couldn't take that photo", 'Please try again.');
+    }
   };
 
   // ── Submit ──────────────────────────────────────────────────────
@@ -786,17 +814,11 @@ export default function SendScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <>
-              <TouchableOpacity style={styles.mediaArea} onPress={pickFromLibrary} activeOpacity={0.85}>
-                <Text style={styles.mediaIcon}>🎬</Text>
-                <Text style={styles.mediaLabel}>Add photo or video</Text>
-                <Text style={styles.mediaSubLabel}>Posted to the feed</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cameraLink} onPress={launchCamera} activeOpacity={0.7}>
-                <Ionicons name="camera-outline" size={15} color={INK3} />
-                <Text style={styles.cameraLinkText}>Or take a photo now</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity style={styles.mediaArea} onPress={handleAddMedia} activeOpacity={0.85}>
+              <Text style={styles.mediaIcon}>🎬</Text>
+              <Text style={styles.mediaLabel}>Add photo or video</Text>
+              <Text style={styles.mediaSubLabel}>Posted to the feed</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1133,19 +1155,6 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_400Regular',
     color: INK3,
     opacity: 0.6,
-  },
-  cameraLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  cameraLinkText: {
-    fontSize: 12,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    color: INK3,
   },
   mediaPreviewWrapper: {
     position: 'relative',

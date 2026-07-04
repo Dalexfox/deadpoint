@@ -794,6 +794,10 @@ export default function FeedScreen() {
   const [followingSet,  setFollowingSet]  = useState<Set<string>>(new Set());
   const [feedTab,       setFeedTab]       = useState<'forYou' | 'following'>('forYou');
   const [videoMuted,    setVideoMuted]    = useState(false);   // global feed mute (TikTok-style)
+  // False while another screen (log composer, gym, profile…) is PUSHED over the
+  // feed — blur is a different trigger than scroll-away, and without this the
+  // covered card keeps isActive=true and its audio plays under the new screen.
+  const [screenFocused, setScreenFocused] = useState(true);
   const [shareInput,    setShareInput]    = useState<ShareInput | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -913,10 +917,14 @@ export default function FeedScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setScreenFocused(true);   // resume video on the active card
       drainPendingLogs()
         .catch(() => 0)
         .then(() => { if (active) runLoad(() => active); });
-      return () => { active = false; };
+      return () => {
+        active = false;
+        setScreenFocused(false); // pushed over / tabbed away → silence the feed
+      };
     }, [runLoad])
   );
 
@@ -1268,9 +1276,10 @@ export default function FeedScreen() {
           <FlatList
             ref={flatListRef}
             data={feedItems}
-            // Re-render cells when the active card or mute changes — otherwise the
-            // scrolled-away card keeps isActive=true and its video/audio keeps playing.
-            extraData={`${activeIndex}|${videoMuted}`}
+            // Re-render cells when the active card, mute, or screen focus changes —
+            // otherwise a scrolled-away (or pushed-over) card keeps isActive=true
+            // and its video/audio keeps playing.
+            extraData={`${activeIndex}|${videoMuted}|${screenFocused}`}
             keyExtractor={item => item.key}
             renderItem={({ item, index }) => {
               switch (item.kind) {
@@ -1279,7 +1288,7 @@ export default function FeedScreen() {
                     <FullScreenCard
                       post={item.post}
                       height={cardHeight}
-                      isActive={index === activeIndex}
+                      isActive={screenFocused && index === activeIndex}
                       isOwnPost={item.post.userId === currentUserId}
                       isFollowing={!!item.post.userId && followingSet.has(item.post.userId)}
                       onLike={handleLike}
@@ -1298,7 +1307,7 @@ export default function FeedScreen() {
                     <GroupedCard
                       group={item.group}
                       height={cardHeight}
-                      isActive={index === activeIndex}
+                      isActive={screenFocused && index === activeIndex}
                       currentUserId={currentUserId}
                       followingSet={followingSet}
                       onLike={handleLike}

@@ -43,13 +43,16 @@ function fmtDate(s: string): string {
 }
 
 export function ClimbReel({
-  visible, gymName, sessions, startIndex, onClose,
+  visible, gymName, sessions, startIndex, onClose, suspended = false,
 }: {
   visible: boolean;
   gymName: string;
   sessions: ReelSession[];
   startIndex: number;
   onClose: () => void;
+  /** True while a route (e.g. /session/[id]) is pushed over the host screen —
+      the reel stays mounted but its video must go silent underneath. */
+  suspended?: boolean;
 }) {
   const router = useRouter();
   const [height, setHeight] = useState(0);
@@ -73,9 +76,10 @@ export function ClimbReel({
         {height > 0 && (
           <FlatList
             data={sessions}
-            // Re-render pages when the active page or mute changes — otherwise the
-            // page you scroll away from keeps isActive=true and its audio plays on.
-            extraData={`${active}|${muted}`}
+            // Re-render pages when the active page, mute, or suspension changes —
+            // otherwise the page you scroll away from (or push a route over)
+            // keeps isActive=true and its audio plays on.
+            extraData={`${active}|${muted}|${suspended}`}
             keyExtractor={(s) => s.id}
             pagingEnabled
             showsVerticalScrollIndicator={false}
@@ -93,7 +97,7 @@ export function ClimbReel({
                   {/* Background */}
                   {item.media_url ? (
                     isVideo ? (
-                      <VideoBackground uri={item.media_url} isActive={visible && index === active} muted={muted} />
+                      <VideoBackground uri={item.media_url} isActive={visible && !suspended && index === active} muted={muted} />
                     ) : (
                       <Image source={{ uri: item.media_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                     )

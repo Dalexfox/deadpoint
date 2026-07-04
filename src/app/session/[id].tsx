@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
@@ -120,6 +120,16 @@ export default function SessionDetailScreen() {
   const [currentUserId,  setCurrentUserId]  = useState<string | null>(null);
   const [videoMuted,     setVideoMuted]     = useState(false);
   const [shareOpen,      setShareOpen]      = useState(false);
+  // False while another screen (gym, profile…) is pushed over this one — the
+  // video must go silent under it (isActive was previously hardcoded true).
+  const [screenFocused,  setScreenFocused]  = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      return () => setScreenFocused(false);
+    }, [])
+  );
 
   // Overflow / visibility sheet (own session only)
   const [overflowOpen,    setOverflowOpen]    = useState(false);
@@ -412,7 +422,7 @@ export default function SessionDetailScreen() {
       {/* ── Background media ─────────────────────────────────────────────── */}
       {session.mediaUrl ? (
         session.isVideo ? (
-          <VideoBackground uri={session.mediaUrl} isActive muted={videoMuted} />
+          <VideoBackground uri={session.mediaUrl} isActive={screenFocused} muted={videoMuted} />
         ) : (
           <Image
             source={{ uri: session.mediaUrl }}

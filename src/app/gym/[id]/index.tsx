@@ -157,6 +157,16 @@ export default function GymDetailScreen() {
   // Bottom-sheet modal for the video grid
   // Immersive viewer (B): the selected grade's sessions + which one was tapped.
   const [reel, setReel] = useState<{ sessions: SessionData[]; start: number } | null>(null);
+  // False while a route (e.g. /session/[id] from the reel) is pushed over this
+  // screen — the reel stays mounted but its video must go silent underneath.
+  const [screenFocused, setScreenFocused] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      return () => setScreenFocused(false);
+    }, [])
+  );
 
   // ── Data loading ─────────────────────────────────────────────
   useFocusEffect(
@@ -557,6 +567,7 @@ export default function GymDetailScreen() {
       {reel && (
         <ClimbReel
           visible
+          suspended={!screenFocused}
           gymName={gym.name}
           sessions={reel.sessions}
           startIndex={reel.start}
