@@ -13,7 +13,7 @@
  * Map-agnostic by design: problems already carry map_x/map_y/map_wall_id, so a
  * future gym floor plan just becomes another entry point to this same page.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -102,6 +102,9 @@ export default function ProblemScreen() {
   const [sends,         setSends]         = useState<SendRow[]>([]);
   const [gymLabel,      setGymLabel]      = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // True once a load has succeeded — a failed REFETCH (offline refocus) must
+  // never flip an already-loaded page to "Climb not found".
+  const loadedRef = useRef(false);
 
   // Re-fetch on every focus so a send logged from this page shows up on return.
   useFocusEffect(
@@ -115,7 +118,8 @@ export default function ProblemScreen() {
             fetchGyms(),
           ]);
           if (!active) return;
-          if (!prob) { setNotFound(true); return; }
+          if (!prob) { if (!loadedRef.current) setNotFound(true); return; }
+          loadedRef.current = true;
           setProblem(prob as ProblemRow);
           setCurrentUserId(user?.id ?? null);
           setGymLabel(prob.gym_id ? resolveGymName(gyms, prob.gym_id) : '');
@@ -160,7 +164,7 @@ export default function ProblemScreen() {
             };
           }));
         } catch {
-          if (active && !problem) setNotFound(true);
+          if (active && !loadedRef.current) setNotFound(true);
         } finally {
           if (active) setLoading(false);
         }
