@@ -103,6 +103,9 @@ export default function MatchScreen() {
     setQueryState('loading');
     setSelected(null);
 
+    // Both passes match LIVE problems only (.is archived_at null) — after a
+    // reset, the same color/wall/grade is a DIFFERENT climb; matching an
+    // archived problem would merge two physical climbs into one record.
     Promise.all([
       supabase
         .from('problems')
@@ -111,6 +114,7 @@ export default function MatchScreen() {
         .eq('hold_color', holdColor)
         .eq('grade', grade)
         .eq('wall_section', wallSection)
+        .is('archived_at', null)
         .order('created_at', { ascending: false }),
       supabase
         .from('problems')
@@ -118,6 +122,7 @@ export default function MatchScreen() {
         .eq('gym_id', gymId)
         .eq('hold_color', holdColor)
         .eq('grade', grade)
+        .is('archived_at', null)
         .order('created_at', { ascending: false }),
     ])
       .then(([exactRes, allRes]) => {

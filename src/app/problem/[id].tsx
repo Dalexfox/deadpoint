@@ -16,6 +16,7 @@
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -29,6 +30,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { fetchGyms, gymName as resolveGymName } from '../../lib/gyms';
+import { track } from '../../lib/analytics';
 import { ClimbThumb } from '../../components/ClimbThumb';
 import { HOLD_COLOR_SWATCHES } from '../../components/ProblemCard';
 
@@ -55,6 +57,8 @@ type ProblemRow = {
   start_photo_url: string | null;
   map_x: number | null;
   map_y: number | null;
+  created_at: string;
+  archived_at: string | null;   // null = on the wall; set = stripped/reset
 };
 
 type SendRow = {
@@ -71,6 +75,10 @@ type SendRow = {
 
 function toInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('') || '?';
+}
+
+function fmtShort(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function timeAgo(dateStr: string) {
@@ -167,6 +175,52 @@ export default function ProblemScreen() {
     else router.push(`/user/${userId}`);
   };
 
+  // ── Set rotation: archive / restore ────────────────────────────────
+  // "Sends are forever, problems are seasonal." Archiving hides this problem
+  // from the live browse, identify matching, and the shortlist — the page and
+  // every send stay. The RPC allows the creator or anyone who has logged it.
+  const setArchived = async (archived: boolean) => {
+    if (!problem) return;
+    const { error } = await supabase.rpc('archive_problem', {
+      p_problem_id: problem.id,
+      p_archived:   archived,
+    });
+    if (error) {
+      Alert.alert("Couldn't update", error.message);
+      return;
+    }
+    setProblem({ ...problem, archived_at: archived ? new Date().toISOString() : null });
+    track(archived ? 'problem_archived' : 'problem_unarchived', { problem_id: problem.id });
+  };
+
+  const handleOverflow = () => {
+    if (!problem) return;
+    const t = problem.custom_name ?? problem.name;
+    if (problem.archived_at) {
+      Alert.alert(t, 'This climb is marked as off the wall.', [
+        { text: "It's back on the wall", onPress: () => setArchived(false) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      Alert.alert(t, undefined, [
+        {
+          text: 'This climb was reset (off the wall)',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert(
+              'Mark as off the wall?',
+              "It disappears from the gym's live browse and climb matching. Every send stays in climbers' history, and this page stays viewable.",
+              [
+                { text: 'Mark as reset', style: 'destructive', onPress: () => setArchived(true) },
+                { text: 'Cancel', style: 'cancel' },
+              ],
+            ),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
   const handleLog = () => {
     if (!problem) return;
     router.push({
@@ -239,12 +293,28 @@ export default function ProblemScreen() {
             activeOpacity={0.8}>
             <Ionicons name="chevron-back" size={20} color="#ffffff" />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.heroBtn, { top: insets.top + 8, right: 12, paddingRight: 0 }]}
+            onPress={handleOverflow}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.8}>
+            <Ionicons name="ellipsis-horizontal" size={18} color="#ffffff" />
+          </TouchableOpacity>
+          {problem.archived_at && (
+            <View style={styles.archivedRow}>
+              <View style={styles.archivedPill}>
+                <Text style={styles.archivedPillText}>OFF THE WALL</Text>
+              </View>
+            </View>
+          )}
           <View style={styles.heroTitleRow}>
             <View style={[styles.colorDot, { backgroundColor: swatch }]} />
             <Text style={styles.heroTitle} numberOfLines={1}>{title}</Text>
           </View>
           <Text style={styles.heroSub} numberOfLines={1}>
-            {[gymLabel, problem.wall_section].filter(Boolean).join(' · ')}
+            {problem.archived_at
+              ? `On the wall ${fmtShort(problem.created_at)} – ${fmtShort(problem.archived_at)}${gymLabel ? ` · ${gymLabel}` : ''}`
+              : [gymLabel, problem.wall_section].filter(Boolean).join(' · ')}
           </Text>
         </View>
 
@@ -391,6 +461,20 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   startTagText: { fontSize: 9, fontFamily: 'SpaceGrotesk_700Bold', color: INK, letterSpacing: 1 },
+  archivedRow: { paddingHorizontal: 16, marginBottom: 6 },
+  archivedPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  archivedPillText: {
+    fontSize: 10,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 1.5,
+  },
   heroTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',

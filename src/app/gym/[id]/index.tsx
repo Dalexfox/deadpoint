@@ -221,7 +221,8 @@ export default function GymDetailScreen() {
             supabase.from('climbs').select('session_id, grade, problem_id').in('session_id', sessionIds),
             supabase.from('likes').select('session_id').in('session_id', sessionIds),
             supabase.from('profiles').select('id, full_name, username, avatar_url').in('id', userIds),
-            supabase.from('problems').select('id, name, custom_name, grade, hold_color, media_url, start_photo_url').eq('gym_id', id),
+            // Live problems only — "on the wall" must reflect the physical wall.
+            supabase.from('problems').select('id, name, custom_name, grade, hold_color, media_url, start_photo_url').eq('gym_id', id).is('archived_at', null),
           ]);
 
           if (!active) return;

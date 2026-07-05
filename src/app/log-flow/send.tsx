@@ -287,7 +287,8 @@ export default function SendScreen() {
         const { data: probs } = await supabase
           .from('problems')
           .select('id, name, custom_name, grade, hold_color')
-          .in('id', top);
+          .in('id', top)
+          .is('archived_at', null); // live problems only — never tag a stripped climb
         const byId = new Map((probs ?? []).map(p => [p.id, p]));
         const list = top
           .map(pid => {

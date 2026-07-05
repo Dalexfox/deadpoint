@@ -245,12 +245,27 @@ problems (
   map_y float,
   map_wall_id text,                         -- reserved for a future shared wall-coordinate map
   created_by uuid references auth.users(id),
-  created_at timestamp with time zone default now()
+  created_at timestamp with time zone default now(),
+  archived_at timestamptz                   -- null = on the wall; set = stripped/reset (set rotation)
 )
 -- RLS policies required:
 --   SELECT: public (USING true)
 --   INSERT: authenticated (WITH CHECK true)
 --   UPDATE: creator only (USING auth.uid() = created_by)
+--
+-- ⚠️ SET ROTATION — "sends are forever, problems are seasonal". Problems are
+-- NEVER deleted (that would orphan everyone's sends); they're ARCHIVED via the
+-- SECURITY DEFINER RPC:
+--   archive_problem(p_problem_id uuid, p_archived boolean)
+--     → allowed for the problem's creator OR anyone who has logged it; sets/
+--       clears archived_at. Called from the problem page overflow ("This climb
+--       was reset"), reversible ("It's back on the wall").
+-- Every surface that claims to describe the PHYSICAL wall filters
+-- `.is('archived_at', null)`: the gym page PROBLEMS ON THE WALL grid, BOTH
+-- identify-flow match passes (critical — after a reset the same color/wall/
+-- grade is a DIFFERENT climb; matching an archived problem would merge two
+-- physical climbs into one record), and the quick-log shortlist. History
+-- surfaces (problem page itself, sends, stats, feed) never filter.
 
 -- Post likes (one row per user-per-session like; unique constraint prevents double-liking)
 likes (
@@ -676,7 +691,7 @@ The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "
 
 **Current Climbs tab** (community climbs browser) — "**A then B**": a browsable photo grid, tap a climb for an immersive swipe-through viewer. Redesigned from beta feedback (the old tiny dot-slider + dead-end thumbnail modal).
 - **Grade chips** — a horizontal scrollable row of big V0–V10 pill chips (much larger tap targets than the old 11-dot slider). Selected = filled INK; grades with no climbs are dimmed (transparent + hairline). On load it auto-selects the first grade WITH climbs (only re-snaps on refocus if the current pick went empty), so you never land on an empty grade.
-- **PROBLEMS ON THE WALL** — above the sends grid, the selected grade's **catalog problems** (from the `problems` table, sorted most-sent first; cover = `media_url` ?? `start_photo_url`, hold-color dot + name + send count) as 2-up cards → tap opens `/problem/[id]` (the problem page, "all the beta"). Hidden when the grade has no catalog problems; the session grid below gets an `ALL SENDS` label when both show.
+- **PROBLEMS ON THE WALL** — above the sends grid, the selected grade's **live catalog problems** (`archived_at is null` — the browse must reflect the physical wall; sorted most-sent first; cover = `media_url` ?? `start_photo_url`, hold-color dot + name + send count) as 2-up cards → tap opens `/problem/[id]` (the problem page, "all the beta"). Hidden when the grade has no catalog problems; the session grid below gets an `ALL SENDS` label when both show.
 - **2-up photo grid** — the selected grade's logged climbs (sessions) as a photo-forward 2-column grid (`width: '48.5%'`, `aspectRatio: 0.82`, `flexWrap` + `space-between`). Each card: full-bleed `media_url` photo (or a warm `#2a2010 → #1a1408` gradient when media-less) + bottom scrim + grade (SAND_LT) / `@handle` / ♥ like count overlay. A `{grade} · N climbs on the wall` count sits above. Per-grade empty state when the selected grade has none.
 - **Immersive viewer (B)** — tapping a card opens `ClimbReel` (`src/components/ClimbReel.tsx`): a full-screen, vertically-swipeable paged feed of THAT grade's climbs, seeded at the tapped one. Video autoplays only on the active page (shared `VideoBackground`); tap a card to open the full post (`/session/[id]`) for likes/comments/share. Browse/watch surface — read-only here.
 - **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus, grouped by grade into `GradeGroup[]` (each `.sessions` sorted by likes desc). Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
@@ -712,7 +727,7 @@ Screen 3 success:           reward screen — "+ LOG ANOTHER" (resets for the ne
 
 **Screen 2 — Is This Your Climb** (`log-flow/match.tsx`):
 - Both Screen-1 entries route here **unconditionally** (when not skipping) — `match.tsx` owns all the match/celebration logic; Screen 1 no longer pre-queries.
-- **Two-pass query** runs in parallel via `Promise.all`: (1) **exact** = `gym_id + hold_color + grade + wall_section`; (2) **broad** = `gym_id + hold_color + grade` (any wall section). Close matches = broad minus exact. Both ordered `created_at` desc.
+- **Two-pass query** runs in parallel via `Promise.all`: (1) **exact** = `gym_id + hold_color + grade + wall_section`; (2) **broad** = `gym_id + hold_color + grade` (any wall section). Close matches = broad minus exact. Both ordered `created_at` desc. ⚠️ Both passes filter `.is('archived_at', null)` — matching must only consider LIVE problems, so a fresh set after a reset creates a NEW problem instead of merging into the stripped one.
 - **Four states** (`queryState`): `loading` (SAND spinner) · `matches` (exact found) · `close` (no exact, but same color+grade on other walls) · `none` (nothing → celebration) · `error` (query threw/failed → quiet retry).
 - **matches / close** — shows matched `ProblemCard` list (reuses `ProblemCard`, never forked). Close matches render under a `CLOSE MATCHES` 9px section label. Tap a card to select it (SAND border + glow). "YES — LOG MY SEND" (disabled until selected) → Screen 3 with problemId. "NO — IT'S A NEW CLIMB" → Screen 3 with newProblem=true.
 - **none → "You're the first." celebration** — full-card centered state: subtle SAND `DotGrid` (3×3 dots, brand motif), `NEW PROBLEM` section label, `You're the first.` headline (Syne_800ExtraBold 34px INK), subline pulling the gym name via `gymName()`. Primary `NAME YOUR CLIMB` button (SAND bg, INK text) → Screen 3 with `focusNickname=true` (auto-focuses the nickname input). Secondary `Log without naming` link → Screen 3 normally. No ACCENT red anywhere.
@@ -895,6 +910,7 @@ Therefore:
 - **Offline log queue** (`src/lib/pendingLogs.ts`) — a network-failed submit offers "Save & post later"; queued logs auto-post on the next feed focus / composer mount with the original timestamp preserved. Dead-zone gyms never lose a log.
 - **Analytics events** (`src/lib/analytics.ts` + `events` table) — log_started / log_submitted (with mount→submit ms = the median-log-time metric) / log_abandoned / log_switched_identify. Insert-own RLS; dashboards read via SQL.
 - **Problem pages ("all the beta")** — `/problem/[id]`: one page per catalog climb — start-hold hero, grade/sends/climbers/first-ascent stats, THE BETA (every visible send with media, videos first, thumbs via `ClimbThumb` → `/session/[id]`), SENT BY list with Flash/Send/Proj tags, and a **LOG THIS CLIMB** CTA that opens the quick composer pre-filled + attributed (context pill shown). Entry points: gym Current Climbs **PROBLEMS ON THE WALL** grid, and tappable climb nicknames on feed cards + session detail. Quiet sends of others never appear (RLS). Map-agnostic — a future gym map is just another entry point to this page.
+- **Set rotation / archived problems** — `problems.archived_at` + the `archive_problem` RPC (creator or any logger). The problem page hero overflow (⋯) has "This climb was reset (off the wall)" with confirm + a reversible "It's back on the wall"; archived pages show an **OFF THE WALL** pill + "On the wall {start} – {end}" run dates and stay fully viewable (beta + sends = history). Live-wall surfaces (Problems on the wall, both match passes, the shortlist) filter archived out. Tracks `problem_archived`/`problem_unarchived`. See the ⚠️ SET ROTATION note in the schema section.
 - **Current Climbs browser ("A then B")** — big V0–V10 grade chips (dimmed when empty; auto-selects the first grade with climbs) → a 2-up photo grid of that grade's logged climbs → tap a card to open `ClimbReel`, a full-screen vertical swipe-through viewer of the grade (video autoplays on the active page; tap → `/session/[id]`). Replaced the old tiny dot-slider + dead-end thumbnail modal (beta feedback)
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.
