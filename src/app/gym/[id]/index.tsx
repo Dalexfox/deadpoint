@@ -16,6 +16,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import { GymLeaderboard } from '../../../components/GymLeaderboard';
 import { ClimbReel } from '../../../components/ClimbReel';
+import { ClimbThumb } from '../../../components/ClimbThumb';
 import { HOLD_COLOR_SWATCHES } from '../../../components/ProblemCard';
 
 // ── Design tokens ────────────────────────────────────────────
@@ -67,7 +68,7 @@ type GymProblem = {
   title: string;        // custom_name ?? name
   grade: string;
   holdColor: string;
-  cover: string | null; // media_url (most-liked send) ?? start_photo_url
+  cover: string | null; // start_photo_url (identity photo) ?? media_url (most-liked send)
   sends: number;        // linked climbs count (visible ones)
 };
 
@@ -242,7 +243,9 @@ export default function GymDetailScreen() {
               title:     p.custom_name ?? p.name,
               grade:     p.grade,
               holdColor: p.hold_color,
-              cover:     p.media_url ?? p.start_photo_url ?? null,
+              // Start photo first: always a real photo AND it's the identity
+              // image (what the climb looks like standing at the wall).
+              cover:     p.start_photo_url ?? p.media_url ?? null,
               sends:     problemSendCounts[p.id] ?? 0,
             }))
             .sort((a, b) => b.sends - a.sends));
@@ -556,7 +559,9 @@ export default function GymDetailScreen() {
                           activeOpacity={0.88}
                           onPress={() => router.push(`/problem/${p.id}`)}>
                           {p.cover ? (
-                            <Image source={{ uri: p.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                            // ClimbThumb — the cover may be a VIDEO url (most-liked
+                            // send); a bare <Image> would render it blank.
+                            <ClimbThumb uri={p.cover} grade={p.grade} style={StyleSheet.absoluteFill} />
                           ) : (
                             <LinearGradient colors={['#2a2010', '#1a1408']} style={StyleSheet.absoluteFill} />
                           )}
@@ -596,7 +601,10 @@ export default function GymDetailScreen() {
                         activeOpacity={0.88}
                         onPress={() => setReel({ sessions: activeGroup.sessions, start: idx })}>
                         {s.media_url ? (
-                          <Image source={{ uri: s.media_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                          // ClimbThumb, NOT a bare <Image> — most sends are videos,
+                          // and an Image renders a video URL as BLANK. ClimbThumb
+                          // grabs a real frame + ▶ badge (cached per URL).
+                          <ClimbThumb uri={s.media_url} grade={s.grade} style={StyleSheet.absoluteFill} />
                         ) : (
                           <LinearGradient colors={['#2a2010', '#1a1408']} style={StyleSheet.absoluteFill} />
                         )}
