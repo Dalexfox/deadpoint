@@ -260,6 +260,8 @@ function FullScreenCard({
   muted?:          boolean;
   onToggleMute?:   () => void;
 }) {
+  const router = useRouter();
+
   const hasMedia  = !!(post.media && post.media.length > 0);
   const mediaItem = hasMedia ? post.media![0] : null;
   const isVideo   = mediaItem?.type === 'video';
@@ -454,7 +456,17 @@ function FullScreenCard({
           </View>
         ) : null}
         {post.climbNickname ? (
-          <Text style={card.climbNickname}>{post.climbNickname}</Text>
+          post.problemId ? (
+            // Tagged climb → its problem page (all the beta)
+            <TouchableOpacity
+              onPress={() => router.push(`/problem/${post.problemId}`)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}>
+              <Text style={card.climbNickname}>{post.climbNickname}  ›</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={card.climbNickname}>{post.climbNickname}</Text>
+          )
         ) : null}
         {post.climbNotes ? (
           <MentionText text={post.climbNotes} style={card.climbNotes} mentionStyle={card.mention} numberOfLines={2} />

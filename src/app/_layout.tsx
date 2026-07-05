@@ -165,6 +165,7 @@ export default function RootLayout() {
           <Stack.Screen name="log-flow" />
           <Stack.Screen name="user/[id]" />
           <Stack.Screen name="session/[id]" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="problem/[id]" />
           <Stack.Screen name="notifications" />
         </Stack>
         {!gateDone && <SplashGate onDone={() => setGateDone(true)} />}

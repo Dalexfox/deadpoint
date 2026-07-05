@@ -16,6 +16,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import { GymLeaderboard } from '../../../components/GymLeaderboard';
 import { ClimbReel } from '../../../components/ClimbReel';
+import { HOLD_COLOR_SWATCHES } from '../../../components/ProblemCard';
 
 // ── Design tokens ────────────────────────────────────────────
 const BG         = '#ffffff';
@@ -58,6 +59,16 @@ type GradeGroup = {
   coverMediaUrl: string | null;     // media_url from the most-liked session with a photo
   totalLikes: number;
   sendCount: number;
+};
+
+// A catalog problem at this gym — the "Problems on the wall" browse cards.
+type GymProblem = {
+  id: string;
+  title: string;        // custom_name ?? name
+  grade: string;
+  holdColor: string;
+  cover: string | null; // media_url (most-liked send) ?? start_photo_url
+  sends: number;        // linked climbs count (visible ones)
 };
 
 // ── Gym static data ──────────────────────────────────────────
@@ -157,6 +168,8 @@ export default function GymDetailScreen() {
   // Bottom-sheet modal for the video grid
   // Immersive viewer (B): the selected grade's sessions + which one was tapped.
   const [reel, setReel] = useState<{ sessions: SessionData[]; start: number } | null>(null);
+  // Catalog problems at this gym (the "Problems on the wall" grid).
+  const [gymProblems, setGymProblems] = useState<GymProblem[]>([]);
   // False while a route (e.g. /session/[id] from the reel) is pushed over this
   // screen — the reel stays mounted but its video must go silent underneath.
   const [screenFocused, setScreenFocused] = useState(true);
@@ -203,18 +216,35 @@ export default function GymDetailScreen() {
           const sessionIds = sessions.map((s: any) => s.id);
           const userIds    = [...new Set(sessions.map((s: any) => s.user_id as string))];
 
-          // Steps 2-4 in parallel — climbs, likes, profiles
-          const [climbsRes, likesRes, profilesRes] = await Promise.all([
-            supabase.from('climbs').select('session_id, grade').in('session_id', sessionIds),
+          // Steps 2-4 in parallel — climbs, likes, profiles, catalog problems
+          const [climbsRes, likesRes, profilesRes, problemsRes] = await Promise.all([
+            supabase.from('climbs').select('session_id, grade, problem_id').in('session_id', sessionIds),
             supabase.from('likes').select('session_id').in('session_id', sessionIds),
             supabase.from('profiles').select('id, full_name, username, avatar_url').in('id', userIds),
+            supabase.from('problems').select('id, name, custom_name, grade, hold_color, media_url, start_photo_url').eq('gym_id', id),
           ]);
 
           if (!active) return;
 
           // Build lookup maps
           const climbMap: Record<string, string> = {};
-          (climbsRes.data ?? []).forEach((c: any) => { climbMap[c.session_id] = c.grade; });
+          const problemSendCounts: Record<string, number> = {};
+          (climbsRes.data ?? []).forEach((c: any) => {
+            climbMap[c.session_id] = c.grade;
+            if (c.problem_id) problemSendCounts[c.problem_id] = (problemSendCounts[c.problem_id] ?? 0) + 1;
+          });
+
+          // Catalog problems → browse cards (sorted most-sent first per grade)
+          setGymProblems(((problemsRes.data ?? []) as any[])
+            .map((p) => ({
+              id:        p.id,
+              title:     p.custom_name ?? p.name,
+              grade:     p.grade,
+              holdColor: p.hold_color,
+              cover:     p.media_url ?? p.start_photo_url ?? null,
+              sends:     problemSendCounts[p.id] ?? 0,
+            }))
+            .sort((a, b) => b.sends - a.sends));
 
           const likeCounts: Record<string, number> = {};
           (likesRes.data ?? []).forEach((l: any) => {
@@ -510,8 +540,45 @@ export default function GymDetailScreen() {
                 </View>
               );
             }
+            const gradeProblems = gymProblems.filter((p) => p.grade === selectedGrade);
             return (
               <ScrollView style={styles.gridFill} contentContainerStyle={styles.gridScroll} showsVerticalScrollIndicator={false}>
+                {/* Catalog problems at this grade — tap → the problem page (all the beta) */}
+                {gradeProblems.length > 0 && (
+                  <>
+                    <Text style={styles.gridLabel}>PROBLEMS ON THE WALL</Text>
+                    <View style={styles.grid}>
+                      {gradeProblems.map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={styles.gcard}
+                          activeOpacity={0.88}
+                          onPress={() => router.push(`/problem/${p.id}`)}>
+                          {p.cover ? (
+                            <Image source={{ uri: p.cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                          ) : (
+                            <LinearGradient colors={['#2a2010', '#1a1408']} style={StyleSheet.absoluteFill} />
+                          )}
+                          <LinearGradient
+                            colors={['transparent', 'rgba(0,0,0,0.72)']}
+                            style={StyleSheet.absoluteFill}
+                            pointerEvents="none"
+                          />
+                          <View style={styles.gcardOverlay} pointerEvents="none">
+                            <View style={styles.gcardInfo}>
+                              <View style={styles.pNameRow}>
+                                <View style={[styles.pDot, { backgroundColor: HOLD_COLOR_SWATCHES[p.holdColor] ?? '#888' }]} />
+                                <Text style={styles.pName} numberOfLines={1}>{p.title}</Text>
+                              </View>
+                              <Text style={styles.pSends}>{p.grade} · {p.sends} send{p.sends === 1 ? '' : 's'}</Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={[styles.gridLabel, { marginTop: 20 }]}>ALL SENDS</Text>
+                  </>
+                )}
                 <Text style={styles.gridCount}>
                   <Text style={styles.gridCountGrade}>{selectedGrade}</Text>
                   {`  ·  ${activeGroup.sendCount} climb${activeGroup.sendCount !== 1 ? 's' : ''} on the wall`}
@@ -733,6 +800,18 @@ const styles = StyleSheet.create({
   gridFill: { flex: 1 },   // bound the ScrollView to remaining height so it scrolls
   gridScroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
   gridCount: { fontSize: 13, fontFamily: 'SpaceGrotesk_500Medium', color: INK3, marginBottom: 14 },
+  gridLabel: {
+    fontSize: 9,
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    color: INK3,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  pNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pDot: { width: 9, height: 9, borderRadius: 2, flexShrink: 0 },
+  pName: { flex: 1, fontSize: 11, fontFamily: 'Syne_800ExtraBold', color: '#ffffff', letterSpacing: -0.2 },
+  pSends: { fontSize: 11, fontFamily: 'SpaceGrotesk_600SemiBold', color: SAND_LT, marginTop: 2 },
   gridCountGrade: { fontSize: 15, fontFamily: 'Syne_800ExtraBold', color: INK },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   gcard: {

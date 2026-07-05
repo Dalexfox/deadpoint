@@ -473,13 +473,19 @@ src/app/
                          (presented as fullScreenModal, slides up over profile)
   user/
     [id].tsx           — View-only profile page for other users
+  problem/
+    [id].tsx           — Problem page ("all the beta"): identity photo + start-hold
+                         ring hero, grade/sends/climbers/FA stats, THE BETA grid
+                         (every visible send with media, videos first → /session/[id]),
+                         SENT BY list (→ profiles), and a LOG THIS CLIMB footer CTA
+                         (pre-filled, fully-attributed quick log). Re-fetches on focus.
   notifications.tsx    — In-app activity inbox (likes / comments / new followers on YOUR content)
 ```
 
 ### ⚠️ Register every off-`(tabs)` route in the root Stack
 `src/app/_layout.tsx` renders a `<Stack>` with an explicit `<Stack.Screen>` for
 each off-tab route (`(tabs)`, `auth`, `gym/[id]`, `log-flow`, `user/[id]`,
-`session/[id]`, `notifications`). When you add a NEW dynamic route, you MUST add a matching
+`session/[id]`, `problem/[id]`, `notifications`). When you add a NEW dynamic route, you MUST add a matching
 `<Stack.Screen name="..." />` here — otherwise `router.push` to it silently
 no-ops. (This was the cause of the username-tap navigation bug: `user/[id]`
 existed as a file but was never registered, so every push to it did nothing.)
@@ -556,7 +562,7 @@ Each card is a `View` sized `{ width: SCREEN_WIDTH, height: cardHeight }` with a
   3. `◎` + comment count → `onComment` (opens comment sheet)
   4. `↗` + "share" label → `Share.share()` native sheet
   5. `⬡` + "gym" label → `router.push('/gym/[gymId]')`
-- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`, `gap: 2`. Shows `@username` (Syne_800ExtraBold, white) — tappable, navigates to that user's profile. Below username: `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set; then `climbNotes` (white 75% opacity, SpaceGrotesk_400Regular, 12px, max 2 lines) if set.
+- **Bottom-left info** — `absolute, left: 16, right: 80, bottom: STATS_BAR_H + 16`, `gap: 2`. Shows `@username` (Syne_800ExtraBold, white) — tappable, navigates to that user's profile. Below username: `climbNickname` (SAND_LT, SpaceGrotesk_600SemiBold, 13px) if set — **tappable → `/problem/[id]`** (with a ` ›` affordance) when the climb is catalog-tagged (`post.problemId`); same on the session detail screen. Then `climbNotes` (white 75% opacity, SpaceGrotesk_400Regular, 12px, max 2 lines) if set.
 - **Stats bar** — `absolute, bottom: 0`, full width, `height: 64`, `backgroundColor: rgba(0,0,0,0.50)`. Two sections separated by a hairline divider: **left** — grade in SAND_LT (Syne_800ExtraBold, 28px) + `GRADE` label (8px muted white); **right** — `📍  gymName` in white (16px SpaceGrotesk_600SemiBold, `numberOfLines={1}`).
 
 ### Feed Search
@@ -670,6 +676,7 @@ The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "
 
 **Current Climbs tab** (community climbs browser) — "**A then B**": a browsable photo grid, tap a climb for an immersive swipe-through viewer. Redesigned from beta feedback (the old tiny dot-slider + dead-end thumbnail modal).
 - **Grade chips** — a horizontal scrollable row of big V0–V10 pill chips (much larger tap targets than the old 11-dot slider). Selected = filled INK; grades with no climbs are dimmed (transparent + hairline). On load it auto-selects the first grade WITH climbs (only re-snaps on refocus if the current pick went empty), so you never land on an empty grade.
+- **PROBLEMS ON THE WALL** — above the sends grid, the selected grade's **catalog problems** (from the `problems` table, sorted most-sent first; cover = `media_url` ?? `start_photo_url`, hold-color dot + name + send count) as 2-up cards → tap opens `/problem/[id]` (the problem page, "all the beta"). Hidden when the grade has no catalog problems; the session grid below gets an `ALL SENDS` label when both show.
 - **2-up photo grid** — the selected grade's logged climbs (sessions) as a photo-forward 2-column grid (`width: '48.5%'`, `aspectRatio: 0.82`, `flexWrap` + `space-between`). Each card: full-bleed `media_url` photo (or a warm `#2a2010 → #1a1408` gradient when media-less) + bottom scrim + grade (SAND_LT) / `@handle` / ♥ like count overlay. A `{grade} · N climbs on the wall` count sits above. Per-grade empty state when the selected grade has none.
 - **Immersive viewer (B)** — tapping a card opens `ClimbReel` (`src/components/ClimbReel.tsx`): a full-screen, vertically-swipeable paged feed of THAT grade's climbs, seeded at the tapped one. Video autoplays only on the active page (shared `VideoBackground`); tap a card to open the full post (`/session/[id]`) for likes/comments/share. Browse/watch surface — read-only here.
 - **Data fetching** — sessions + climbs + likes + profiles fetched in parallel via `Promise.all` on focus, grouped by grade into `GradeGroup[]` (each `.sessions` sorted by likes desc). Profiles batch-fetched separately (never joined — `sessions.user_id` → `auth.users`).
@@ -683,7 +690,7 @@ The gym detail screen has **three tabs**: "Log a Climb", "Current Climbs", and "
 
 Logging a climb is split across three screens. Both `(tabs)/log.tsx` (tab entry) and `gym/[id]/log.tsx` (gym detail entry) are Screen 1. Screens 2 and 3 live in `src/app/log-flow/` and cover the full screen (no tab bar).
 
-**⚡ Quick Log — the DEFAULT everywhere.** The center **Log tab** AND the gym-page **"Log a Climb" CTAs** open the quick composer directly (`/log-flow/send?quick=true`, the gym CTAs add `gymId`); the detailed identify flow is the opt-in "Identify the exact climb →" link inside it (routes to `/gym/[id]/log` when a gymId is present, else `/(tabs)/log`). Quick mode hides the problem context pill, labels the step header "Quick log", and pre-fills **sticky smart defaults**: gym = route param → **last-logged gym** (AsyncStorage `deadpoint:lastGymId`, instant) → `home_gym_id` (network); grade = **last-logged grade** (`deadpoint:lastGrade`) instead of V0 (both keys written on every successful submit). A **recent-problems shortlist** ("ON THE WALL — TAP TO TAG") shows the gym's most-sent problems from the last 14 days as horizontal chips — tapping one attaches that `problem_id` to the log AND sets the grade, so quick logs regain catalog attribution without the identify flow; untagged quick logs still post with `problem_id: null`. Submit ends on the **reward screen** (grade + "your Nth climb this month" + "+ LOG ANOTHER" / Done) — see Screen 3. Best for fast bulk / quiet logging; the full identify flow stays for contributing a NEW problem to the catalog.
+**⚡ Quick Log — the DEFAULT everywhere.** The center **Log tab** AND the gym-page **"Log a Climb" CTAs** open the quick composer directly (`/log-flow/send?quick=true`, the gym CTAs add `gymId`); the detailed identify flow is the opt-in "Identify the exact climb →" link inside it (routes to `/gym/[id]/log` when a gymId is present, else `/(tabs)/log`). Quick mode hides the problem context pill, labels the step header "Quick log", and pre-fills **sticky smart defaults**: gym = route param → **last-logged gym** (AsyncStorage `deadpoint:lastGymId`, instant) → `home_gym_id` (network); grade = **last-logged grade** (`deadpoint:lastGrade`) instead of V0 (both keys written on every successful submit). A **recent-problems shortlist** ("ON THE WALL — TAP TO TAG") shows the gym's most-sent problems from the last 14 days as horizontal chips — tapping one attaches that `problem_id` to the log AND sets the grade, so quick logs regain catalog attribution without the identify flow; untagged quick logs still post with `problem_id: null`. A quick log opened **from a problem page** (`problemId`/`problemName`/`problemGrade` params) shows the problem context pill, pre-fills the problem's grade, and hides the shortlist + identify link — a fully-attributed one-tap log. Submit ends on the **reward screen** (grade + "your Nth climb this month" + "+ LOG ANOTHER" / Done) — see Screen 3. Best for fast bulk / quiet logging; the full identify flow stays for contributing a NEW problem to the catalog.
 
 **Route params flow:**
 ```
@@ -887,6 +894,7 @@ Therefore:
 - **Recent-problems shortlist** — quick log shows the gym's most-sent problems from the last 14 days as tap-to-tag chips; tapping attaches `problem_id` + sets the grade (community logging as autocomplete; quick logs regain catalog attribution).
 - **Offline log queue** (`src/lib/pendingLogs.ts`) — a network-failed submit offers "Save & post later"; queued logs auto-post on the next feed focus / composer mount with the original timestamp preserved. Dead-zone gyms never lose a log.
 - **Analytics events** (`src/lib/analytics.ts` + `events` table) — log_started / log_submitted (with mount→submit ms = the median-log-time metric) / log_abandoned / log_switched_identify. Insert-own RLS; dashboards read via SQL.
+- **Problem pages ("all the beta")** — `/problem/[id]`: one page per catalog climb — start-hold hero, grade/sends/climbers/first-ascent stats, THE BETA (every visible send with media, videos first, thumbs via `ClimbThumb` → `/session/[id]`), SENT BY list with Flash/Send/Proj tags, and a **LOG THIS CLIMB** CTA that opens the quick composer pre-filled + attributed (context pill shown). Entry points: gym Current Climbs **PROBLEMS ON THE WALL** grid, and tappable climb nicknames on feed cards + session detail. Quiet sends of others never appear (RLS). Map-agnostic — a future gym map is just another entry point to this page.
 - **Current Climbs browser ("A then B")** — big V0–V10 grade chips (dimmed when empty; auto-selects the first grade with climbs) → a 2-up photo grid of that grade's logged climbs → tap a card to open `ClimbReel`, a full-screen vertical swipe-through viewer of the grade (video autoplays on the active page; tap → `/session/[id]`). Replaced the old tiny dot-slider + dead-end thumbnail modal (beta feedback)
 - **Tab bar icons via Ionicons** — replaced `expo-symbols` (dev-build-only) with `@expo/vector-icons` Ionicons; works in Expo Go. Inline icons (search, settings, camera, share) also converted.
 - **Gyms tab interactive map** — `react-native-maps` MapView with warm custom style, SAND dot markers, Callout popups (name / neighborhood / address / "View Gym →"). Map + list both sourced from `gyms` Supabase table via `src/lib/gyms.ts`.

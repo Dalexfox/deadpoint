@@ -540,7 +540,17 @@ export default function SessionDetailScreen() {
           </View>
         ) : null}
         {session.climbNickname ? (
-          <Text style={st.climbNickname}>{session.climbNickname}</Text>
+          session.problemId ? (
+            // Tagged climb → its problem page (all the beta)
+            <TouchableOpacity
+              onPress={() => router.push(`/problem/${session.problemId}`)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}>
+              <Text style={st.climbNickname}>{session.climbNickname}  ›</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={st.climbNickname}>{session.climbNickname}</Text>
+          )
         ) : null}
         {session.climbNotes ? (
           <MentionText text={session.climbNotes} style={st.climbNotes} mentionStyle={st.mention} numberOfLines={2} />

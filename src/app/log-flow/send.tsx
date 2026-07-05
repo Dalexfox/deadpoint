@@ -686,7 +686,7 @@ export default function SendScreen() {
         {/* Quick log → opt-in to the detailed identify flow (tag a specific problem
             in the gym's catalog). Most logs don't need this; it's here for the
             climbers who want their send attributed to a specific climb. */}
-        {effQuick && (
+        {effQuick && !effProblemId && (
           <TouchableOpacity
             style={styles.identifyLink}
             onPress={() => {
@@ -701,15 +701,19 @@ export default function SendScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Context pill — the matched/new problem. Hidden for Quick Log (no problem). */}
-        {!effQuick && (
+        {/* Context pill — the matched/new problem. Shown in identify mode AND for
+            a quick log arriving from a problem page (problemId param) so the
+            attribution is visible. Hidden only for plain quick logs. */}
+        {(!effQuick || !!effProblemId) && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>THE CLIMB</Text>
             <View style={styles.contextPill}>
               <View style={[styles.colorDot, { backgroundColor: swatch }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.pillName} numberOfLines={1}>{displayName}</Text>
-                <Text style={styles.pillGym} numberOfLines={1}>{paramGymName} · {wallSection}</Text>
+                <Text style={styles.pillGym} numberOfLines={1}>
+                  {[paramGymName, wallSection].filter(Boolean).join(' · ')}
+                </Text>
               </View>
             </View>
           </View>
@@ -731,8 +735,9 @@ export default function SendScreen() {
           </View>
         )}
 
-        {/* Recent problems at this gym — tap to tag your send (sets the grade too) */}
-        {effQuick && shortlist.length > 0 && (
+        {/* Recent problems at this gym — tap to tag your send (sets the grade too).
+            Hidden when the log already has problem context (problem page / match). */}
+        {effQuick && !effProblemId && shortlist.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>ON THE WALL — TAP TO TAG (OPTIONAL)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shortlistRow}>
