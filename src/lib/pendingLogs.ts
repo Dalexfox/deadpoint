@@ -15,6 +15,7 @@
  * jump to the top of the feed hours later with the wrong timestamp.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { supabase } from './supabase';
 import { uploadSessionMedia } from './store';
 
@@ -96,7 +97,16 @@ export async function drainPendingLogs(): Promise<number> {
           uploadSessionMedia(mediaUri, mediaType)
             .then(async (up) => {
               if (up.url) {
-                await supabase.from('sessions').update({ media_url: up.url }).eq('id', sessionId);
+                const patch: Record<string, string> = { media_url: up.url };
+                // Poster from the still-local clip — same as the live submit path.
+                if (mediaType === 'video') {
+                  try {
+                    const frame = await VideoThumbnails.getThumbnailAsync(mediaUri, { time: 500, quality: 0.7 });
+                    const posterUp = await uploadSessionMedia(frame.uri, 'image');
+                    if (posterUp.url) patch.media_poster_url = posterUp.url;
+                  } catch { /* poster is best-effort */ }
+                }
+                await supabase.from('sessions').update(patch).eq('id', sessionId);
                 if (problemId) await supabase.rpc('recompute_problem_cover', { problem_id: problemId });
               }
             })

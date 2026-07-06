@@ -30,20 +30,29 @@ const thumbCache = new Map<string, string>();
 
 export function ClimbThumb({
   uri,
+  posterUri,
   grade,
   style,
 }: {
   uri: string | null;
+  /** Pre-generated cover uploaded at log time (sessions.media_poster_url).
+      When present, NO on-device frame generation happens — generating a frame
+      from a REMOTE 50–300MB clip requires downloading huge chunks (the moov
+      index often sits at the file's end), which stalls/fails on gym Wi-Fi.
+      That was the "media doesn't show in Current Climbs" bug on build #27. */
+  posterUri?: string | null;
   grade?: string | null;
   style: StyleProp<ViewStyle>;
 }) {
   const isVideo = !!uri && VIDEO_RE.test(uri);
   const [thumb, setThumb] = useState<string | null>(
-    isVideo && uri ? (thumbCache.get(uri) ?? null) : null,
+    isVideo && uri ? (posterUri ?? thumbCache.get(uri) ?? null) : null,
   );
 
   useEffect(() => {
-    if (!isVideo || !uri || thumbCache.has(uri)) return;
+    if (!isVideo || !uri) return;
+    if (posterUri) { setThumb(posterUri); return; }
+    if (thumbCache.has(uri)) return;
     let active = true;
     VideoThumbnails.getThumbnailAsync(uri, { time: 500, quality: 0.7 })
       .then((res) => {
@@ -52,7 +61,7 @@ export function ClimbThumb({
       })
       .catch(() => { /* keep the placeholder */ });
     return () => { active = false; };
-  }, [uri, isVideo]);
+  }, [uri, isVideo, posterUri]);
 
   // Photo → just the image (wrapped in a View so `style` is always a ViewStyle).
   if (uri && !isVideo) {

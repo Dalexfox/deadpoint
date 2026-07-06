@@ -89,6 +89,7 @@ type ClimbEntry = {
   date:      string;
   createdAt: string;
   mediaUrl:  string | null;
+  posterUrl: string | null;  // pre-generated video cover (sessions.media_poster_url)
   visibility: 'public' | 'quiet';
   sendStyle: 'flash' | 'send' | 'project' | null;
 };
@@ -101,6 +102,7 @@ type SupabaseSession = {
   date:      string;  // e.g. "May 27, 2026"
   createdAt: string;  // ISO string — used to filter sessions by day for chart drill-down
   mediaUrl:  string | null;  // Supabase Storage URL for attached photo / video
+  posterUrl: string | null;  // pre-generated video cover (sessions.media_poster_url)
   notes:     string | null;  // optional description/notes from the log form
 };
 
@@ -164,7 +166,7 @@ const CLIMB_CARD_GAP = 8;
 function ClimbGridCard({ entry }: { entry: ClimbEntry }) {
   return (
     <View style={styles.gridCard}>
-      <ClimbThumb uri={entry.mediaUrl} grade={entry.grade} style={styles.gridCardThumb} />
+      <ClimbThumb uri={entry.mediaUrl} posterUri={entry.posterUrl} grade={entry.grade} style={styles.gridCardThumb} />
       {entry.visibility === 'quiet' && (
         <View style={styles.gridCardQuiet}>
           <Ionicons name="eye-off-outline" size={12} color="#ffffff" />
@@ -211,10 +213,12 @@ function CarouselCard({ session }: { session: SupabaseSession }) {
       {/* Right: image absolutely centered to the full card height */}
       {session.mediaUrl && (
         <View style={styles.carouselThumbWrapper}>
-          <Image
-            source={{ uri: session.mediaUrl }}
-            style={styles.carouselThumb}
-            resizeMode="cover"
+          {/* ClimbThumb — the media may be a video URL, which a bare <Image>
+              renders as blank; posters/frames handle it. */}
+          <ClimbThumb
+            uri={session.mediaUrl}
+            posterUri={session.posterUrl}
+            style={[styles.carouselThumb, { overflow: 'hidden' }]}
           />
         </View>
       )}
@@ -390,7 +394,7 @@ export default function ProfileScreen() {
             fetchGyms(),
             supabase
             .from('sessions')
-              .select('id, gym_id, created_at, media_url, notes, visibility')
+              .select('id, gym_id, created_at, media_url, media_poster_url, notes, visibility')
               .eq('user_id', user.id)
               .order('created_at', { ascending: false }),
           ]);
@@ -446,7 +450,7 @@ export default function ProfileScreen() {
             const date    = new Date(s.created_at).toLocaleDateString('en-US', {
               month: 'short', day: 'numeric', year: 'numeric',
             });
-            return { id: s.id, gymName, grade, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, notes: s.notes ?? null };
+            return { id: s.id, gymName, grade, date, createdAt: s.created_at, mediaUrl: s.media_url ?? null, posterUrl: s.media_poster_url ?? null, notes: s.notes ?? null };
           });
           setSessions(formatted);
 
@@ -511,7 +515,7 @@ export default function ProfileScreen() {
           setChartData({ weeklyIntensity: dailyCounts, gradeDistribution: gradeCounts, maxGradeIndex, monthlyVolume: weeklyTotals, weekLabels, terrain });
 
           // ── 6. Climb entries for grade drill-down ───────────────
-          const sessionMetaById: Record<string, { gymName: string; date: string; createdAt: string; mediaUrl: string | null; visibility: 'public' | 'quiet' }> = {};
+          const sessionMetaById: Record<string, { gymName: string; date: string; createdAt: string; mediaUrl: string | null; posterUrl: string | null; visibility: 'public' | 'quiet' }> = {};
           rawSessions.forEach((s) => {
             sessionMetaById[s.id] = {
               gymName: resolveGymName(gyms, s.gym_id),
@@ -520,6 +524,7 @@ export default function ProfileScreen() {
               }),
               createdAt: s.created_at,
               mediaUrl: s.media_url ?? null,
+              posterUrl: (s as any).media_poster_url ?? null,
               visibility: ((s as any).visibility ?? 'public') as 'public' | 'quiet',
             };
           });
@@ -534,6 +539,7 @@ export default function ProfileScreen() {
                 date:      sessionMetaById[c.session_id]?.date ?? '',
                 createdAt: sessionMetaById[c.session_id]?.createdAt ?? '',
                 mediaUrl:  sessionMetaById[c.session_id]?.mediaUrl ?? null,
+                posterUrl: sessionMetaById[c.session_id]?.posterUrl ?? null,
                 visibility: sessionMetaById[c.session_id]?.visibility ?? 'public',
                 sendStyle: ((c as any).send_style ?? null) as ClimbEntry['sendStyle'],
               }))

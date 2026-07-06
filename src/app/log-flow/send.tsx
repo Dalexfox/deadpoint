@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
@@ -479,7 +480,21 @@ export default function SendScreen() {
         (async () => {
           const up = await uploadSessionMedia(media.uri, media.type);
           if (up.url) {
-            await supabase.from('sessions').update({ media_url: up.url }).eq('id', sessionId);
+            const patch: Record<string, string> = { media_url: up.url };
+            // Video → also generate + upload a poster frame NOW, while the clip
+            // is still a LOCAL file (instant + reliable). Grids render this
+            // little JPG directly; generating a frame from the REMOTE 50–300MB
+            // clip on-device stalls/fails on gym Wi-Fi (the "no thumbnails in
+            // Current Climbs" bug). Best-effort — the video upload never fails
+            // because of the poster.
+            if (media.type === 'video') {
+              try {
+                const frame = await VideoThumbnails.getThumbnailAsync(media.uri, { time: 500, quality: 0.7 });
+                const posterUp = await uploadSessionMedia(frame.uri, 'image');
+                if (posterUp.url) patch.media_poster_url = posterUp.url;
+              } catch { /* poster is a nicety; the video itself is uploaded */ }
+            }
+            await supabase.from('sessions').update(patch).eq('id', sessionId);
             // Recompute the problem cover (SECURITY DEFINER + visibility filter live
             // in the DB function — quiet sessions can never become a cover).
             if (coverProblemId) await supabase.rpc('recompute_problem_cover', { problem_id: coverProblemId });

@@ -60,6 +60,7 @@ type ClimbCard = {
   date:      string;
   createdAt: string;
   mediaUrl:  string | null;
+  posterUrl: string | null;  // pre-generated video cover (sessions.media_poster_url)
   sendStyle: 'flash' | 'send' | 'project' | null;
 };
 
@@ -137,7 +138,7 @@ export default function UserProfileScreen() {
       fetchGyms(),
       supabase
         .from('sessions')
-        .select('id, gym_id, media_url, created_at, climbs(grade, send_style)')
+        .select('id, gym_id, media_url, media_poster_url, created_at, climbs(grade, send_style)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
     ]);
@@ -177,6 +178,7 @@ export default function UserProfileScreen() {
           }),
           createdAt: s.created_at,
           mediaUrl:  s.media_url ?? null,
+          posterUrl: s.media_poster_url ?? null,
           sendStyle: (climb?.send_style ?? null) as ClimbCard['sendStyle'],
         };
       }),
@@ -516,7 +518,7 @@ export default function UserProfileScreen() {
                         activeOpacity={0.75}
                         onPress={() => router.push(`/session/${c.sessionId}`)}>
                         <View style={styles.climbCard}>
-                          <ClimbThumb uri={c.mediaUrl} grade={c.grade} style={styles.climbThumb} />
+                          <ClimbThumb uri={c.mediaUrl} posterUri={c.posterUrl} grade={c.grade} style={styles.climbThumb} />
                           {c.sendStyle && (
                             <View style={[styles.climbStyleTag, c.sendStyle === 'project' && styles.climbStyleTagMuted]}>
                               <Text style={[styles.climbStyleTagText, c.sendStyle === 'project' && styles.climbStyleTagTextMuted]}>

@@ -44,6 +44,7 @@ type SessionData = {
   id: string;
   user_id: string;
   media_url: string | null;
+  posterUrl: string | null;   // pre-generated video cover (sessions.media_poster_url)
   created_at: string;
   grade: string;
   likeCount: number;
@@ -205,7 +206,7 @@ export default function GymDetailScreen() {
           // Step 1 — sessions at this gym
           const { data: sessions } = await supabase
             .from('sessions')
-            .select('id, user_id, media_url, created_at')
+            .select('id, user_id, media_url, media_poster_url, created_at')
             .eq('gym_id', id);
 
           if (!active) return;
@@ -267,6 +268,7 @@ export default function GymDetailScreen() {
                 id:         s.id,
                 user_id:    s.user_id,
                 media_url:  s.media_url ?? null,
+                posterUrl:  s.media_poster_url ?? null,
                 created_at: s.created_at,
                 grade:      climbMap[s.id],
                 likeCount:  likeCounts[s.id] ?? 0,
@@ -604,7 +606,7 @@ export default function GymDetailScreen() {
                           // ClimbThumb, NOT a bare <Image> — most sends are videos,
                           // and an Image renders a video URL as BLANK. ClimbThumb
                           // grabs a real frame + ▶ badge (cached per URL).
-                          <ClimbThumb uri={s.media_url} grade={s.grade} style={StyleSheet.absoluteFill} />
+                          <ClimbThumb uri={s.media_url} posterUri={s.posterUrl} grade={s.grade} style={StyleSheet.absoluteFill} />
                         ) : (
                           <LinearGradient colors={['#2a2010', '#1a1408']} style={StyleSheet.absoluteFill} />
                         )}

@@ -68,6 +68,7 @@ type SendRow = {
   username: string | null;
   avatarUrl: string | null;
   mediaUrl: string | null;
+  posterUrl: string | null;   // pre-generated video cover (sessions.media_poster_url)
   isVideo: boolean;
   sendStyle: 'flash' | 'send' | 'project' | null;
   createdAt: string;
@@ -137,7 +138,7 @@ export default function ProblemScreen() {
 
           const { data: sessions } = await supabase
             .from('sessions')
-            .select('id, user_id, media_url, created_at')
+            .select('id, user_id, media_url, media_poster_url, created_at')
             .in('id', sessionIds)
             .order('created_at', { ascending: false });
           const userIds = [...new Set((sessions ?? []).map((s: any) => s.user_id as string))];
@@ -158,6 +159,7 @@ export default function ProblemScreen() {
               username:  p?.username ?? null,
               avatarUrl: p?.avatar_url ?? null,
               mediaUrl:  s.media_url ?? null,
+              posterUrl: s.media_poster_url ?? null,
               isVideo:   !!s.media_url && VIDEO_RE.test(s.media_url),
               sendStyle: styleBySession[s.id] ?? null,
               createdAt: s.created_at,
@@ -358,7 +360,7 @@ export default function ProblemScreen() {
                 style={styles.betaCard}
                 onPress={() => router.push(`/session/${s.sessionId}`)}
                 activeOpacity={0.88}>
-                <ClimbThumb uri={s.mediaUrl} grade={problem.grade} style={StyleSheet.absoluteFill} />
+                <ClimbThumb uri={s.mediaUrl} posterUri={s.posterUrl} grade={problem.grade} style={StyleSheet.absoluteFill} />
                 <View style={styles.betaOverlay} pointerEvents="none">
                   <Text style={styles.betaHandle} numberOfLines={1}>
                     {s.username ? `@${s.username}` : s.name}
