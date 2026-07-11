@@ -1005,17 +1005,19 @@ Therefore:
       ⚠️ Implication for catalog matching: make grade a **±1 soft filter, not a hard key** (match
       by color + wall + photo; grade is fuzzy) so the same climb logged V4 vs V5 doesn't split
       into two entries. For now: climbers just log their honest read; no consensus UI yet.
-- [ ] **Gym wall map (LES)** — real wall-zone outlines CV-traced from the gym's
-      routesetting-board photo live in `assets/maps/les-map.json` (normalized 0–1
-      polygons + holes; 7 zones spanning the 14 real section names: Stairwell Wall,
-      35°, No Name/Wave, 50°, East/West Island, Tunnel, Horseshoe, 40°, 60°, Front
-      Desk, Elevator, Slackline Slab, Boards). Tracing tool: `tools/gym-map-trace/
-      extract.py` (OpenCV; deskew → hatch-density mask → contours; rerun on a new
-      board photo after resets). NOT wired into the app yet — the plan: render via
-      react-native-svg as a tappable section picker in the identify flow (replacing
-      wall-section chips for gyms with maps; per-gym data, chips stay as fallback)
-      + a map browse on the gym page. ⚠️ Real section names ≠ current generic chips
-      (Main Wall/Cave/Slab/Overhang/Arete) — migrate wall_section values when wiring.
+- [ ] **Gym wall map (LES)** — in progress, NOT in the app and NO map data committed
+      yet (a CV-traced draft was reviewed 2026-07-11 and judged not accurate enough;
+      Alex will drive corrections before any data lands). The tracing tool IS kept:
+      `tools/gym-map-trace/extract.py` (OpenCV; deskew the board photo → hatch-density
+      mask → contours → seed-matched zones) — rerun/refine it against the gym's
+      routesetting-board photo to regenerate zone polygons. The gym's REAL section
+      names (from that board): Stairwell Wall, 35°, No Name/Wave, 50°, East Island,
+      West Island, Tunnel, Horseshoe, 40°, 60°, Front Desk, Elevator, Slackline Slab,
+      Boards (TB2 + Kilter). Eventual plan: normalized polygons rendered via
+      react-native-svg as a tappable section picker in the identify flow (per-gym
+      data; wall-section chips stay as the no-map fallback) + a gym-page map browse.
+      ⚠️ Real section names ≠ current generic chips (Main Wall/Cave/Slab/Overhang/
+      Arete) — migrate wall_section values when wiring.
 - [ ] More gyms (expand beyond NYC Vital locations)
 
 ### 🔜 Phase 3
